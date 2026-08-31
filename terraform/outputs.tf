@@ -1,0 +1,29 @@
+output "ecr_repository_url" {
+  description = "URL of the Amazon ECR repository"
+  value       = aws_ecr_repository.app.repository_url
+}
+
+output "ecs_cluster_name" {
+  description = "Name of the ECS Cluster"
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_service_name" {
+  description = "Name of the ECS Service"
+  value       = aws_ecs_service.app.name
+}
+
+output "alb_dns_name" {
+  description = "DNS name of the Application Load Balancer"
+  value       = aws_lb.main.dns_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "ID of the CloudFront CDN distribution"
+  value       = var.enable_custom_domain ? aws_cloudfront_distribution.cdn[0].id : null
+}
+
+output "domain_url" {
+  description = "Public URL for Aletheia AI News"
+  value       = var.enable_custom_domain ? "https://${var.subdomain}.${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+}

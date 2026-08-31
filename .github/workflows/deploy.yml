@@ -1,0 +1,151 @@
+name: Deploy Aletheia AI News to AWS (news.ciclops.io)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: "Skip test and typecheck step"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-ai-news
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: ai-news
+
+jobs:
+  validate:
+    name: Lint, Typecheck & Test
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run TypeScript Check
+        run: npm run typecheck
+
+      - name: Run Unit Tests
+        run: npm run test
+
+  deploy:
+    name: Provision Infrastructure & Deploy Container
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: always() && (needs.validate.result == 'success' || needs.validate.result == 'skipped')
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Docker Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          ECR_URL="$ECR_REGISTRY/$ECR_REPOSITORY"
+          echo "Building Docker Image: $ECR_URL:$IMAGE_TAG"
+          docker build -t "$ECR_URL:$IMAGE_TAG" -t "$ECR_URL:latest" .
+          echo "Pushing Docker Image to Amazon ECR..."
+          docker push "$ECR_URL:$IMAGE_TAG"
+          docker push "$ECR_URL:latest"
+
+      - name: Terraform Apply Infrastructure
+        working-directory: terraform
+        env:
+          TF_VAR_deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
+          TF_VAR_nextauth_secret: ${{ secrets.NEXTAUTH_SECRET }}
+          TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
+          TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          TF_VAR_admin_emails: ${{ secrets.ADMIN_EMAILS }}
+        run: |
+          echo "Applying Terraform Infrastructure..."
+          terraform apply -auto-approve
+
+      - name: Trigger ECS Service Deployment
+        run: |
+          echo "Triggering zero-downtime rolling update on ECS Fargate..."
+          CLUSTER_NAME=$(terraform -chdir=terraform output -raw ecs_cluster_name)
+          SERVICE_NAME=$(terraform -chdir=terraform output -raw ecs_service_name)
+          aws ecs update-service \
+            --cluster "$CLUSTER_NAME" \
+            --service "$SERVICE_NAME" \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+          echo "Waiting for ECS service rollout to complete..."
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_NAME" \
+            --region ${{ env.AWS_REGION }}
+          echo "ECS service is live and healthy!"
+
+      - name: Invalidate CloudFront CDN Cache
+        run: |
+          CF_DIST_ID=$(terraform -chdir=terraform output -raw cloudfront_distribution_id 2>/dev/null || echo "")
+          if [ -n "$CF_DIST_ID" ] && [ "$CF_DIST_ID" != "null" ]; then
+            echo "Invalidating CloudFront cache for distribution: $CF_DIST_ID..."
+            INVALIDATION_ID=$(aws cloudfront create-invalidation \
+              --distribution-id "$CF_DIST_ID" \
+              --paths "/*" \
+              --query 'Invalidation.Id' \
+              --output text)
+            echo "Created Invalidation ID: $INVALIDATION_ID"
+            aws cloudfront wait invalidation-completed \
+              --distribution-id "$CF_DIST_ID" \
+              --id "$INVALIDATION_ID"
+            echo "CloudFront cache successfully purged!"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "🎉 Deployment successfully completed!"
+          echo "Live at https://news.ciclops.io"

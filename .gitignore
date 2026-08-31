@@ -1,0 +1,38 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Next.js Build Output
+/.next/
+/out/
+
+# Production & Cache
+/build
+dist
+
+# Observability local cache
+*.tsbuildinfo
+next-env.d.ts
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Local Runtime Data & Traces
+/data/*.json
+!/data/.gitkeep
+/traces/*.jsonl
+
+# OS Files
+.DS_Store
+*.pem

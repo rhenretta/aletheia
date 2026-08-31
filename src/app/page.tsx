@@ -1,0 +1,1279 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Send,
+  Sparkles,
+  ShieldCheck,
+  Brain,
+  Compass,
+  Layers,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Terminal,
+  Activity,
+  User,
+  ArrowRight,
+  Flame,
+  MessageSquare,
+  X,
+  Sliders,
+  Filter,
+  ExternalLink,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
+  Clock,
+} from "lucide-react";
+import {
+  NewsStateContext,
+  UserKnowledgeGraph,
+  UnifiedTopicNode,
+  PureFactObject,
+  SynthesizedEventCard,
+  AttachedStoryContext,
+  ContextualSelection,
+  EventSourceArticle,
+} from "@/core/types/contracts";
+import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
+import DevToolsPanel from "@/components/DevToolsPanel";
+import SourceReaderModal from "@/components/SourceReaderModal";
+import { useSession, signIn, signOut } from "next-auth/react";
+
+function sanitizeDisplay(input?: string): string {
+  if (!input) return "";
+  return input
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export default function AletheiaHome() {
+  const { data: session, status: authStatus } = useSession();
+  const effectiveUserId = session?.user?.email
+    ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
+    : "usr_default";
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "welcome-msg",
+      role: "assistant",
+      content:
+        "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
+      timestamp: new Date().toISOString(),
+    },
+  ]);
+  const [inputPrompt, setInputPrompt] = useState("");
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [attachedStory, setAttachedStory] = useState<AttachedStoryContext | null>(null);
+  const [selectedReadingSource, setSelectedReadingSource] = useState<{
+    source: EventSourceArticle;
+    card: SynthesizedEventCard;
+  } | null>(null);
+  const [userGraph, setUserGraph] = useState<UserKnowledgeGraph | null>(null);
+  const [unifiedTopicNode, setUnifiedTopicNode] = useState<UnifiedTopicNode | null>(null);
+  const [extractedTopics, setExtractedTopics] = useState<Array<{ topic: string; weight: number; reasoning: string }>>([]);
+  const [companionTab, setCompanionTab] = useState<"chat" | "interests">("chat");
+
+  // Pipeline & Feed state
+  const [isCollectingNews, setIsCollectingNews] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<NewsStateContext | null>(null);
+  const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>("all");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<
+    "all" | "revealed_preference" | "thematic_intersection" | "curiosity_frontier"
+  >("all");
+  const [cognitiveLoad, setCognitiveLoad] = useState<"low" | "balanced" | "deep_dive">("balanced");
+  const [isTopicDropdownOpen, setIsTopicDropdownOpen] = useState(false);
+
+  // Contextual DevTools State
+  const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
+  const [selectedContext, setSelectedContext] = useState<ContextualSelection | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Expandable Stories State (Accordion/Expansion per card)
+  const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
+
+  const toggleCardExpansion = (eventId: string) => {
+    setExpandedCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) {
+        next.delete(eventId);
+      } else {
+        next.add(eventId);
+      }
+      return next;
+    });
+  };
+
+  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll chat internally
+  useEffect(() => {
+    if (chatScrollContainerRef.current) {
+      chatScrollContainerRef.current.scrollTop = chatScrollContainerRef.current.scrollHeight;
+    }
+  }, [messages, isSendingChat]);
+
+  // Rehydrate existing persisted session & knowledge graph on mount or when auth user switches
+  useEffect(() => {
+    try {
+      const localCached = localStorage.getItem(`aletheia_chat_session_${effectiveUserId}`);
+      if (localCached) {
+        const parsed = JSON.parse(localCached);
+        if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
+        if (parsed.userGraph) setUserGraph(parsed.userGraph);
+        if (parsed.extractedTopics && parsed.extractedTopics.length > 0) setExtractedTopics(parsed.extractedTopics);
+        if (parsed.pipelineResult) setPipelineResult(parsed.pipelineResult);
+      }
+    } catch (e) {}
+
+    const loadSession = async () => {
+      try {
+        const res = await fetch(`/api/session?userId=${encodeURIComponent(effectiveUserId)}`);
+        const data = await res.json();
+        if (data.success) {
+          if (data.messages && data.messages.length > 0) setMessages(data.messages);
+          if (data.unified_topic_node) setUnifiedTopicNode(data.unified_topic_node);
+          if (data.user_graph) setUserGraph(data.user_graph);
+          if (data.extracted_topics && data.extracted_topics.length > 0) setExtractedTopics(data.extracted_topics);
+        }
+      } catch (err) {
+        console.error("Failed to load session:", err);
+      }
+    };
+    loadSession();
+  }, [effectiveUserId]);
+
+  // Save to browser localStorage whenever state changes
+  useEffect(() => {
+    if (messages.length > 1 || extractedTopics.length > 0 || userGraph || pipelineResult) {
+      try {
+        localStorage.setItem(
+          `aletheia_chat_session_${effectiveUserId}`,
+          JSON.stringify({
+            messages,
+            userGraph,
+            extractedTopics,
+            pipelineResult,
+            lastSaved: new Date().toISOString(),
+          })
+        );
+      } catch (e) {}
+    }
+  }, [messages, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
+
+  // Deletes only generated news content from state and storage (keeps chat & interests intact)
+  const handleClearFeedContent = () => {
+    setIsCollectingNews(false);
+    setPipelineResult(null);
+    setAttachedStory(null);
+    setSelectedContext(null);
+
+    try {
+      const localCached = localStorage.getItem("aletheia_chat_session");
+      if (localCached) {
+        const parsed = JSON.parse(localCached);
+        parsed.pipelineResult = null;
+        localStorage.setItem("aletheia_chat_session", JSON.stringify(parsed));
+      }
+    } catch (e) {}
+  };
+
+  // Clean run: wipes previous feed and executes fresh content finding across all current active topics
+  const handleFindNewsClean = async () => {
+    setIsCollectingNews(false);
+    setPipelineResult(null);
+    setAttachedStory(null);
+    setSelectedContext(null);
+
+    try {
+      const localCached = localStorage.getItem("aletheia_chat_session");
+      if (localCached) {
+        const parsed = JSON.parse(localCached);
+        parsed.pipelineResult = null;
+        localStorage.setItem("aletheia_chat_session", JSON.stringify(parsed));
+      }
+    } catch (e) {}
+
+    await handleCollectNews();
+  };
+
+  // Full reset (wipes everything back to initial install state)
+  const handleResetSession = async () => {
+    try {
+      localStorage.removeItem("aletheia_chat_session");
+    } catch (e) {}
+
+    setMessages([
+      {
+        id: "welcome-msg",
+        role: "assistant",
+        content:
+          "Welcome to Aletheia. I'm your personalized epistemological companion.\n\nExplore your multi-topic news feed on the left, or discuss any story directly with me. As we talk, I invisibly learn your deeper interests, discover intersections, and filter out ideological noise.",
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    setUserGraph(null);
+    setExtractedTopics([]);
+    setPipelineResult(null);
+    setAttachedStory(null);
+    setSelectedContext(null);
+  };
+
+  const [chatError, setChatError] = useState<string | null>(null);
+
+  // Send message to dual-intent conversational AI
+  const handleSendMessage = async (e?: React.FormEvent, customHistory?: ChatMessage[]) => {
+    if (e) e.preventDefault();
+    const promptToSend = inputPrompt.trim();
+    if (!promptToSend && (!customHistory || customHistory.length === 0)) return;
+
+    let newHistory: ChatMessage[] = customHistory || messages;
+    if (promptToSend) {
+      const userMessage: ChatMessage = {
+        id: `usr_${Date.now()}`,
+        role: "user",
+        content: promptToSend,
+        timestamp: new Date().toISOString(),
+        attached_story: attachedStory || undefined,
+      };
+      newHistory = [...messages, userMessage];
+      setMessages(newHistory);
+      setInputPrompt("");
+    }
+
+    setIsSendingChat(true);
+    setChatError(null);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          history: newHistory,
+          userId: effectiveUserId,
+          attachedStory: attachedStory || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || `Server responded with status ${res.status}`);
+      }
+
+      const botMessage: ChatMessage = {
+        id: `bot_${Date.now()}`,
+        role: "assistant",
+        content: json.data.message,
+        timestamp: new Date().toISOString(),
+        trace_id: json.data.trace_id,
+        context_trace_id: json.data.context_trace_id,
+        attached_story: attachedStory || undefined,
+        tool_executions: json.data.tool_executions,
+        agent_internal_rationale: json.data.agent_internal_rationale,
+        context_generated: json.data.context_generated,
+      };
+
+      setMessages([...newHistory, botMessage]);
+
+      if (json.unified_topic_node) {
+        setUnifiedTopicNode(json.unified_topic_node);
+      }
+      if (json.user_graph) {
+        setUserGraph(json.user_graph);
+      }
+
+      if (json.data.extracted_topics && json.data.extracted_topics.length > 0) {
+        setExtractedTopics((prev) => {
+          const map = new Map<string, { topic: string; weight: number; reasoning: string }>();
+          prev.forEach((t) => map.set(t.topic.toLowerCase(), t));
+          json.data.extracted_topics.forEach((t: any) =>
+            map.set(t.topic.toLowerCase(), {
+              topic: t.topic,
+              weight: t.weight,
+              reasoning: t.reasoning,
+            })
+          );
+          return Array.from(map.values());
+        });
+      }
+
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setChatError(errMsg);
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
+
+  // Run autonomous news ingestion across all active user topics
+  const handleCollectNews = async (targetTopics?: string[]) => {
+    setIsCollectingNews(true);
+    try {
+      const activeTopics = Array.from(
+        new Set([
+          ...extractedTopics.map((t) => t.topic),
+          ...(userGraph ? Object.keys(userGraph.topic_weights) : []),
+        ])
+      );
+
+      const topicsToFetch =
+        targetTopics ||
+        (activeTopics.length > 0
+          ? activeTopics
+          : ["Full Self-Driving", "SpaceX Starship", "Global Conflicts", "Autonomous Mobile Habitats"]);
+
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topics: topicsToFetch,
+          userGraph: userGraph || undefined,
+          userId: effectiveUserId,
+          sessionId: `sess_${Date.now()}`,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        setPipelineResult(json.data);
+        if (json.unified_topic_node) {
+          setUnifiedTopicNode(json.unified_topic_node);
+        } else if (json.data.unified_topic_node) {
+          setUnifiedTopicNode(json.data.unified_topic_node);
+        }
+        if (json.data.user_graph) {
+          setUserGraph(json.data.user_graph);
+        }
+      }
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (err) {
+      console.error("Pipeline run failed:", err);
+    } finally {
+      setIsCollectingNews(false);
+    }
+  };
+
+  // Attach a specific story to the conversational companion
+  const handleDiscussStory = (card: SynthesizedEventCard) => {
+    const storyContext: AttachedStoryContext = {
+      event_id: card.event_id,
+      topic: card.topic,
+      headline: card.headline,
+      summary: card.summary,
+      fact_bullets: card.fact_bullets,
+      disputed_claims: card.disputed_claims,
+      sources: card.sources,
+    };
+    setAttachedStory(storyContext);
+
+    // Set contextual target for devtools
+    setSelectedContext({
+      type: "story_card",
+      event_id: card.event_id,
+      topic: card.topic,
+      card,
+    });
+  };
+
+  // Inspect chat message in contextual DevTools (Context Envelope & Agentic Flow)
+  const handleInspectChatTurn = (msg: ChatMessage) => {
+    // Find preceding user prompt if available
+    const msgIdx = messages.findIndex((m) => m.id === msg.id);
+    const precedingUserMsg =
+      msgIdx > 0 && messages[msgIdx - 1]?.role === "user"
+        ? messages[msgIdx - 1].content
+        : msg.role === "user"
+        ? msg.content
+        : undefined;
+
+    setSelectedContext({
+      type: "chat_turn",
+      trace_id: msg.trace_id || msg.context_trace_id || `trace_${msg.id}`,
+      message_id: msg.id,
+      user_prompt: precedingUserMsg,
+      assistant_response: msg.role === "assistant" ? msg.content : undefined,
+      context_generated: msg.context_generated,
+      agentic_flow: msg.context_generated?.agentic_flow,
+      agent_internal_rationale: msg.agent_internal_rationale,
+      tools_executed: msg.tool_executions,
+    });
+    setIsDevToolsOpen(true);
+  };
+
+  // Inspect topic in contextual DevTools
+  const handleInspectTopic = (topic: { topic: string; weight: number; reasoning?: string }) => {
+    const topicMeta = unifiedTopicNode?.topics?.[topic.topic];
+    const recentDiff = (unifiedTopicNode?.recent_topic_diffs || []).find(
+      (d) => d.topic_name.toLowerCase() === topic.topic.toLowerCase()
+    );
+
+    setSelectedContext({
+      type: "topic",
+      topic_name: topic.topic,
+      weight: topic.weight,
+      reasoning: topic.reasoning || topicMeta?.why_they_care,
+      technical_depth: topicMeta?.technical_depth,
+      why_they_care: topicMeta?.why_they_care,
+      curiosity_vectors: topicMeta?.curiosity_vectors,
+      recent_diff: recentDiff,
+    });
+    setIsDevToolsOpen(true);
+  };
+
+  const feedCards = pipelineResult?.feed_cards || [];
+  const distinctTopics = Array.from(new Set(feedCards.map((c) => c.topic)));
+
+  const prefCount = feedCards.filter((c) => c.discovery_category === "revealed_preference" || !c.discovery_category).length;
+  const bridgeCount = feedCards.filter((c) => c.discovery_category === "thematic_intersection").length;
+  const frontierCount = feedCards.filter((c) => c.discovery_category === "curiosity_frontier" || c.is_exploration).length;
+
+  const filteredFeedCards = feedCards.filter((c) => {
+    const matchesTopic = selectedTopicFilter === "all" || c.topic.toLowerCase() === selectedTopicFilter.toLowerCase();
+    const matchesCategory =
+      selectedCategoryFilter === "all" ||
+      (selectedCategoryFilter === "curiosity_frontier" && (c.discovery_category === "curiosity_frontier" || c.is_exploration)) ||
+      (selectedCategoryFilter === "thematic_intersection" && c.discovery_category === "thematic_intersection") ||
+      (selectedCategoryFilter === "revealed_preference" && (c.discovery_category === "revealed_preference" || !c.discovery_category));
+    return matchesTopic && matchesCategory;
+  });
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:p-8 space-y-6 pb-20">
+      {/* Platform Header Bar */}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-400 via-teal-400 to-indigo-500 flex items-center justify-center font-bold text-slate-950 text-lg shadow-lg shadow-cyan-500/20">
+            α
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-white font-mono">ALETHEIA</h1>
+            <p className="text-xs text-slate-400 font-medium">
+              Personalized Epistemic News & Conversational Intelligence
+            </p>
+          </div>
+        </div>
+
+        {/* Global Controls, ciclops.io suite & Google OAuth */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <a
+            href="https://ciclops.io"
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/10 text-xs font-mono text-slate-300 hover:text-white flex items-center gap-1.5 transition"
+            title="Switch to ciclops.io AI Resume Generator"
+          >
+            <Compass className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="font-semibold">ciclops.io</span>
+            <ExternalLink className="w-3 h-3 text-slate-500" />
+          </a>
+
+          <button
+            onClick={() => handleFindNewsClean()}
+            disabled={isCollectingNews}
+            className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center gap-2 transition disabled:opacity-40"
+            title="Fetches fresh news across your active interests"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCollectingNews ? "animate-spin text-cyan-400" : ""}`} />
+            <span>{isCollectingNews ? "Fetching News..." : "Refresh News"}</span>
+          </button>
+
+          <button
+            onClick={() => handleClearFeedContent()}
+            disabled={isCollectingNews}
+            className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-white/10 text-xs transition"
+            title="Clear the current news feed"
+          >
+            Clear Feed
+          </button>
+
+          <button
+            onClick={() => setIsDevToolsOpen(!isDevToolsOpen)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-2 border transition ${
+              isDevToolsOpen
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                : "bg-slate-900 text-slate-300 border-white/10 hover:border-cyan-500/30"
+            }`}
+          >
+            <Terminal className="w-3.5 h-3.5 text-amber-400" />
+            <span>DevTools {selectedContext ? `[${selectedContext.type}]` : ""}</span>
+          </button>
+
+          {/* Google OAuth Single Sign-On / Profile */}
+          {authStatus === "loading" ? (
+            <div className="w-24 h-8 rounded-xl bg-slate-900 animate-pulse border border-white/5" />
+          ) : session?.user ? (
+            <div className="flex items-center gap-2 bg-slate-900/90 border border-white/10 p-1.5 pl-2.5 rounded-xl text-xs font-mono">
+              {session.user.image ? (
+                <img
+                  src={session.user.image}
+                  alt={session.user.name || "User"}
+                  className="w-5 h-5 rounded-full border border-white/20"
+                />
+              ) : (
+                <User className="w-4 h-4 text-cyan-400" />
+              )}
+              <span className="text-slate-200 font-medium max-w-[130px] truncate">
+                {session.user.name || session.user.email}
+              </span>
+              <button
+                onClick={() => signOut()}
+                className="px-2 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-[10px] text-rose-300 transition"
+                title="Sign out of ciclops.io"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => signIn("google")}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
+              title="Sign in with your ciclops.io Google Account"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                <path
+                  fill="currentColor"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Sign In with Google</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* MAIN UNIFIED DASHBOARD: FEED (Left 62%) + AMBIENT COMPANION (Right 38%) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT COLUMN: THE PERSONALIZED EPISTEMIC FEED (7 of 12 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* Unified Epistemic Filter Command Bar */}
+          <div className="glass-panel rounded-2xl p-3 sm:p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3">
+            {/* Left: Discovery Horizon Segmented Switcher */}
+            <div className="flex flex-wrap items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-white/5 text-xs font-mono">
+              <button
+                onClick={() => setSelectedCategoryFilter("all")}
+                className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                  selectedCategoryFilter === "all"
+                    ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                All ({feedCards.length})
+              </button>
+              <button
+                onClick={() => setSelectedCategoryFilter("revealed_preference")}
+                className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                  selectedCategoryFilter === "revealed_preference"
+                    ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🎯 Preferences ({prefCount})
+              </button>
+              <button
+                onClick={() => setSelectedCategoryFilter("thematic_intersection")}
+                className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                  selectedCategoryFilter === "thematic_intersection"
+                    ? "bg-violet-500/20 text-violet-300 font-bold border border-violet-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🌉 Bridges ({bridgeCount})
+              </button>
+              <button
+                onClick={() => setSelectedCategoryFilter("curiosity_frontier")}
+                className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                  selectedCategoryFilter === "curiosity_frontier"
+                    ? "bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🚀 Frontiers ({frontierCount})
+              </button>
+            </div>
+
+            {/* Right Controls: Topic Popover & Cognitive Mode */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Topic Filter Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsTopicDropdownOpen(!isTopicDropdownOpen)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-mono flex items-center gap-2 border transition ${
+                    selectedTopicFilter !== "all"
+                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-bold"
+                      : "bg-slate-900/80 text-slate-300 border-white/10 hover:border-cyan-500/30"
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="max-w-[150px] truncate">
+                    {selectedTopicFilter === "all" ? "All Topics" : selectedTopicFilter}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+
+                {/* Popover Dropdown Menu */}
+                {isTopicDropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-20"
+                      onClick={() => setIsTopicDropdownOpen(false)}
+                    />
+                    <div className="absolute right-0 mt-2 w-72 glass-panel bg-slate-950/95 border border-white/20 rounded-xl shadow-2xl p-2 z-30 space-y-1 text-xs font-mono animate-in fade-in zoom-in-95 duration-150">
+                      <button
+                        onClick={() => {
+                          setSelectedTopicFilter("all");
+                          setIsTopicDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2 rounded-lg text-left flex items-center justify-between transition ${
+                          selectedTopicFilter === "all"
+                            ? "bg-cyan-500/20 text-cyan-300 font-bold"
+                            : "text-slate-300 hover:bg-slate-900"
+                        }`}
+                      >
+                        <span>All Topics</span>
+                        <span className="text-slate-500 font-bold">({feedCards.length})</span>
+                      </button>
+
+                      {distinctTopics.map((topic, i) => {
+                        const count = feedCards.filter((c) => c.topic.toLowerCase() === topic.toLowerCase()).length;
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              setSelectedTopicFilter(topic);
+                              setIsTopicDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg text-left flex items-center justify-between transition ${
+                              selectedTopicFilter.toLowerCase() === topic.toLowerCase()
+                                ? "bg-cyan-500/20 text-cyan-300 font-bold"
+                                : "text-slate-300 hover:bg-slate-900"
+                            }`}
+                          >
+                            <span className="truncate pr-2">{topic}</span>
+                            <span className="text-slate-500">({count})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Cognitive Load Mode Switcher */}
+              <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-white/5 text-xs font-mono">
+                {(["low", "balanced", "deep_dive"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setCognitiveLoad(mode)}
+                    className={`px-2.5 py-1 rounded-lg capitalize text-[11px] transition ${
+                      cognitiveLoad === mode
+                        ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold shadow-sm"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {mode.replace("_", " ")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Stories Stream */}
+          {filteredFeedCards.length === 0 ? (
+            <div className="glass-panel rounded-2xl p-12 text-center border border-white/10 space-y-4">
+              {isCollectingNews ? (
+                <>
+                  <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
+                  <div className="text-sm font-semibold text-slate-200">
+                    Finding & synthesizing fresh news stories across active interests...
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
+                  <div className="text-sm font-semibold text-slate-200">
+                    {feedCards.length === 0 ? "Feed Cleared" : "No stories match this filter."}
+                  </div>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    {feedCards.length === 0
+                      ? `Your news stream is empty. Your conversation history and ${Object.keys(userGraph?.topic_weights || {}).length || extractedTopics.length} tracked interests are preserved.`
+                      : "Try selecting All Topics or switching Discovery Horizon tabs."}
+                  </p>
+                  <button
+                    onClick={() => handleFindNewsClean()}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs inline-flex items-center gap-2 hover:opacity-90 transition shadow-lg shadow-cyan-500/20"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Refresh News</span>
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {filteredFeedCards.map((card, idx) => {
+                const isAttached = attachedStory?.event_id === card.event_id;
+                const isExpanded = expandedCardIds.has(card.event_id);
+
+                return (
+                  <div
+                    key={card.event_id || idx}
+                    className={`glass-panel rounded-2xl p-6 border transition space-y-4 ${
+                      isAttached
+                        ? "border-cyan-500/60 bg-cyan-950/10 shadow-lg shadow-cyan-500/10"
+                        : "border-white/10 hover:border-white/20"
+                    }`}
+                  >
+                    {/* Minimalist Header: Time, Sources Count & Actions */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-3">
+                      <div className="flex items-center gap-2.5 text-xs font-mono">
+                        <span className="text-amber-300 font-semibold flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          {card.recency_label || "Today"}
+                        </span>
+                        <span className="text-slate-500">•</span>
+                        <span className="text-slate-400">
+                          {card.sources.length} sources corroborating
+                        </span>
+                      </div>
+
+                      {/* Card Action Controls */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleDiscussStory(card)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border ${
+                            isAttached
+                              ? "bg-cyan-500 text-slate-950 border-cyan-400 font-bold"
+                              : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/30"
+                          }`}
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>{isAttached ? "Active in Chat" : "Discuss with Aletheia"}</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedContext({
+                              type: "story_card",
+                              event_id: card.event_id,
+                              topic: card.topic,
+                              card,
+                            });
+                            setIsDevToolsOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-white/10 transition"
+                          title="Inspect Agent Reasoning in DevTools"
+                        >
+                          <Terminal className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Cinematic News Image Banner */}
+                    {card.image_url && (
+                      <div
+                        className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden cursor-pointer group/img border border-white/10 bg-slate-900"
+                        onClick={() => toggleCardExpansion(card.event_id)}
+                      >
+                        <img
+                          src={card.image_url}
+                          alt={card.headline}
+                          className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = "none";
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+                        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] font-mono text-white/90">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-cyan-300 font-semibold">
+                            {card.topic}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
+                            {card.sources[0]?.name || "Verified Wire"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Headline */}
+                    <h3
+                      className="text-xl font-bold text-white tracking-tight leading-snug hover:text-cyan-300 transition cursor-pointer"
+                      onClick={() => toggleCardExpansion(card.event_id)}
+                    >
+                      {sanitizeDisplay(card.headline)}
+                    </h3>
+
+                    {/* Lead Paragraph Hook */}
+                    <div className="space-y-3 font-sans pt-1">
+                      <p className="text-base text-slate-100 font-normal leading-relaxed">
+                        {card.summary
+                          .split(/(?<=[.!?])\s+/)
+                          .filter((s) => s.trim().length > 0)
+                          .map((sentence, sIdx) => (
+                            <span
+                              key={sIdx}
+                              onClick={() => {
+                                const clean = sentence.toLowerCase();
+                                const matchingSource =
+                                  card.sources.find((src) =>
+                                    (src.raw_text || "").toLowerCase().includes(clean.slice(0, 25))
+                                  ) || card.sources[0];
+
+                                const enriched: EventSourceArticle = {
+                                  ...matchingSource,
+                                  highlighted_passages: [sentence, ...(matchingSource.highlighted_passages || [])],
+                                };
+                                setSelectedReadingSource({ source: enriched, card });
+                              }}
+                              className="hover:bg-cyan-500/20 hover:text-cyan-100 cursor-pointer transition rounded px-1 -mx-1 inline-block"
+                              title="Click to view original source reporting and highlighted passage"
+                            >
+                              {sanitizeDisplay(sentence)}{" "}
+                            </span>
+                          ))}
+                      </p>
+                    </div>
+
+                    {/* Expand / Collapse Action Bar */}
+                    <div className="pt-2 flex items-center justify-between border-t border-white/5">
+                      <button
+                        onClick={() => toggleCardExpansion(card.event_id)}
+                        className="text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition py-1 group"
+                      >
+                        {isExpanded ? (
+                          <>
+                            <span>Collapse Story</span>
+                            <ChevronUp className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition" />
+                          </>
+                        ) : (
+                          <>
+                            <span>Read Full Story & Sources ({card.sources.length})</span>
+                            <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition" />
+                          </>
+                        )}
+                      </button>
+
+                      {!isExpanded && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500">
+                          <span>
+                            {card.sources.map((s) => s.name).slice(0, 2).join(", ")}
+                            {card.sources.length > 2 ? ` +${card.sources.length - 2} more` : ""}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Expandable Body Narrative & Sources Section */}
+                    {isExpanded && (
+                      <div className="space-y-4 pt-2 border-t border-white/10 animate-in fade-in duration-200">
+                        {/* Detailed Narrative Paragraphs */}
+                        {card.expansion_text && card.expansion_text.trim().length > 20 && (
+                          <p className="text-sm text-slate-300 leading-relaxed">
+                            {card.expansion_text
+                              .split(/(?<=[.!?])\s+/)
+                              .filter((s) => s.trim().length > 0)
+                              .map((sentence, sIdx) => (
+                                <span
+                                  key={sIdx}
+                                  onClick={() => {
+                                    const clean = sentence.toLowerCase();
+                                    const matchingSource =
+                                      card.sources.find((src) =>
+                                        (src.raw_text || "").toLowerCase().includes(clean.slice(0, 25))
+                                      ) || card.sources[0];
+
+                                    const enriched: EventSourceArticle = {
+                                      ...matchingSource,
+                                      highlighted_passages: [sentence, ...(matchingSource.highlighted_passages || [])],
+                                    };
+                                    setSelectedReadingSource({ source: enriched, card });
+                                  }}
+                                  className="hover:bg-cyan-500/20 hover:text-cyan-100 cursor-pointer transition rounded px-1 -mx-1 inline-block"
+                                  title="Click to view original source reporting and highlighted passage"
+                                >
+                                  {sanitizeDisplay(sentence)}{" "}
+                                </span>
+                              ))}
+                          </p>
+                        )}
+
+                        {/* Minimalist Sources Footer */}
+                        <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                              <BookOpen className="w-3 h-3 text-slate-400" />
+                              Sources:
+                            </span>
+                            {card.sources.map((src, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setSelectedReadingSource({ source: src, card })}
+                                className="px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 group font-mono"
+                                title="Click to read original article and see highlighted passages"
+                              >
+                                <span className="group-hover:underline">{src.name}</span>
+                                <span className="text-[9px] uppercase text-slate-500 group-hover:text-cyan-400">
+                                  [{src.bias.replace("_", " ")}]
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+
+                          <span className="text-[10px] font-mono text-slate-500 italic">
+                            Click any sentence above to inspect source passage
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN: AMBIENT CONVERSATIONAL COMPANION & GRAPH (5 of 12 cols) */}
+        <div className="lg:col-span-5 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col h-[calc(100vh-140px)] min-h-[640px] max-h-[820px] sticky top-4">
+          {/* Header & Tab Switcher (Conversation vs Interests & Why) */}
+          <div className="border-b border-white/10 pb-3 mb-3 flex-shrink-0 space-y-2">
+            <div className="flex items-center justify-between">
+              {/* Segmented View Switcher */}
+              <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-white/10 text-xs font-mono">
+                <button
+                  onClick={() => setCompanionTab("chat")}
+                  className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${
+                    companionTab === "chat"
+                      ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/20 font-bold"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Dialogue</span>
+                </button>
+
+                <button
+                  onClick={() => setCompanionTab("interests")}
+                  className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${
+                    companionTab === "interests"
+                      ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/20 font-bold"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Brain className="w-3.5 h-3.5" />
+                  <span>
+                    Interests ({Object.keys(userGraph?.topic_weights || {}).length || extractedTopics.length})
+                  </span>
+                </button>
+              </div>
+
+              <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Adaptive
+              </span>
+            </div>
+
+            {/* Attached Story Pill Banner (in chat mode) */}
+            {companionTab === "chat" && (
+              attachedStory ? (
+                <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <MessageSquare className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                    <span className="truncate text-cyan-200 font-medium">
+                      Discussing: {attachedStory.headline}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setAttachedStory(null)}
+                    className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition flex-shrink-0"
+                    title="Detach Story"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 font-mono">
+                  General dialogue active. Click <em>"Discuss"</em> on any news card to focus.
+                </div>
+              )
+            )}
+          </div>
+
+          {/* VIEW 1: DIALOGUE CHAT */}
+          {companionTab === "chat" ? (
+            <>
+              {/* Message History (Internal Scroll Container) */}
+              <div ref={chatScrollContainerRef} className="flex-1 overflow-y-auto space-y-4 pr-2">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex items-start gap-2.5 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {msg.role === "assistant" && (
+                      <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-violet-500 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
+                        α
+                      </div>
+                    )}
+                    {msg.role === "assistant" ? (
+                      <div className="flex flex-col gap-1.5 max-w-[88%]">
+                        {/* Live Tool Execution Badges */}
+                        {msg.tool_executions && msg.tool_executions.length > 0 && (
+                          <div className="space-y-1 mb-1">
+                            {msg.tool_executions.map((tool, tIdx) => (
+                              <div
+                                key={tIdx}
+                                className="px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 flex items-center gap-1.5 shadow-sm"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                                <span className="font-bold">
+                                  {tool.tool_name === "search_internet" ? "🌐 Live Web Wire Search:" : "🧠 Local Knowledge Lookup:"}
+                                </span>
+                                <span className="text-slate-300 truncate max-w-[140px]">"{tool.query}"</span>
+                                <span className="text-emerald-400 font-bold ml-auto">({tool.items_retrieved} sources)</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed bg-slate-900/90 text-slate-200 border border-white/10 rounded-tl-none whitespace-pre-wrap">
+                          {msg.content}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pl-1 pt-0.5">
+                          <button
+                            onClick={() => handleInspectChatTurn(msg)}
+                            className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 flex items-center gap-1.5 transition font-semibold shadow-sm"
+                            title="Inspect Context Envelope and Agentic Flow for this Message"
+                          >
+                            <Brain className="w-3 h-3 text-cyan-400" />
+                            <span>Inspect Context & Flow</span>
+                            {msg.context_generated?.calibrated_depth && (
+                              <span className="px-1.5 py-0.2 rounded bg-cyan-900/80 text-cyan-200 text-[9px] uppercase border border-cyan-400/30">
+                                {msg.context_generated.calibrated_depth}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="max-w-[88%] p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-tr-none shadow-lg shadow-cyan-900/20">
+                        {msg.attached_story && (
+                          <div className="text-[10px] font-mono text-cyan-200 pb-1 mb-1 border-b border-white/20 truncate">
+                            Re: {msg.attached_story.headline}
+                          </div>
+                        )}
+                        {msg.content}
+                      </div>
+                    )}
+                    {msg.role === "user" && (
+                      <div className="w-7 h-7 rounded-lg bg-slate-800 border border-white/10 flex items-center justify-center text-slate-300 text-xs flex-shrink-0">
+                        <User className="w-3.5 h-3.5" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {isSendingChat && (
+                  <div className="flex items-center gap-2.5 text-xs text-slate-400 pl-9">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                    <span>Aletheia is reflecting & synthesizing...</span>
+                  </div>
+                )}
+
+                {chatError && (
+                  <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-xs text-rose-300 flex items-center justify-between">
+                    <span>{chatError}</span>
+                    <button
+                      onClick={() => handleSendMessage()}
+                      className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-xs font-bold"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Input Form (Pinned Bottom) */}
+              <form onSubmit={handleSendMessage} className="pt-2 border-t border-white/10 flex items-center gap-2 flex-shrink-0">
+                <input
+                  type="text"
+                  value={inputPrompt}
+                  onChange={(e) => setInputPrompt(e.target.value)}
+                  placeholder={attachedStory ? "Ask a question about this story..." : "Share a thought, curiosity, or question..."}
+                  className="flex-1 bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputPrompt.trim() || isSendingChat}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 hover:opacity-90 transition disabled:opacity-40 flex-shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            </>
+          ) : (
+            /* VIEW 2: MY INTERESTS (EPISTEMIC KNOWLEDGE GRAPH MODEL) */
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
+              <div className="space-y-3">
+                <div className="text-[11px] font-mono text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <Brain className="w-3.5 h-3.5 text-cyan-400" />
+                  Active Interests:
+                </div>
+
+                {Object.entries(userGraph?.topic_weights || {}).length === 0 && extractedTopics.length === 0 ? (
+                  <div className="p-6 rounded-xl bg-slate-900/50 border border-white/5 text-center text-slate-400 space-y-2">
+                    <p>No explicit interests revealed yet.</p>
+                    <p className="text-[11px] text-slate-500">
+                      Chat with Aletheia about topics you care about to map your interests here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {/* Render from userGraph or extractedTopics */}
+                    {Object.entries(userGraph?.topic_weights || {}).map(([topic, weight], idx) => {
+                      const extracted = extractedTopics.find((t) => t.topic.toLowerCase() === topic.toLowerCase());
+                      const pct = Math.round(weight * 100);
+
+                      return (
+                        <div
+                          key={idx}
+                          className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 hover:border-cyan-500/40 transition"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-100 text-sm">{topic}</span>
+                            <span className="font-mono text-xs font-bold text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-500/30">
+                              {pct}%
+                            </span>
+                          </div>
+
+                          {/* Affinity Weight Bar */}
+                          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+
+                          {/* Rationale */}
+                          <div className="space-y-1 pt-1">
+                            <span className="text-[10px] font-mono text-slate-400 font-semibold block">
+                              Rationale:
+                            </span>
+                            <p className="text-slate-300 text-xs leading-relaxed">
+                              {extracted?.reasoning ||
+                                `Derived from your explicit dialogue and interest in ${topic}.`}
+                            </p>
+                          </div>
+
+                          {/* Topic Actions */}
+                          <div className="pt-1 flex items-center justify-between">
+                            <button
+                              onClick={() =>
+                                handleInspectTopic({
+                                  topic,
+                                  weight,
+                                  reasoning: extracted?.reasoning,
+                                })
+                              }
+                              className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900/90 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1 transition"
+                            >
+                              <Sliders className="w-2.5 h-2.5 text-cyan-400" />
+                              <span>View Topic Diff</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedTopicFilter(topic);
+                                setCompanionTab("chat");
+                              }}
+                              className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1"
+                            >
+                              Filter Feed →
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Thematic Bridges */}
+                {(userGraph?.interest_intersections || []).length > 0 && (
+                  <div className="space-y-2 pt-3 border-t border-white/10">
+                    <span className="text-[11px] font-mono text-violet-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <Compass className="w-3.5 h-3.5 text-violet-400" />
+                      Thematic Bridges:
+                    </span>
+                    {userGraph?.interest_intersections?.map((b, i) => (
+                      <div key={i} className="p-3 rounded-xl bg-violet-950/20 border border-violet-500/20 space-y-1">
+                        <div className="font-semibold text-violet-200">{b.intersection_theme}</div>
+                        <p className="text-slate-300 text-xs">{b.hypothesis}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Curiosity Frontiers */}
+                {(userGraph?.adjacent_curiosity_frontiers || []).length > 0 && (
+                  <div className="space-y-2 pt-3 border-t border-white/10">
+                    <span className="text-[11px] font-mono text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      Curiosity Frontiers:
+                    </span>
+                    {userGraph?.adjacent_curiosity_frontiers?.map((f, i) => (
+                      <div key={i} className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/20 space-y-1">
+                        <div className="font-semibold text-emerald-200">{f.topic}</div>
+                        <p className="text-slate-300 text-xs">{f.rationale}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Interactive Original Source Article Reader Modal with Highlighted Passages */}
+      {selectedReadingSource && (
+        <SourceReaderModal
+          source={selectedReadingSource.source}
+          card={selectedReadingSource.card}
+          onClose={() => setSelectedReadingSource(null)}
+          onDiscuss={(c) => handleDiscussStory(c)}
+        />
+      )}
+
+      {/* Global Contextually Aware DevTools Drawer */}
+      <DevToolsPanel
+        isOpen={isDevToolsOpen}
+        onToggle={() => setIsDevToolsOpen(!isDevToolsOpen)}
+        userGraph={userGraph}
+        unifiedTopicNode={unifiedTopicNode}
+        refreshTrigger={refreshTrigger}
+        selectedContext={selectedContext}
+        onSelectContext={setSelectedContext}
+        isCollectingNews={isCollectingNews}
+      />
+    </div>
+  );
+}

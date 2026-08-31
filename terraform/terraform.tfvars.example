@@ -1,0 +1,19 @@
+# Example Terraform Variables for Aletheia AI News (news.ciclops.io)
+aws_region          = "us-east-1"
+environment         = "prod"
+app_name            = "ai-news"
+domain_name         = "ciclops.io"
+subdomain           = "news"
+enable_custom_domain = true
+
+# Compute Specs
+fargate_cpu       = 256
+fargate_memory    = 512
+ecs_desired_count = 1
+
+# Shared Database & Secrets
+# database_url       = "postgresql://postgres:password@ciclops-db.xxxx.us-east-1.rds.amazonaws.com:5432/aletheia_news"
+# deepseek_api_key   = "sk-..."
+# google_client_id   = "xxxx.apps.googleusercontent.com"
+# google_client_secret = "GOCSPX-..."
+# nextauth_secret    = "..."

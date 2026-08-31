@@ -1,0 +1,31 @@
+{
+    # Global options
+    admin off
+    auto_https off
+}
+
+# Local / Remote reverse proxy mapping for Project Aletheia
+:80 {
+    # Logging
+    log {
+        output stdout
+        format json
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Reverse proxy to Next.js agent frontend and API
+    reverse_proxy aletheia-app:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

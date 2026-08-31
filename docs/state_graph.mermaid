@@ -1,0 +1,38 @@
+stateDiagram-v2
+    [*] --> UnifiedTopicNode: Single Source of Truth (Psychological Profile + Discovery Filters)
+
+    state "The Mind-State Memory Architecture" as MindStateCore {
+        UnifiedTopicNode --> ContextAgent: Inject Empath Framing, Sensitivities & Calibrated Depth
+        UnifiedTopicNode --> DiscoveryAgent: Curate High-Signal Wire Queries & Strict Quality Filter
+        ContextAgent --> InteractiveDialogue: Calibrated Empath Dialogue Turns
+        InteractiveDialogue --> ObserverAgent: Active Listener (Sentiment, Reactions & Nuance)
+        ObserverAgent --> UnifiedTopicNode: Continuous Autonomous Learning Adaptation
+    }
+
+    state "Node A: Epistemology Agent" as NodeA {
+        DiscoveryAgent --> BiasStripper: Multi-source Articles
+        BiasStripper --> DeltaExtractor: Strip Emotive Rhetoric
+        DeltaExtractor --> PureFactObject: Verified Entities + Agreed Facts + Disputed Claims
+    }
+
+    state "Node B: Telemetry & Graph Agent" as NodeB {
+        UserTelemetry --> BehavioralGraph: Dwell Time / Scroll Depth / Bounce
+        BehavioralGraph --> ObserverAgent: Feed Interaction Telemetry
+    }
+
+    state "Node C: Serendipity Agent" as NodeC {
+        MultiArmedBandit --> Exploitation: 80% High-weight Nodes
+        MultiArmedBandit --> Exploration: 20% Adjacent/Unrelated Topics
+        Exploration --> AnchorResolution: Concept Anchoring Bridge
+    }
+
+    state "Node D: Synthesis Agent" as NodeD {
+        FormatDecider --> BulletedList: Low Cognitive Load
+        FormatDecider --> GenerativeUIWidget: Data Heavy Facts
+        FormatDecider --> StructuredNarrative: Deep Dive
+        GenerativeUIWidget --> NextJSRenderer: Deliver to Presentation Layer
+    }
+
+    NodeA --> NodeC: Evaluate Candidate Facts
+    NodeC --> NodeD: Route Payload with Anchors
+    NodeD --> [*]: Live UI / Generative Stream
