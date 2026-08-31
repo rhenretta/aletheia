@@ -107,28 +107,38 @@ export class DialogueAgent {
       attachedStory
     );
 
+    const currentDateStr = new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
 You engage in dual-intent conversations equipped with real-time tool execution and feed filtering capabilities:
+
+CURRENT DATE: ${currentDateStr}
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING (CONNECTIONS INFORM DIRECTION, NEVER NARRATION):
    - Use known user interests, motivations, and knowledge graph anchors to SUBTLY SHAPE how you direct the conversation, the angles of inquiry you explore, and the depth of details you provide.
    - NEVER narrate or echo user profile traits back to the user (e.g. NEVER say "As someone who values X...", "That fits your interest in Y...").
-   - NEVER end turns with sycophantic praise or formulaic open-ended survey wrap-up questions ("What do you think?").
+   - NEVER end turns with sycophantic praise or formulaic open-ended survey wrap-up questions (e.g. NEVER say "What's your read on...?", "What do you think?"). State your grounded insights and stop.
    - Speak like a sharp, objective, thoughtful intellectual peer: direct, concise, grounded in operational realities.
 
 2. RESPECT BOUNDARIES & SENSITIVITIES:
    - Follow the active sensitivities and hard boundaries provided in the Context Agent guidance.
 
-3. PROACTIVE REAL-TIME TOOL & FEED CURATION EXECUTION:
-   - If the user discusses breaking news or unverified claims, trigger a tool call to search the live web:
+3. MANDATORY REAL-TIME SEARCH FOR TEMPORAL / STATUS INQUIRIES:
+   - If the user asks about ANY ongoing development, upcoming schedule, recent test, status, or date (e.g. "when might we see an orbital flight?", "what is the status of X?", "latest on Y?"), you MUST NOT guess or rely on internal pre-training cutoff dates.
+   - You MUST trigger a tool call to search the live web wire:
      {
        "tool_call": {
          "name": "search_internet",
-         "query": "precise search query"
+         "query": "exact search terms matching user inquiry"
        }
      }
-   - If the user's conversation focuses on a specific topic, controversy, or question that corresponds to stories in their feed, you can PROACTIVELY trigger "filter_feed" or populate "active_feed_filter" to focus their news feed on the most relevant stories:
+   - If the user's conversation focuses on a specific topic or controversy that corresponds to stories in their feed, you can trigger "filter_feed" or populate "active_feed_filter":
      {
        "tool_call": {
          "name": "filter_feed",
@@ -140,7 +150,7 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
 
 When no tool call is needed (or once tool results have been provided), output strict JSON:
 {
-  "message": "Direct, natural, grounded, and insightful conversational response addressing the user's message as an intellectual peer",
+  "message": "Direct, natural, grounded, and insightful conversational response addressing the user's message as an intellectual peer with verified live data",
   "agent_internal_rationale": {
     "user_emotional_state_detected": "User mindset and orientation",
     "curiosity_focus_identified": "Core technological, geopolitical, or intellectual interest",
@@ -230,7 +240,21 @@ ${currentStories.map((s, i) => `[Story ${i + 1} | Event ID: "${s.event_id}" | To
       parsed = { message: cleanJson };
     }
 
-    // Step 2: Handle Tool Call Loop
+    // Step 2: Handle Tool Call Loop & Proactive Live Grounding
+    const isTemporalOrStatusInquiry =
+      /\b(when|latest|status|next|flight|launch|schedule|update|current|happened|recent|progress|test)\b/i.test(lastUserMessage) &&
+      !attachedStory &&
+      lastUserMessage.length > 5;
+
+    if (!parsed.tool_call && isTemporalOrStatusInquiry) {
+      // Auto-trigger live internet search for time-sensitive inquiries
+      const cleanTerms = lastUserMessage.replace(/[?.,!]/g, " ").replace(/\s+/g, " ").trim();
+      parsed.tool_call = {
+        name: "search_internet",
+        query: cleanTerms,
+      };
+    }
+
     if (parsed.tool_call) {
       const { name, query } = parsed.tool_call;
 
