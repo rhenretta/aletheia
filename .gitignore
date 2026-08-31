@@ -29,9 +29,8 @@ next-env.d.ts
 .terraform.lock.hcl
 
 # Local Runtime Data & Traces
-/data/*.json
-!/data/.gitkeep
-/traces/*.jsonl
+/data/
+/traces/
 
 # OS Files
 .DS_Store
