@@ -72,7 +72,25 @@ export async function POST(req: NextRequest) {
       console.warn("Chat route: Observer adaptation failed:", err);
     }
 
-    // 3. Persist chat session history to PostgreSQL
+    // 3. Ensure any validated extracted topics from DialogueAgent are permanently merged into unifiedNode
+    if (response.extracted_topics && response.extracted_topics.length > 0) {
+      unifiedNode.topics = unifiedNode.topics || {};
+      for (const t of response.extracted_topics) {
+        if (t.topic && typeof t.topic === "string") {
+          const existing = unifiedNode.topics[t.topic];
+          unifiedNode.topics[t.topic] = {
+            weight: Number(Math.min(1.0, Math.max(0.2, (existing?.weight || t.weight || 0.6) + 0.05)).toFixed(2)),
+            why_they_care: t.reasoning || existing?.why_they_care || "Expressed substantive interest during conversation.",
+            technical_depth: existing?.technical_depth || "practitioner",
+            curiosity_vectors: existing?.curiosity_vectors || [t.topic],
+            last_discussed_at: new Date().toISOString(),
+          };
+        }
+      }
+      await postgresStore.saveUnifiedTopicNode(unifiedNode);
+    }
+
+    // 4. Persist chat session history and accumulated topics to PostgreSQL
     await postgresStore.saveChatSession(
       effectiveUserId,
       fullHistory,

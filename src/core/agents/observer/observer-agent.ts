@@ -92,7 +92,7 @@ Output strict JSON:
         const userOnlyDialogue = chatHistory
           .filter((m) => m.role === "user")
           .map((m) => `USER MESSAGE: "${m.content}"`)
-          .slice(-4)
+          .slice(-12)
           .join("\n");
 
         const prompt = `Evaluate ONLY these user messages for genuine topic interests and mindset:\n\n${userOnlyDialogue}`;

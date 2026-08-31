@@ -43,8 +43,30 @@ export async function GET(req: NextRequest) {
   }
 
   const unifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
-  const userGraph = await postgresStore.getUserGraph(effectiveUserId);
   const chatSession = await postgresStore.getChatSession(effectiveUserId);
+
+  // Reconcile and accumulate any extracted topics across sessions
+  if (chatSession?.extracted_topics && chatSession.extracted_topics.length > 0) {
+    unifiedTopicNode.topics = unifiedTopicNode.topics || {};
+    let changed = false;
+    for (const et of chatSession.extracted_topics) {
+      if (et.topic && !unifiedTopicNode.topics[et.topic]) {
+        unifiedTopicNode.topics[et.topic] = {
+          weight: et.weight || 0.65,
+          why_they_care: et.reasoning || "Derived from conversation history.",
+          technical_depth: "practitioner",
+          curiosity_vectors: [et.topic],
+          last_discussed_at: new Date().toISOString(),
+        };
+        changed = true;
+      }
+    }
+    if (changed) {
+      await postgresStore.saveUnifiedTopicNode(unifiedTopicNode);
+    }
+  }
+
+  const userGraph = await postgresStore.getUserGraph(effectiveUserId);
   const facts = await postgresStore.getAllFacts();
 
   return NextResponse.json({
