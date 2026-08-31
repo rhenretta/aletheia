@@ -270,6 +270,46 @@ export default function AletheiaHome() {
     }
   };
 
+  // On-demand targeted curation pipeline execution for topics with no feed cards
+  const handleTargetedCuration = async (curationQuery: string, canonicalTopic?: string) => {
+    setIsCollectingNews(true);
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topics: [curationQuery],
+          userId: effectiveUserId,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data?.feed_cards && json.data.feed_cards.length > 0) {
+        const newCards = json.data.feed_cards;
+        setPipelineResult((prev) => {
+          if (!prev) return json.data;
+          const prevCards = prev.feed_cards || [];
+          const existingIds = new Set(prevCards.map((c: any) => c.event_id));
+          const uniqueNew = newCards.filter((c: any) => !existingIds.has(c.event_id));
+          return {
+            ...prev,
+            feed_cards: [...uniqueNew, ...prevCards],
+          };
+        });
+
+        setAiFeedFilter({
+          is_active: true,
+          topic: canonicalTopic || curationQuery,
+          matched_event_ids: newCards.map((c: any) => c.event_id),
+          filter_reason: `Curated ${newCards.length} live stories for "${canonicalTopic || curationQuery}" matching our discussion.`,
+        });
+      }
+    } catch (err) {
+      console.warn("handleTargetedCuration error:", err);
+    } finally {
+      setIsCollectingNews(false);
+    }
+  };
+
   // Full reset (wipes user profile, mind-state memory, chat session in database & storage)
   const handleResetProfileAndSession = async () => {
     if (!window.confirm("Are you sure you want to reset your profile and start from scratch? This will clear your learned interests, psychological profile, chat history, and feed.")) {
@@ -383,34 +423,40 @@ export default function AletheiaHome() {
         }),
       });
 
-      const json = await res.json();
+      const text = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error(
+          res.status === 504 || res.status === 502
+            ? "The AI is taking longer than expected. Please try your question again."
+            : `Server response error (${res.status}). Please try again.`
+        );
+      }
+
       if (!res.ok || !json.success) {
-        throw new Error(json.error || `Server responded with status ${res.status}`);
+        throw new Error(json?.error || `Server responded with status ${res.status}`);
       }
 
-      // If targeted curation generated new feed cards, merge them into the feed
-      if (json.targeted_pipeline_result?.feed_cards && json.targeted_pipeline_result.feed_cards.length > 0) {
-        setPipelineResult((prev) => {
-          if (!prev) return json.targeted_pipeline_result;
-          const prevCards = prev.feed_cards || [];
-          const existingIds = new Set(prevCards.map((c) => c.event_id));
-          const newCards = json.targeted_pipeline_result.feed_cards.filter(
-            (c: any) => !existingIds.has(c.event_id)
-          );
-          return {
-            ...prev,
-            feed_cards: [...newCards, ...prevCards],
-          };
-        });
-      }
-
-      // Update or clear dynamic conversational AI feed filter
+      // Update or set dynamic conversational AI feed filter
       if (
         json.data.active_feed_filter &&
         json.data.active_feed_filter.is_active &&
         (json.data.active_feed_filter.matched_event_ids?.length || json.data.active_feed_filter.topic)
       ) {
         setAiFeedFilter(json.data.active_feed_filter);
+
+        // If targeted curation is requested, run async pipeline fetch to generate stories on the fly
+        if (
+          json.data.active_feed_filter.trigger_targeted_curation &&
+          (json.data.active_feed_filter.curation_query || json.data.active_feed_filter.topic)
+        ) {
+          handleTargetedCuration(
+            json.data.active_feed_filter.curation_query || json.data.active_feed_filter.topic,
+            json.data.active_feed_filter.topic
+          );
+        }
       } else {
         // Automatically clear stale previous filter if new turn does not activate one
         setAiFeedFilter(null);

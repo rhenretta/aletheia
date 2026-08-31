@@ -46,31 +46,71 @@ export class FreeNewsFetcher {
    */
   public static async searchNews(topic: string, maxArticles: number = 8): Promise<RawArticle[]> {
     if (!topic || topic.trim().length === 0) {
-      throw new Error("FreeNewsFetcher Error: Topic query cannot be empty.");
+      return [];
     }
 
-    const encodedTopic = encodeURIComponent(topic.trim());
-    const feedUrl = `https://news.google.com/rss/search?q=${encodedTopic}&hl=en-US&gl=US&ceid=US:en`;
+    const cleanTopic = topic
+      .replace(/[?.,!;:"()]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-    const response = await fetch(feedUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/rss+xml, application/xml, text/xml, */*",
-      },
-    });
+    // 1. Try initial query
+    let articles = await this.fetchRssForQuery(cleanTopic);
 
-    if (!response.ok) {
-      throw new Error(`FreeNewsFetcher Error: Failed to fetch live RSS feed for "${topic}" (HTTP ${response.status})`);
-    }
-
-    const xmlText = await response.text();
-    const articles = this.parseRssXml(xmlText, topic);
-
+    // 2. If 0 articles found, try relaxed / simplified keyword query
     if (articles.length === 0) {
-      throw new Error(`FreeNewsFetcher Error: Zero live news articles found for query "${topic}".`);
+      const stopWords = new Set([
+        "what", "is", "going", "on", "with", "how", "has", "the", "in", "last",
+        "month", "why", "where", "when", "about", "from", "and", "or", "for",
+        "they", "them", "their", "youd", "think", "wouldnt", "be", "able",
+        "to", "hold", "off", "much", "longer", "right", "now", "it"
+      ]);
+
+      const substantiveTerms = cleanTopic
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !stopWords.has(w.toLowerCase()))
+        .slice(0, 3)
+        .join(" ");
+
+      if (substantiveTerms && substantiveTerms !== cleanTopic) {
+        articles = await this.fetchRssForQuery(substantiveTerms);
+      }
+    }
+
+    // 3. Fallback: if still empty and has a known country/subject (like Iran), search that directly
+    if (articles.length === 0) {
+      const entities = ["Iran", "Taiwan", "China", "SpaceX", "Starship", "Federal Reserve", "Inflation", "Nvidia", "AI"];
+      const matchedEntity = entities.find((e) => new RegExp(`\\b${e}\\b`, "i").test(cleanTopic));
+      if (matchedEntity) {
+        articles = await this.fetchRssForQuery(matchedEntity);
+      }
     }
 
     return articles.slice(0, maxArticles);
+  }
+
+  private static async fetchRssForQuery(query: string): Promise<RawArticle[]> {
+    if (!query || query.trim().length === 0) return [];
+    try {
+      const encoded = encodeURIComponent(query.trim());
+      const feedUrl = `https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`;
+
+      const response = await fetch(feedUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "application/rss+xml, application/xml, text/xml, */*",
+        },
+      });
+
+      if (!response.ok) return [];
+
+      const xmlText = await response.text();
+      return this.parseRssXml(xmlText, query);
+    } catch (err) {
+      console.warn(`FreeNewsFetcher: Failed to fetch RSS for "${query}":`, err);
+      return [];
+    }
   }
 
   /**

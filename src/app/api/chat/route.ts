@@ -104,8 +104,7 @@ export async function POST(req: NextRequest) {
       await postgresStore.saveUnifiedTopicNode(unifiedNode);
     }
 
-    // 4. Targeted Curator Run: If a topic filter is activated and no/few stories match in the current feed
-    let targetedPipelineResult = null;
+    // 4. Targeted Curator Signal: If topic needs curation, mark it for async client pipeline fetch
     const filter = response.active_feed_filter;
     const needsCuration =
       filter &&
@@ -113,28 +112,14 @@ export async function POST(req: NextRequest) {
       (filter.trigger_targeted_curation || !filter.matched_event_ids || filter.matched_event_ids.length === 0);
 
     if (needsCuration && filter.topic) {
-      try {
-        const queryTopic = filter.curation_query || filter.topic;
-        const curated = await DiscoveryAgent.curateAndCollect(unifiedNode, [queryTopic]);
-        if (curated.accepted_articles && curated.accepted_articles.length > 0) {
-          targetedPipelineResult = await executeAletheiaPipeline({
-            userId: effectiveUserId,
-            articles: curated.accepted_articles,
-            userGraph: (await postgresStore.getUserGraph(effectiveUserId)) || undefined,
-            unifiedTopicNode: unifiedNode,
-          });
-
-          if (targetedPipelineResult?.feed_cards && targetedPipelineResult.feed_cards.length > 0) {
-            response.active_feed_filter = {
-              ...filter,
-              matched_event_ids: targetedPipelineResult.feed_cards.map((c) => c.event_id),
-              filter_reason: `Curated fresh coverage for "${filter.topic}" matching our discussion.`,
-            };
-          }
-        }
-      } catch (curationErr) {
-        console.warn("Targeted curation during chat failed:", curationErr);
-      }
+      const queryTopic = filter.curation_query || filter.topic;
+      response.active_feed_filter = {
+        ...filter,
+        is_active: true,
+        trigger_targeted_curation: true,
+        curation_query: queryTopic,
+        filter_reason: `Curating fresh live wire coverage for "${filter.topic}"...`,
+      };
     }
 
     // 5. Persist chat session history and accumulated topics to PostgreSQL
@@ -151,7 +136,6 @@ export async function POST(req: NextRequest) {
       data: response,
       unified_topic_node: unifiedNode,
       user_graph: userGraph,
-      targeted_pipeline_result: targetedPipelineResult,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Chat intake failed";
