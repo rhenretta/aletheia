@@ -57,6 +57,8 @@ export interface DialogueResponse {
     topic?: string;
     matched_event_ids?: string[];
     filter_reason?: string;
+    trigger_targeted_curation?: boolean;
+    curation_query?: string;
   };
   context_generated?: GeneratedMessageContext;
   extracted_topics: Array<{
@@ -156,14 +158,26 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
        }
      }
 
-4. DYNAMIC CONVERSATIONAL FEED ADAPTATION & FILTER CLEANUP:
+4. DYNAMIC CONVERSATIONAL FEED ADAPTATION & TARGETED CURATION:
    - If the user discusses a topic that matches stories in their feed, set "active_feed_filter" to focus their news feed on those matching stories:
      {
        "active_feed_filter": {
          "is_active": true,
          "topic": "Canonical Topic Name",
          "matched_event_ids": ["evt_123", "evt_456"],
-         "filter_reason": "Curated to show relevant stories matching our discussion."
+         "filter_reason": "Curated to show relevant stories matching our discussion.",
+         "trigger_targeted_curation": false
+       }
+     }
+   - TARGETED CURATOR TRIGGER: If the user asks about a specific news topic, country, or event (e.g. "Iran", "Taiwan", "Starship", "Quantum Computing") and there are FEW OR ZERO matching stories in the current feed, set "trigger_targeted_curation": true with a "curation_query" so the system runs a targeted Curator pipeline to fetch and synthesize new stories for this topic immediately!
+     {
+       "active_feed_filter": {
+         "is_active": true,
+         "topic": "Canonical Topic Name",
+         "matched_event_ids": [],
+         "filter_reason": "Curating fresh stories for this topic...",
+         "trigger_targeted_curation": true,
+         "curation_query": "Targeted live wire search query"
        }
      }
    - CRITICAL: When the conversation shifts to a new topic or question that does NOT relate to the previously filtered topic, NEVER leave the old filter stuck! Either update "active_feed_filter" to the new topic, or set "is_active": false so stale filters are cleared immediately.
@@ -182,7 +196,9 @@ When no tool call is needed (or once tool results have been provided), output st
     "is_active": boolean,
     "topic": string or null,
     "matched_event_ids": ["evt_123", ...],
-    "filter_reason": "Specific note explaining why the feed is filtered (or null/empty if no active filter)"
+    "filter_reason": "Specific note explaining why the feed is filtered (or null/empty if no active filter)",
+    "trigger_targeted_curation": boolean,
+    "curation_query": "Search query if targeted curation is requested"
   },
   "extracted_topics": [
     {

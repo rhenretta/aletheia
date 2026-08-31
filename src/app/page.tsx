@@ -383,6 +383,22 @@ export default function AletheiaHome() {
         throw new Error(json.error || `Server responded with status ${res.status}`);
       }
 
+      // If targeted curation generated new feed cards, merge them into the feed
+      if (json.targeted_pipeline_result?.feed_cards && json.targeted_pipeline_result.feed_cards.length > 0) {
+        setPipelineResult((prev) => {
+          if (!prev) return json.targeted_pipeline_result;
+          const prevCards = prev.feed_cards || [];
+          const existingIds = new Set(prevCards.map((c) => c.event_id));
+          const newCards = json.targeted_pipeline_result.feed_cards.filter(
+            (c: any) => !existingIds.has(c.event_id)
+          );
+          return {
+            ...prev,
+            feed_cards: [...newCards, ...prevCards],
+          };
+        });
+      }
+
       // Update or clear dynamic conversational AI feed filter
       if (
         json.data.active_feed_filter &&
