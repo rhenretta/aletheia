@@ -27,6 +27,9 @@ import {
   BookOpen,
   Clock,
   RotateCcw,
+  Menu,
+  Newspaper,
+  Zap,
 } from "lucide-react";
 import {
   NewsStateContext,
@@ -84,6 +87,8 @@ export default function AletheiaHome() {
   const [unifiedTopicNode, setUnifiedTopicNode] = useState<UnifiedTopicNode | null>(null);
   const [extractedTopics, setExtractedTopics] = useState<Array<{ topic: string; weight: number; reasoning: string }>>([]);
   const [companionTab, setCompanionTab] = useState<"chat" | "interests">("chat");
+  const [mobileTab, setMobileTab] = useState<"feed" | "dialogue" | "interests">("feed");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Pipeline & Feed state
   const [isCollectingNews, setIsCollectingNews] = useState(false);
@@ -517,6 +522,8 @@ export default function AletheiaHome() {
       sources: card.sources,
     };
     setAttachedStory(storyContext);
+    setMobileTab("dialogue");
+    setCompanionTab("chat");
 
     // Set contextual target for devtools
     setSelectedContext({
@@ -605,23 +612,28 @@ export default function AletheiaHome() {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-6 lg:p-8 space-y-6 pb-20">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
       {/* Platform Header Bar */}
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-400 via-teal-400 to-indigo-500 flex items-center justify-center font-bold text-slate-950 text-lg shadow-lg shadow-cyan-500/20">
+      <header className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 sm:pb-4">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-400 via-teal-400 to-indigo-500 flex items-center justify-center font-bold text-slate-950 text-base sm:text-lg shadow-lg shadow-cyan-500/20 flex-shrink-0">
             α
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white font-mono">ALETHEIA</h1>
-            <p className="text-xs text-slate-400 font-medium">
-              Personalized Epistemic News & Conversational Intelligence
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white font-mono">ALETHEIA</h1>
+              <span className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30 text-[9px] font-mono text-emerald-400">
+                ● Adaptive
+              </span>
+            </div>
+            <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate max-w-[200px] sm:max-w-none">
+              Personalized Epistemic News & Intelligence
             </p>
           </div>
         </div>
 
-        {/* Global Controls, ciclops.io suite & Google OAuth */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Desktop Global Controls */}
+        <div className="hidden lg:flex items-center gap-2.5">
           <a
             href="https://ciclops.io"
             target="_blank"
@@ -740,16 +752,184 @@ export default function AletheiaHome() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Sign In with Google</span>
+              <span>Sign In</span>
             </button>
           )}
         </div>
+
+        {/* Mobile Header Quick Actions */}
+        <div className="flex lg:hidden items-center gap-1.5">
+          <button
+            onClick={() => handleFindNewsClean()}
+            disabled={isCollectingNews}
+            className="p-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition disabled:opacity-40"
+            title="Refresh News"
+          >
+            <RefreshCw className={`w-4 h-4 ${isCollectingNews ? "animate-spin text-cyan-400" : ""}`} />
+          </button>
+
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 rounded-xl bg-slate-900 border border-white/10 text-slate-200 hover:text-white transition"
+            title="Open Menu"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+        </div>
       </header>
+
+      {/* Mobile Slide-Over Menu Sheet */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex justify-end">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          <div className="relative w-72 max-w-[85vw] bg-slate-950 border-l border-white/10 h-full p-5 flex flex-col justify-between shadow-2xl z-10 animate-in slide-in-from-right duration-200">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-400 to-indigo-500 flex items-center justify-center font-bold text-slate-950 text-xs">
+                    α
+                  </div>
+                  <span className="font-mono font-bold text-sm text-white">Menu & Controls</span>
+                </div>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-900 border border-white/10"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* User Identity / Auth */}
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-white/5">
+                {session?.user ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {session.user.image ? (
+                        <img
+                          src={session.user.image}
+                          alt={session.user.name || "User"}
+                          className="w-7 h-7 rounded-full border border-white/20"
+                        />
+                      ) : (
+                        <User className="w-6 h-6 text-cyan-400" />
+                      )}
+                      <div className="truncate">
+                        <div className="text-xs font-semibold text-white truncate">{session.user.name}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{session.user.email}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setIsMobileMenuOpen(false);
+                        try {
+                          Object.keys(localStorage).forEach((key) => {
+                            if (key.startsWith("aletheia_")) localStorage.removeItem(key);
+                          });
+                        } catch (e) {}
+                        setMessages([defaultWelcomeMessage]);
+                        setUserGraph(null);
+                        setUnifiedTopicNode(null);
+                        setExtractedTopics([]);
+                        setPipelineResult(null);
+                        setAttachedStory(null);
+                        setSelectedContext(null);
+                        await signOut();
+                      }}
+                      className="w-full py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-xs text-rose-300 transition text-center font-medium"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      signIn("google");
+                    }}
+                    className="w-full py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                  >
+                    <span>Sign In with Google</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Navigation & Actions */}
+              <div className="space-y-2 text-xs">
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleFindNewsClean();
+                  }}
+                  disabled={isCollectingNews}
+                  className="w-full p-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-2.5 font-medium transition text-left"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isCollectingNews ? "animate-spin text-cyan-400" : ""}`} />
+                  <span>{isCollectingNews ? "Fetching News..." : "Refresh News Feed"}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleClearFeedContent();
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 flex items-center gap-2.5 transition text-left"
+                >
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <span>Clear Feed Stories</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleResetProfileAndSession();
+                  }}
+                  disabled={isResettingProfile}
+                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-rose-300 border border-rose-500/20 flex items-center gap-2.5 transition text-left"
+                >
+                  <RotateCcw className={`w-4 h-4 ${isResettingProfile ? "animate-spin" : ""}`} />
+                  <span>Reset Profile & Memory</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    setIsDevToolsOpen(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-amber-950/40 text-amber-300 border border-amber-500/20 flex items-center gap-2.5 transition text-left"
+                >
+                  <Terminal className="w-4 h-4 text-amber-400" />
+                  <span>Inspect System DevTools</span>
+                </button>
+
+                <a
+                  href="https://ciclops.io"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 flex items-center justify-between transition"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Compass className="w-4 h-4 text-cyan-400" />
+                    <span>ciclops.io</span>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                </a>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-white/10 text-center text-[10px] text-slate-500 font-mono">
+              ALETHEIA v0.1 • Mind-State Memory
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MAIN UNIFIED DASHBOARD: FEED (Left 62%) + AMBIENT COMPANION (Right 38%) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* LEFT COLUMN: THE PERSONALIZED EPISTEMIC FEED (7 of 12 cols) */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className={`lg:col-span-7 space-y-6 ${mobileTab === "feed" ? "block" : "hidden lg:block"}`}>
           {/* Unified Epistemic Filter Command Bar */}
           <div className="glass-panel rounded-2xl p-3 sm:p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3">
             {/* Left: Discovery Horizon Segmented Switcher */}
@@ -1162,14 +1342,21 @@ export default function AletheiaHome() {
         </div>
 
         {/* RIGHT COLUMN: AMBIENT CONVERSATIONAL COMPANION & GRAPH (5 of 12 cols) */}
-        <div className="lg:col-span-5 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col h-[calc(100vh-140px)] min-h-[640px] max-h-[820px] sticky top-4">
+        <div
+          className={`lg:col-span-5 glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 flex flex-col h-[calc(100dvh-130px)] lg:h-[calc(100vh-140px)] min-h-[500px] lg:min-h-[640px] max-h-[850px] sticky top-4 ${
+            mobileTab !== "feed" ? "flex" : "hidden lg:flex"
+          }`}
+        >
           {/* Header & Tab Switcher (Conversation vs Interests & Why) */}
           <div className="border-b border-white/10 pb-3 mb-3 flex-shrink-0 space-y-2">
             <div className="flex items-center justify-between">
               {/* Segmented View Switcher */}
               <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-white/10 text-xs font-mono">
                 <button
-                  onClick={() => setCompanionTab("chat")}
+                  onClick={() => {
+                    setCompanionTab("chat");
+                    setMobileTab("dialogue");
+                  }}
                   className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${
                     companionTab === "chat"
                       ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/20 font-bold"
@@ -1181,7 +1368,10 @@ export default function AletheiaHome() {
                 </button>
 
                 <button
-                  onClick={() => setCompanionTab("interests")}
+                  onClick={() => {
+                    setCompanionTab("interests");
+                    setMobileTab("interests");
+                  }}
                   className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition ${
                     companionTab === "interests"
                       ? "bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/20 font-bold"
@@ -1522,6 +1712,64 @@ export default function AletheiaHome() {
           )}
         </div>
       </div>
+
+      {/* Mobile Fixed Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-slate-950/95 backdrop-blur-xl border-t border-white/10 px-4 py-2 flex items-center justify-around pb-safe shadow-2xl">
+        <button
+          onClick={() => setMobileTab("feed")}
+          className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
+            mobileTab === "feed" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <div className="relative">
+            <Newspaper className="w-5 h-5" />
+            {feedCards.length > 0 && (
+              <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 bg-cyan-500 text-slate-950 text-[9px] font-mono font-bold rounded-full">
+                {feedCards.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] font-mono">Feed</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setMobileTab("dialogue");
+            setCompanionTab("chat");
+          }}
+          className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
+            mobileTab === "dialogue" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <div className="relative">
+            <MessageSquare className="w-5 h-5" />
+            {attachedStory && (
+              <span className="absolute -top-0.5 -right-1.5 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+            )}
+          </div>
+          <span className="text-[10px] font-mono">Dialogue</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setMobileTab("interests");
+            setCompanionTab("interests");
+          }}
+          className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
+            mobileTab === "interests" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <div className="relative">
+            <Brain className="w-5 h-5" />
+            {(Object.keys(userGraph?.topic_weights || {}).length > 0 || extractedTopics.length > 0) && (
+              <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 bg-violet-500 text-white text-[9px] font-mono font-bold rounded-full">
+                {Object.keys(userGraph?.topic_weights || {}).length || extractedTopics.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] font-mono">Interests</span>
+        </button>
+      </nav>
 
       {/* Interactive Original Source Article Reader Modal with Highlighted Passages */}
       {selectedReadingSource && (
