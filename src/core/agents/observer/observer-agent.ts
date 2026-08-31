@@ -8,6 +8,7 @@ import {
 import { traceLogger } from "../../observability/trace-logger";
 import { deepseekProvider } from "../../llm/deepseek-provider";
 import { postgresStore } from "../../storage/postgres-store";
+import { InterestHarmonizer } from "./interest-harmonizer";
 
 export interface ObserverAdaptationResult {
   adapted_node: UnifiedTopicNode;
@@ -304,6 +305,25 @@ Output strict JSON:
             adaptedNode.recent_topic_diffs = [diff, ...(adaptedNode.recent_topic_diffs || []).slice(0, 25)];
           }
         }
+      }
+    }
+
+    // Step 3: Background knowledge graph harmonization (merging near-duplicates and splitting compound topics)
+    if (Object.keys(adaptedNode.topics || {}).length >= 4) {
+      try {
+        const harmResult = await InterestHarmonizer.harmonize(adaptedNode);
+        if (harmResult.changed) {
+          adaptedNode.topics = harmResult.harmonized_node.topics;
+          for (const act of harmResult.actions_taken) {
+            adaptationsMade.push({
+              category: "why_they_care",
+              description: `Harmonized interest graph (${act.type}): ${act.rationale}`,
+              evidence: act.source_topics.join(", "),
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("ObserverAgent: Background interest harmonization error:", err);
       }
     }
 

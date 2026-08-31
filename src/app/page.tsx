@@ -241,6 +241,29 @@ export default function AletheiaHome() {
   };
 
   const [isResettingProfile, setIsResettingProfile] = useState(false);
+  const [isHarmonizing, setIsHarmonizing] = useState(false);
+
+  // Harmonize & clean up interests (merges near-duplicates & splits compound topics)
+  const handleHarmonizeInterests = async () => {
+    setIsHarmonizing(true);
+    try {
+      const res = await fetch("/api/interests/harmonize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: effectiveUserId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (json.unified_topic_node) setUnifiedTopicNode(json.unified_topic_node);
+        if (json.user_graph) setUserGraph(json.user_graph);
+        setRefreshTrigger((prev) => prev + 1);
+      }
+    } catch (err) {
+      console.error("Harmonization error:", err);
+    } finally {
+      setIsHarmonizing(false);
+    }
+  };
 
   // Full reset (wipes user profile, mind-state memory, chat session in database & storage)
   const handleResetProfileAndSession = async () => {
@@ -1329,15 +1352,26 @@ export default function AletheiaHome() {
                     Active Interests:
                   </div>
                   {(Object.entries(userGraph?.topic_weights || {}).length > 0 || extractedTopics.length > 0) && (
-                    <button
-                      onClick={() => handleResetProfileAndSession()}
-                      disabled={isResettingProfile}
-                      className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
-                      title="Clear interests and start from scratch"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>Reset</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleHarmonizeInterests()}
+                        disabled={isHarmonizing}
+                        className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30 hover:border-cyan-500/50"
+                        title="Harmonize and clean up interests (merges near-duplicates & splits compound topics)"
+                      >
+                        <Sparkles className={`w-3 h-3 text-cyan-400 ${isHarmonizing ? "animate-spin" : ""}`} />
+                        <span>{isHarmonizing ? "Harmonizing..." : "Harmonize"}</span>
+                      </button>
+                      <button
+                        onClick={() => handleResetProfileAndSession()}
+                        disabled={isResettingProfile}
+                        className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
+                        title="Clear interests and start from scratch"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
