@@ -21,21 +21,21 @@ Aletheia replaces static news feeds and sycophantic chatbot interactions with a 
 
 ```mermaid
 flowchart TD
-    User([User Prompt / Article Click]) --> Intake[Dialogue Agent]
-    Intake --> Empath[Context Agent (The Empath)]
-    Empath --> SemanticResolver[Semantic Topic Resolver & Graph Traversal]
-    SemanticResolver --> ContextEnvelope[Calibrated Context Envelope]
+    User(["User Prompt / Article Click"]) --> Intake["Dialogue Agent"]
+    Intake --> Empath["Context Agent (The Empath)"]
+    Empath --> SemanticResolver["Semantic Topic Resolver & Graph Traversal"]
+    SemanticResolver --> ContextEnvelope["Calibrated Context Envelope"]
     ContextEnvelope --> Intake
-    Intake --> DeepSeek[DeepSeek LLM Engine]
-    DeepSeek --> Response([Synthesized Response])
+    Intake --> DeepSeek["DeepSeek LLM Engine"]
+    DeepSeek --> Response(["Synthesized Response"])
     
-    Response -.-> Observer[Observer Agent (Active Listener)]
-    Observer --> MindStateNode[(Unified Topic Node & Graph)]
+    Response -.-> Observer["Observer Agent (Active Listener)"]
+    Observer --> MindStateNode[("Unified Topic Node & Graph")]
     
-    Wire[Global RSS & Web Wires] --> Epistemology[Epistemology Agent (Bias Stripper)]
-    Epistemology --> Discovery[Discovery Agent (Curator)]
+    Wire["Global RSS & Web Wires"] --> Epistemology["Epistemology Agent (Bias Stripper)"]
+    Epistemology --> Discovery["Discovery Agent (Curator)"]
     MindStateNode --> Discovery
-    Discovery --> Feed([Personalized Epistemic Feed])
+    Discovery --> Feed(["Personalized Epistemic Feed"])
 ```
 
 ### Core Agents
