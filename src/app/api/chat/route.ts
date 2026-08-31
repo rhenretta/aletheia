@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/core/auth/auth-options";
 import { DialogueAgent, ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import { postgresStore } from "@/core/storage/postgres-store";
 import { AttachedStoryContext, UnifiedTopicNode } from "@/core/types/contracts";
@@ -6,6 +8,7 @@ import { ObserverAgent } from "@/core/agents/observer/observer-agent";
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
     const body = await req.json();
     const { history, userId, attachedStory } = body as {
       history: ChatMessage[];
@@ -13,7 +16,24 @@ export async function POST(req: NextRequest) {
       attachedStory?: AttachedStoryContext;
     };
 
-    const effectiveUserId = userId || "usr_default";
+    // Authenticated user session or explicit user ID
+    const effectiveUserId =
+      session?.user?.email
+        ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : userId && userId.startsWith("usr_") && userId !== "usr_guest"
+        ? userId
+        : null;
+
+    if (!effectiveUserId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Authentication required. Please sign in with Google to interact with the AI companion.",
+        },
+        { status: 401 }
+      );
+    }
+
     let unifiedNode: UnifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
 
     // 1. Run dialogue interaction with Context Agent (The Empath) framing
