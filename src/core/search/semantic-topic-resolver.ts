@@ -80,10 +80,15 @@ export class SemanticTopicResolver {
 
       const systemPrompt = `You are the Semantic Topic & Graph Resolver in the Mind-State Memory Architecture.
 Your role:
-1. Identify the CORE SUBJECT and INTENT being discussed in the conversation (resolving pronouns like "they", "it", or contextual shorthand across recent turns).
+1. Identify the CORE SUBJECT and INTENT being discussed by the USER (resolving pronouns like "they", "it", or contextual shorthand across recent turns).
 2. Compare the identified subject against the user's Knowledge Graph (Canonical Topics, Interest Intersections, and Curiosity Frontiers).
 3. Select and rank the most relevant topics from the graph to include in the context envelope for the upcoming response.
-4. If the discussion explores a genuinely novel domain not covered in the graph, identify it as a "new_topic_candidate".
+4. If the user explicitly asks about a novel subject not in the graph, identify it as a "new_topic_candidate".
+
+CRITICAL GUARDRAILS:
+- Focus exclusively on the subject matter the USER brought up or asked about.
+- NEVER generate candidate topics based on the assistant's greeting, meta-framing, or app terminology (e.g. NEVER propose "Epistemology", "Cognitive Psychology", "Decision-making", or "Mindset" unless the USER explicitly brought them up).
+- If the user only asks an open-ended question like "What should we talk about", "identified_discussion_subject" is "Open Topic Exploration" and "new_topic_candidates" MUST BE [].
 
 User's Canonical Knowledge Graph Topics:
 ${JSON.stringify(topicSummaries, null, 2)}

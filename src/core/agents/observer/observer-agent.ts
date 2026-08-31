@@ -52,22 +52,24 @@ export class ObserverAgent {
     const lastUserMessage = recentUserMessages[recentUserMessages.length - 1] || "";
 
     // Step 1: If DeepSeek is available, perform deep psychological and motivation extraction
-    if (deepseekProvider.isConfigured() && lastUserMessage.length > 5) {
+    if (deepseekProvider.isConfigured() && lastUserMessage.length > 3) {
       try {
         const systemPrompt = `You are the Observer Agent in the Mind-State Memory Architecture.
-Your role is silent, empathetic, and continuous adaptation. You analyze ONLY the USER's conversational inputs to infer:
-1. "emotional_trajectory": The user's updated psychological state and mindset (e.g. "curious and analytical", "fatigued by market hype", "seeking practical engineering clarity").
-2. "detected_sensitivities": Any subtle sensitivities, pet peeves, or communication preferences revealed EXCLUSIVELY by the user.
-3. "detected_boundaries": Hard boundaries or topics the user explicitly or implicitly wants to avoid.
-4. "topic_updates": Evolving topics or brand new topics discussed, with inferred "why_they_care" motivation, "curiosity_vectors" (keywords), and "technical_depth" ("introductory" | "practitioner" | "expert" | "deep_technical").
+Your role is silent, empathetic, and continuous adaptation. You analyze EXCLUSIVELY the USER's conversational inputs to infer:
+1. "updated_emotional_trajectory": The user's updated psychological state and mindset revealed by their words.
+2. "new_sensitivities": Subtle sensitivities, pet peeves, or communication preferences revealed EXCLUSIVELY by the user.
+3. "new_boundaries": Hard boundaries or topics the user explicitly or implicitly wants to avoid.
+4. "topic_updates": Substantive real-world topics the user explicitly discussed or inquired about, with "why_they_care" motivation, "curiosity_vectors" (keywords), "technical_depth" ("introductory" | "practitioner" | "expert" | "deep_technical"), and "evidence" (verbatim quote from user).
 
-CRITICAL GUARDRAILS:
-- NEVER extract sensitivities or preferences from statements or analogies made by the ASSISTANT.
-- Base all inferences exclusively on the USER's words and revealed values.
-- If the user discusses a new subject not yet in Existing Topics, include it in "topic_updates" with a reasonable starting weight (0.7-0.85).
+IRONCLAD GUARDRAILS & NEGATIVE CONSTRAINTS:
+- NEVER extract topics, interests, or sensitivities from statements, greetings, suggestions, or analogies made by the ASSISTANT / ALETHEIA.
+- NEVER infer user interests from the existence or framing of the application (e.g. NEVER infer "Epistemology", "Cognitive Psychology", "Decision-making", or "Philosophy" merely because the app is an epistemic companion or discusses mindset adaptation).
+- If the user has only asked an open-ended conversational prompt (e.g. "What should we talk about", "Hello", "Hi", "Tell me the news"), "topic_updates" MUST BE EMPTY ([]).
+- ONLY add a topic if the user actively introduced it or articulated substantive curiosity/opinions about it (e.g., "AI is a good topic... best path to UBI and we should be taxing it" -> "AI and Economic Policy").
+- The "evidence" field MUST contain the exact verbatim substring from the USER showing their explicit statement.
 
-Existing Topics: ${Object.keys(adaptedNode.topics || {}).join(", ")}
-Current Emotional Trajectory: "${adaptedNode.psychological_profile?.emotional_trajectory || "Grounded"}"
+Existing Topics in Graph: ${Object.keys(adaptedNode.topics || {}).join(", ") || "None"}
+Current Emotional Trajectory: "${adaptedNode.psychological_profile?.emotional_trajectory || "Open and exploratory"}"
 
 Output strict JSON:
 {
@@ -87,7 +89,13 @@ Output strict JSON:
   "reasoning_summary": string
 }`;
 
-        const prompt = `Recent User Interaction History:\n${chatHistory.map((m) => `${m.role.toUpperCase()}: ${m.content}`).slice(-6).join("\n\n")}`;
+        const userOnlyDialogue = chatHistory
+          .filter((m) => m.role === "user")
+          .map((m) => `USER MESSAGE: "${m.content}"`)
+          .slice(-4)
+          .join("\n");
+
+        const prompt = `Evaluate ONLY these user messages for genuine topic interests and mindset:\n\n${userOnlyDialogue}`;
 
         rawSystemPrompt = systemPrompt;
         rawUserPrompt = prompt;
@@ -143,8 +151,44 @@ Output strict JSON:
 
         // Apply topic updates and compute structured Diffs
         if (Array.isArray(parsed.topic_updates)) {
+          const combinedUserText = recentUserMessages.join(" ").toLowerCase();
+
           for (const tu of parsed.topic_updates) {
-            if (!tu.topic) continue;
+            if (!tu.topic || typeof tu.topic !== "string") continue;
+
+            const lowerTopic = tu.topic.toLowerCase();
+            const lowerWhy = (tu.why_they_care || "").toLowerCase();
+
+            // Reject meta-application / system hallucinations
+            if (
+              lowerWhy.includes("epistemic companion") ||
+              lowerWhy.includes("using this app") ||
+              lowerWhy.includes("engaging with an epistemic") ||
+              lowerWhy.includes("context that emphasizes") ||
+              lowerWhy.includes("personalized adaptation") ||
+              lowerWhy.includes("mind-state") ||
+              lowerTopic === "epistemology" ||
+              lowerTopic.includes("nature of knowledge") ||
+              lowerTopic.includes("psychology of decision-making") ||
+              lowerTopic.includes("personalized adaptation")
+            ) {
+              // Only allow if user literally used these specific words in their message
+              if (!combinedUserText.includes(lowerTopic)) {
+                continue;
+              }
+            }
+
+            // Ensure the user actually said something substantive related to this topic
+            const evidence = (tu.evidence || "").toLowerCase().trim();
+            const hasDirectEvidence =
+              (evidence.length >= 3 && combinedUserText.includes(evidence)) ||
+              combinedUserText.includes(lowerTopic) ||
+              (tu.curiosity_vectors || []).some((v: string) => combinedUserText.includes(v.toLowerCase()));
+
+            if (!hasDirectEvidence && !adaptedNode.topics[tu.topic]) {
+              continue;
+            }
+
             const existingTopic = adaptedNode.topics[tu.topic];
             const prevWeight = existingTopic?.weight || 0.5;
             const prevDepth: TechnicalDepth = existingTopic?.technical_depth || "practitioner";

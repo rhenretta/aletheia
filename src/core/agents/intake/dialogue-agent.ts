@@ -264,19 +264,42 @@ ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergen
       }
     }
 
-    // Step 3: Promote newly extracted topics, intersections, and frontiers into UnifiedTopicNode
+    // Step 3: Validate extracted topics against genuine user messages
+    const validatedExtractedTopics: DialogueResponse["extracted_topics"] = [];
     if (Array.isArray(parsed.extracted_topics)) {
+      const userText = history
+        .filter((m) => m.role === "user")
+        .map((m) => m.content)
+        .join(" ")
+        .toLowerCase();
+
       for (const et of parsed.extracted_topics) {
-        if (!et.topic) continue;
-        const existing = unifiedNode.topics[et.topic];
-        const newWeight = Math.min(1.0, Math.max(0.1, et.weight || 0.8));
-        unifiedNode.topics[et.topic] = {
-          weight: newWeight,
-          why_they_care: et.reasoning || existing?.why_they_care || "Expressed active intellectual interest in dialogue.",
-          technical_depth: existing?.technical_depth || (contextFraming.calibrated_depth as any) || "practitioner",
-          curiosity_vectors: existing?.curiosity_vectors || [],
-          last_discussed_at: new Date().toISOString(),
-        };
+        if (!et.topic || typeof et.topic !== "string") continue;
+        const lowerTopic = et.topic.toLowerCase();
+        const lowerReasoning = (et.reasoning || "").toLowerCase();
+
+        // Reject meta-app / system hallucinations
+        if (
+          lowerReasoning.includes("epistemic companion") ||
+          lowerReasoning.includes("using this app") ||
+          lowerReasoning.includes("context that emphasizes") ||
+          lowerReasoning.includes("personalized adaptation") ||
+          lowerTopic.includes("epistemology and the nature of knowledge") ||
+          lowerTopic.includes("psychology of decision-making")
+        ) {
+          if (!userText.includes(lowerTopic)) continue;
+        }
+
+        const evidence = (et.evidence_quote || "").toLowerCase().trim();
+        if ((evidence.length >= 3 && userText.includes(evidence)) || userText.includes(lowerTopic)) {
+          validatedExtractedTopics.push({
+            topic: et.topic,
+            weight: Math.min(1.0, Math.max(0.1, et.weight || 0.8)),
+            reasoning: et.reasoning || `User actively discussed ${et.topic}.`,
+            confidence_score: et.confidence_score || 0.9,
+            evidence_quote: et.evidence_quote || "",
+          });
+        }
       }
     }
 
@@ -304,21 +327,6 @@ ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergen
             ...(unifiedNode.adjacent_curiosity_frontiers || []),
             f,
           ];
-        }
-      }
-    }
-
-    // Also promote semantic topic resolver's new topic candidates
-    if (contextFraming.semantic_resolution?.new_topic_candidates) {
-      for (const cand of contextFraming.semantic_resolution.new_topic_candidates) {
-        if (cand.topic_name && !unifiedNode.topics[cand.topic_name]) {
-          unifiedNode.topics[cand.topic_name] = {
-            weight: cand.suggested_initial_weight || 0.75,
-            why_they_care: cand.why_they_care || "Discovered via semantic graph resolution.",
-            technical_depth: cand.suggested_depth || "practitioner",
-            curiosity_vectors: cand.curiosity_vectors || [],
-            last_discussed_at: new Date().toISOString(),
-          };
         }
       }
     }
@@ -513,7 +521,7 @@ ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergen
         why_this_response: "Conversational continuation with real-time tools",
       },
       context_generated: contextGenerated,
-      extracted_topics: parsed.extracted_topics || [],
+      extracted_topics: validatedExtractedTopics,
       interest_intersections: parsed.interest_intersections || [],
       adjacent_curiosity_frontiers: parsed.adjacent_curiosity_frontiers || [],
       is_profile_ready: parsed.is_profile_ready || false,
