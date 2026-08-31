@@ -15,8 +15,6 @@ export async function GET(req: NextRequest) {
   const isAuthenticated = !!session?.user?.email;
   const effectiveUserId = isAuthenticated
     ? `usr_${session!.user!.email!.replace(/[^a-zA-Z0-9]/g, "_")}`
-    : queryUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_default"
-    ? queryUserId
     : null;
 
   if (!effectiveUserId) {

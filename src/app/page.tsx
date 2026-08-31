@@ -126,35 +126,48 @@ export default function AletheiaHome() {
 
   // Rehydrate existing persisted session & knowledge graph on mount or when auth user switches
   useEffect(() => {
-    // Reset state for new user
+    // Reset state for new user / guest
     setMessages([defaultWelcomeMessage]);
     setUserGraph(null);
     setUnifiedTopicNode(null);
     setExtractedTopics([]);
     setPipelineResult(null);
+    setAttachedStory(null);
+    setSelectedContext(null);
 
-    try {
-      const localCached = localStorage.getItem(`aletheia_chat_session_${effectiveUserId}`);
-      if (localCached) {
-        const parsed = JSON.parse(localCached);
-        if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
-        if (parsed.userGraph) setUserGraph(parsed.userGraph);
-        if (parsed.extractedTopics && parsed.extractedTopics.length > 0) setExtractedTopics(parsed.extractedTopics);
-        if (parsed.pipelineResult) setPipelineResult(parsed.pipelineResult);
-      }
-    } catch (e) {}
+    if (effectiveUserId && effectiveUserId !== "usr_guest") {
+      try {
+        const localCached = localStorage.getItem(`aletheia_chat_session_${effectiveUserId}`);
+        if (localCached) {
+          const parsed = JSON.parse(localCached);
+          if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
+          if (parsed.userGraph) setUserGraph(parsed.userGraph);
+          if (parsed.extractedTopics && parsed.extractedTopics.length > 0) setExtractedTopics(parsed.extractedTopics);
+          if (parsed.pipelineResult) setPipelineResult(parsed.pipelineResult);
+        }
+      } catch (e) {}
+    }
 
     const loadSession = async () => {
       try {
         const res = await fetch(`/api/session?userId=${encodeURIComponent(effectiveUserId)}`);
         const data = await res.json();
         if (data.success) {
-          if (data.messages && data.messages.length > 0) {
-            setMessages(data.messages);
+          if (data.is_authenticated) {
+            if (data.messages && data.messages.length > 0) {
+              setMessages(data.messages);
+            }
+            if (data.unified_topic_node) setUnifiedTopicNode(data.unified_topic_node);
+            if (data.user_graph) setUserGraph(data.user_graph);
+            if (data.extracted_topics && data.extracted_topics.length > 0) setExtractedTopics(data.extracted_topics);
+          } else {
+            // Unauthenticated Guest: ensure clean slate
+            setMessages([defaultWelcomeMessage]);
+            setUserGraph(null);
+            setUnifiedTopicNode(null);
+            setExtractedTopics([]);
+            setPipelineResult(null);
           }
-          if (data.unified_topic_node) setUnifiedTopicNode(data.unified_topic_node);
-          if (data.user_graph) setUserGraph(data.user_graph);
-          if (data.extracted_topics && data.extracted_topics.length > 0) setExtractedTopics(data.extracted_topics);
         }
       } catch (err) {
         console.error("Failed to load session:", err);
@@ -163,9 +176,9 @@ export default function AletheiaHome() {
     loadSession();
   }, [effectiveUserId]);
 
-  // Save to browser localStorage whenever state changes
+  // Save to browser localStorage whenever state changes (only for authenticated users)
   useEffect(() => {
-    if (messages.length > 1 || extractedTopics.length > 0 || userGraph || pipelineResult) {
+    if (effectiveUserId !== "usr_guest" && (messages.length > 1 || extractedTopics.length > 0 || userGraph || pipelineResult)) {
       try {
         localStorage.setItem(
           `aletheia_chat_session_${effectiveUserId}`,
@@ -189,11 +202,12 @@ export default function AletheiaHome() {
     setSelectedContext(null);
 
     try {
-      const localCached = localStorage.getItem("aletheia_chat_session");
+      const storageKey = `aletheia_chat_session_${effectiveUserId}`;
+      const localCached = localStorage.getItem(storageKey);
       if (localCached) {
         const parsed = JSON.parse(localCached);
         parsed.pipelineResult = null;
-        localStorage.setItem("aletheia_chat_session", JSON.stringify(parsed));
+        localStorage.setItem(storageKey, JSON.stringify(parsed));
       }
     } catch (e) {}
   };
@@ -206,11 +220,12 @@ export default function AletheiaHome() {
     setSelectedContext(null);
 
     try {
-      const localCached = localStorage.getItem("aletheia_chat_session");
+      const storageKey = `aletheia_chat_session_${effectiveUserId}`;
+      const localCached = localStorage.getItem(storageKey);
       if (localCached) {
         const parsed = JSON.parse(localCached);
         parsed.pipelineResult = null;
-        localStorage.setItem("aletheia_chat_session", JSON.stringify(parsed));
+        localStorage.setItem(storageKey, JSON.stringify(parsed));
       }
     } catch (e) {}
 
@@ -576,7 +591,23 @@ export default function AletheiaHome() {
                 {session.user.name || session.user.email}
               </span>
               <button
-                onClick={() => signOut()}
+                onClick={async () => {
+                  try {
+                    Object.keys(localStorage).forEach((key) => {
+                      if (key.startsWith("aletheia_")) {
+                        localStorage.removeItem(key);
+                      }
+                    });
+                  } catch (e) {}
+                  setMessages([defaultWelcomeMessage]);
+                  setUserGraph(null);
+                  setUnifiedTopicNode(null);
+                  setExtractedTopics([]);
+                  setPipelineResult(null);
+                  setAttachedStory(null);
+                  setSelectedContext(null);
+                  await signOut();
+                }}
                 className="px-2 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-[10px] text-rose-300 transition"
                 title="Sign out of ciclops.io"
               >
