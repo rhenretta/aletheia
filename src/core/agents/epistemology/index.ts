@@ -41,24 +41,55 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
       source_name: FreeNewsFetcher.cleanHtml(a.source_name),
     }));
 
-    // Atomic Event Clustering: Break articles into discrete, focused event clusters (1-3 articles per specific event)
-    const atomicClusters: Array<{
+    // Multi-Source Event Clustering: Aggressively combine similar/duplicate reports into unified multi-source clusters
+    const eventClusters: Array<{
       canonicalTopic: string;
       articles: RawArticle[];
       titleWords: Set<string>;
+      keyEntities: Set<string>;
     }> = [];
 
     const userTopics = state.user_graph ? Object.keys(state.user_graph.topic_weights) : [];
     const canonicalUserTopics = userTopics;
 
-    const stopWords = new Set(["with", "from", "that", "this", "after", "over", "into", "amid", "says", "more", "will", "about", "latest", "what", "their"]);
+    const stopWords = new Set([
+      "with", "from", "that", "this", "after", "over", "into", "amid", "says", "more",
+      "will", "about", "latest", "what", "their", "have", "been", "were", "first",
+      "news", "report", "today", "update", "live", "could", "would", "should", "than"
+    ]);
+
+    // Strip news organization branding from headline tails
+    const cleanHeadlineBase = (title: string): string => {
+      return title
+        .replace(/\s*[-|–—:]\s*(Reuters|Bloomberg|AP News|Associated Press|The Associated Press|CNN|BBC|The New York Times|NYT|The Wall Street Journal|WSJ|TechCrunch|The Verge|CNBC|Forbes|The Guardian|Financial Times|Al Jazeera|Fox News|Politico|Axios|NBC News|CBS News|ABC News|Wired|Ars Technica|Engadget)\s*$/i, "")
+        .trim();
+    };
+
+    const extractTitleTokens = (title: string): { words: Set<string>; entities: Set<string> } => {
+      const cleaned = cleanHeadlineBase(title);
+      const words = new Set<string>();
+      const entities = new Set<string>();
+
+      // Extract alphanumeric tokens
+      const rawTokens = cleaned.split(/\s+/);
+      for (const t of rawTokens) {
+        const clean = t.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (clean.length > 2 && !stopWords.has(clean)) {
+          words.add(clean);
+        }
+        // Capitalized words or uppercase acronyms indicate named entities / organizations
+        if (/^[A-Z][a-zA-Z0-9_-]{2,}/.test(t) || /^[A-Z]{2,}/.test(t)) {
+          entities.add(t.replace(/[^a-zA-Z0-9]/g, "").toLowerCase());
+        }
+      }
+      return { words, entities };
+    };
 
     for (const article of cleanedArticles) {
       const artText = (article.title + " " + article.raw_text).toLowerCase();
 
-      // Use the explicit topic category under which this article was fetched
+      // Determine best matching canonical topic
       let bestTopic = article.topic_category || "";
-
       if (!bestTopic && canonicalUserTopics.length > 0) {
         let bestScore = 0;
         for (const topic of canonicalUserTopics) {
@@ -80,42 +111,64 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
         bestTopic = "General News";
       }
 
-      // Extract significant title words for event-level clustering
-      const words = article.title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, " ")
-        .split(/\s+/)
-        .filter((w) => w.length > 3 && !stopWords.has(w));
+      const { words: titleWordSet, entities: entitySet } = extractTitleTokens(article.title);
+      const cleanTitleNorm = cleanHeadlineBase(article.title).toLowerCase().replace(/[^a-z0-9]/g, "");
 
-      const titleWordSet = new Set(words);
-
-      // Check if this article matches an existing atomic cluster in the same topic
-      let matchedCluster = atomicClusters.find((c) => {
-        if (c.canonicalTopic !== bestTopic) return false;
-        if (c.articles.length >= 3) return false; // Keep clusters small and atomic
-        // Count overlapping substantive words
-        let overlap = 0;
-        for (const w of titleWordSet) {
-          if (c.titleWords.has(w)) overlap++;
+      // Check if this article matches an existing event cluster (even across slightly different category tags)
+      let matchedCluster = eventClusters.find((c) => {
+        // 1. Direct normalized prefix match (e.g. "RAND Proposes Tax Policy Overhaul...")
+        const clusterTitleNorm = cleanHeadlineBase(c.articles[0]?.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (cleanTitleNorm.length > 20 && clusterTitleNorm.length > 20) {
+          if (cleanTitleNorm.slice(0, 30) === clusterTitleNorm.slice(0, 30)) {
+            return true;
+          }
         }
-        return overlap >= 2;
+
+        // 2. Named entity overlap + word overlap
+        let entityOverlap = 0;
+        for (const e of entitySet) {
+          if (c.keyEntities.has(e)) entityOverlap++;
+        }
+
+        let wordOverlap = 0;
+        for (const w of titleWordSet) {
+          if (c.titleWords.has(w)) wordOverlap++;
+        }
+
+        const totalUniqueWords = new Set([...titleWordSet, ...c.titleWords]).size;
+        const jaccard = totalUniqueWords > 0 ? wordOverlap / totalUniqueWords : 0;
+
+        // Same event if high word Jaccard index (>= 0.28) OR multiple key entities overlap + at least 2 substantive words
+        if (jaccard >= 0.28) return true;
+        if (entityOverlap >= 2 && wordOverlap >= 2) return true;
+        if (wordOverlap >= 4) return true;
+
+        return false;
       });
 
       if (matchedCluster) {
-        matchedCluster.articles.push(article);
-        for (const w of titleWordSet) matchedCluster.titleWords.add(w);
+        // Prevent adding duplicate identical URL from same source
+        const hasUrl = matchedCluster.articles.some(
+          (a) => a.source_url && a.source_url === article.source_url
+        );
+        if (!hasUrl) {
+          matchedCluster.articles.push(article);
+          for (const w of titleWordSet) matchedCluster.titleWords.add(w);
+          for (const e of entitySet) matchedCluster.keyEntities.add(e);
+        }
       } else {
-        atomicClusters.push({
+        eventClusters.push({
           canonicalTopic: bestTopic,
           articles: [article],
           titleWords: titleWordSet,
+          keyEntities: entitySet,
         });
       }
     }
 
-    // Process each atomic cluster into a dedicated PureFactObject in parallel
+    // Process each clustered event into a dedicated PureFactObject in parallel
     const pureFacts: PureFactObject[] = await Promise.all(
-      atomicClusters.map(async (cluster) => {
+      eventClusters.map(async (cluster) => {
         const topic = cluster.canonicalTopic;
         const articlesForEvent = cluster.articles;
         const eventId = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -152,7 +205,7 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
     const updatedFacts = [...(state.current_facts || []), ...pureFacts];
     const latency = Date.now() - startTime;
 
-    const distinctTopics = Array.from(new Set(atomicClusters.map((c) => c.canonicalTopic)));
+    const distinctTopics = Array.from(new Set(eventClusters.map((c) => c.canonicalTopic)));
 
     const trace = traceLogger.logTrace({
       session_id: state.session_id,

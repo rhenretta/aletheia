@@ -255,7 +255,98 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
       }
     }
 
-    return uniqueCards;
+    // Composite Scoring System (Recency + Prolific Coverage + Epistemic User Affinity)
+    const now = Date.now();
+    const scoredCards = uniqueCards.map((card) => {
+      // 1. Recency Score (Exponential decay based on hours elapsed)
+      const pubTime = new Date(card.published_at || now).getTime() || now;
+      const hoursAgo = Math.max(0, (now - pubTime) / (1000 * 60 * 60));
+      const recencyScore = Math.max(0.1, Math.exp(-hoursAgo / 36));
+
+      // 2. Prolific Coverage Score (How widely reported across distinct sources)
+      const numSources = (card.sources || []).length;
+      const prolificScore = Math.min(1.0, 0.40 + 0.15 * Math.min(4, numSources));
+
+      // 3. User Beliefs & Interest Affinity Score
+      let affinityScore = 0.5;
+      if (userGraph && userGraph.topic_weights) {
+        const directWeight = userGraph.topic_weights[card.topic];
+        if (typeof directWeight === "number") {
+          affinityScore = directWeight;
+        } else {
+          // Check partial match in topic keys
+          const matchedKey = Object.keys(userGraph.topic_weights).find(
+            (k) => card.topic.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(card.topic.toLowerCase())
+          );
+          affinityScore = matchedKey ? userGraph.topic_weights[matchedKey] : 0.4;
+        }
+      }
+
+      // Bonus for intersection or curiosity frontiers
+      if (card.discovery_category === "thematic_intersection") {
+        affinityScore = Math.min(1.0, affinityScore + 0.15);
+      } else if (card.discovery_category === "curiosity_frontier") {
+        affinityScore = Math.min(1.0, affinityScore + 0.10);
+      }
+
+      // Bonus for matching historical anchors
+      if (
+        userGraph?.historical_anchors?.some((a) =>
+          card.headline.toLowerCase().includes(a.toLowerCase()) ||
+          card.topic.toLowerCase().includes(a.toLowerCase())
+        )
+      ) {
+        affinityScore = Math.min(1.0, affinityScore + 0.10);
+      }
+
+      // Composite Rank: 35% Recency, 35% User Affinity, 30% Prolific Multi-Source Weight
+      const compositeScore = Number(
+        (0.35 * recencyScore + 0.35 * affinityScore + 0.30 * prolificScore).toFixed(4)
+      );
+
+      return {
+        card,
+        compositeScore,
+        recencyScore,
+        prolificScore,
+        affinityScore,
+      };
+    });
+
+    // Topic Interleaving & Diversity Mixer:
+    // Prevents topic clumping while maintaining composite rank order
+    const remaining = [...scoredCards];
+    const blendedFeed: SynthesizedEventCard[] = [];
+    const topicRecentCounters: Record<string, number> = {};
+
+    while (remaining.length > 0) {
+      let bestIndex = 0;
+      let highestEffectiveScore = -Infinity;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const item = remaining[i];
+        const recentCount = topicRecentCounters[item.card.topic] || 0;
+        // Apply exponential anti-clumping penalty if this topic was placed recently
+        const diversityMultiplier = Math.pow(0.60, recentCount);
+        const effectiveScore = item.compositeScore * diversityMultiplier;
+
+        if (effectiveScore > highestEffectiveScore) {
+          highestEffectiveScore = effectiveScore;
+          bestIndex = i;
+        }
+      }
+
+      const [selected] = remaining.splice(bestIndex, 1);
+      blendedFeed.push(selected.card);
+
+      // Decay previous topic weights and elevate selected topic counter
+      for (const t in topicRecentCounters) {
+        topicRecentCounters[t] = Math.max(0, topicRecentCounters[t] - 1);
+      }
+      topicRecentCounters[selected.card.topic] = (topicRecentCounters[selected.card.topic] || 0) + 2;
+    }
+
+    return blendedFeed;
   }
 }
 
