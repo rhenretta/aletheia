@@ -1,71 +1,27 @@
-# Availability Zones in Region
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-# Dedicated VPC for Aletheia
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
-  tags = {
-    Name = "${var.app_name}-vpc"
+# Look up existing shared VPC created by ai-resume-generator
+data "aws_vpc" "shared" {
+  filter {
+    name   = "tag:Name"
+    values = ["ai-resume-generator-vpc"]
   }
 }
 
-# Internet Gateway for public ingress ($0 base cost)
-resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${var.app_name}-igw"
+# Look up existing multi-AZ public subnets from ai-resume-generator
+data "aws_subnet" "public_1" {
+  filter {
+    name   = "tag:Name"
+    values = ["ai-resume-generator-public-1"]
   }
 }
 
-# Public Subnets in two distinct AZs (required by ALB and RDS Multi-AZ Subnet Groups)
-resource "aws_subnet" "public_1" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${var.app_name}-public-1"
+data "aws_subnet" "public_2" {
+  filter {
+    name   = "tag:Name"
+    values = ["ai-resume-generator-public-2"]
   }
 }
 
-resource "aws_subnet" "public_2" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.2.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "${var.app_name}-public-2"
-  }
-}
-
-# Public Route Table directing outbound internet traffic to the Internet Gateway
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.gw.id
-  }
-
-  tags = {
-    Name = "${var.app_name}-public-rt"
-  }
-}
-
-resource "aws_route_table_association" "public_1" {
-  subnet_id      = aws_subnet.public_1.id
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_route_table_association" "public_2" {
-  subnet_id      = aws_subnet.public_2.id
-  route_table_id = aws_route_table.public.id
+locals {
+  vpc_id     = data.aws_vpc.shared.id
+  subnet_ids = [data.aws_subnet.public_1.id, data.aws_subnet.public_2.id]
 }
