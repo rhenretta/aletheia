@@ -26,6 +26,7 @@ import {
   ChevronUp,
   BookOpen,
   Clock,
+  RotateCcw,
 } from "lucide-react";
 import {
   NewsStateContext,
@@ -216,26 +217,55 @@ export default function AletheiaHome() {
     await handleCollectNews();
   };
 
-  // Full reset (wipes everything back to initial install state)
-  const handleResetSession = async () => {
-    try {
-      localStorage.removeItem("aletheia_chat_session");
-    } catch (e) {}
+  const [isResettingProfile, setIsResettingProfile] = useState(false);
 
-    setMessages([
-      {
+  // Full reset (wipes user profile, mind-state memory, chat session in database & storage)
+  const handleResetProfileAndSession = async () => {
+    if (!window.confirm("Are you sure you want to reset your profile and start from scratch? This will clear your learned interests, psychological profile, chat history, and feed.")) {
+      return;
+    }
+
+    setIsResettingProfile(true);
+    try {
+      try {
+        localStorage.removeItem("aletheia_chat_session");
+      } catch (e) {}
+
+      const res = await fetch(`/api/session?userId=${effectiveUserId || "usr_guest"}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+
+      const defaultWelcome: ChatMessage = {
         id: "welcome-msg",
-        role: "assistant",
+        role: "assistant" as const,
         content:
-          "Welcome to Aletheia. I'm your personalized epistemological companion.\n\nExplore your multi-topic news feed on the left, or discuss any story directly with me. As we talk, I invisibly learn your deeper interests, discover intersections, and filter out ideological noise.",
+          "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
         timestamp: new Date().toISOString(),
-      },
-    ]);
-    setUserGraph(null);
-    setExtractedTopics([]);
-    setPipelineResult(null);
-    setAttachedStory(null);
-    setSelectedContext(null);
+      };
+
+      setMessages([defaultWelcome]);
+      setUserGraph(
+        json.user_graph || {
+          user_id: effectiveUserId || "usr_guest",
+          topic_weights: {},
+          cognitive_load_state: "balanced",
+          historical_anchors: [],
+          dwell_history: [],
+          last_updated: new Date().toISOString(),
+        }
+      );
+      setUnifiedTopicNode(json.unified_topic_node || null);
+      setExtractedTopics([]);
+      setPipelineResult(null);
+      setAttachedStory(null);
+      setSelectedContext(null);
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (err) {
+      console.error("Failed to reset profile:", err);
+    } finally {
+      setIsResettingProfile(false);
+    }
   };
 
   const [chatError, setChatError] = useState<string | null>(null);
@@ -504,6 +534,16 @@ export default function AletheiaHome() {
             title="Clear the current news feed"
           >
             Clear Feed
+          </button>
+
+          <button
+            onClick={() => handleResetProfileAndSession()}
+            disabled={isResettingProfile}
+            className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-white/10 hover:border-rose-500/30 text-xs flex items-center gap-1.5 transition disabled:opacity-40"
+            title="Clear your profile, learned topics, chat memory, and start from scratch"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isResettingProfile ? "animate-spin text-rose-400" : ""}`} />
+            <span>{isResettingProfile ? "Resetting..." : "Reset Profile"}</span>
           </button>
 
           <button
@@ -1182,9 +1222,22 @@ export default function AletheiaHome() {
             /* VIEW 2: MY INTERESTS (EPISTEMIC KNOWLEDGE GRAPH MODEL) */
             <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
               <div className="space-y-3">
-                <div className="text-[11px] font-mono text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                  <Brain className="w-3.5 h-3.5 text-cyan-400" />
-                  Active Interests:
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-mono text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <Brain className="w-3.5 h-3.5 text-cyan-400" />
+                    Active Interests:
+                  </div>
+                  {(Object.entries(userGraph?.topic_weights || {}).length > 0 || extractedTopics.length > 0) && (
+                    <button
+                      onClick={() => handleResetProfileAndSession()}
+                      disabled={isResettingProfile}
+                      className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
+                      title="Clear interests and start from scratch"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset</span>
+                    </button>
+                  )}
                 </div>
 
                 {Object.entries(userGraph?.topic_weights || {}).length === 0 && extractedTopics.length === 0 ? (

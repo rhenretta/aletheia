@@ -370,12 +370,14 @@ export class PostgresStore {
   public async clearSession(userId: string): Promise<void> {
     this.memoryChatSessions.delete(userId);
     this.memoryUserGraphs.delete(userId);
+    this.memoryTopicNodes.delete(userId);
     this.saveToDisk();
 
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(`DELETE FROM chat_sessions WHERE user_id = $1`, [userId]);
         await this.pool.query(`DELETE FROM user_knowledge_graphs WHERE user_id = $1`, [userId]);
+        await this.pool.query(`DELETE FROM unified_topic_nodes WHERE user_id = $1`, [userId]);
       } catch (err) {
         console.warn("PostgresStore: Error clearing session:", err);
       }

@@ -61,3 +61,38 @@ export async function GET(req: NextRequest) {
     facts_cached: facts,
   });
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  const queryUserId = req.nextUrl.searchParams.get("userId");
+
+  const isAuthenticated = !!session?.user?.email;
+  const effectiveUserId = isAuthenticated
+    ? `usr_${session!.user!.email!.replace(/[^a-zA-Z0-9]/g, "_")}`
+    : queryUserId && queryUserId.startsWith("usr_")
+    ? queryUserId
+    : "usr_guest";
+
+  // Wipe user's persistent mind-state memory, chat session, and graph
+  await postgresStore.clearSession(effectiveUserId);
+
+  const cleanNode = DataPersistenceStore.createDefaultUnifiedTopicNode(effectiveUserId);
+  const cleanGraph = {
+    user_id: effectiveUserId,
+    topic_weights: {},
+    cognitive_load_state: "balanced" as const,
+    historical_anchors: [],
+    dwell_history: [],
+    last_updated: new Date().toISOString(),
+  };
+
+  return NextResponse.json({
+    success: true,
+    message: "Profile and mind-state memory cleared successfully.",
+    user_id: effectiveUserId,
+    unified_topic_node: cleanNode,
+    user_graph: cleanGraph,
+    messages: [],
+    extracted_topics: [],
+  });
+}
