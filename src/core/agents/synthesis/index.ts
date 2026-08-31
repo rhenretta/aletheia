@@ -214,6 +214,33 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
           headline = effectiveArticles[0].title;
         }
 
+        let cardImageUrl: string | undefined = effectiveArticles.find(
+            (a) => a.image_url && a.image_url.startsWith("http")
+          )?.image_url;
+
+          // If no direct image from source feed, resolve Wikipedia entity photo
+          if (!cardImageUrl) {
+            const entityCandidate =
+              fact.verified_entities?.[0] ||
+              headline.match(/\b([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)\b/g)?.find(
+                (e) =>
+                  e.length > 3 &&
+                  !["This", "That", "What", "When", "Where", "With", "From", "Into", "Over", "Under", "After", "Before", "News", "Report"].includes(e)
+              );
+
+            if (entityCandidate) {
+              const wikiImg = await FreeNewsFetcher.fetchEntityImage(entityCandidate);
+              if (wikiImg) {
+                cardImageUrl = wikiImg;
+              }
+            }
+          }
+
+          // Fallback to domain-accurate editorial photojournalism
+          if (!cardImageUrl) {
+            cardImageUrl = FreeNewsFetcher.getThematicEditorialImage(cleanTopic, headline);
+          }
+
         return {
           event_id: fact.event_id,
           topic: cleanTopic,
@@ -231,10 +258,7 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
           recency_label: recencyLabel,
           is_exploration: isExploration,
           anchor_concept: isExploration ? anchorConcept : undefined,
-          image_url:
-            effectiveArticles.find(
-              (a) => a.image_url && a.image_url.startsWith("http") && !a.image_url.includes("unsplash.com")
-            )?.image_url || undefined,
+          image_url: cardImageUrl,
           widget_data: {
             chart_type: "delta_bar",
             data_points: dataPoints,

@@ -147,101 +147,222 @@ export class FreeNewsFetcher {
     return articles;
   }
 
+  private static readonly ENTITY_IMAGE_CACHE = new Map<string, string>();
+
   /**
-   * High-resolution, authentic editorial photography collections categorized by topic
+   * Resolves genuine entity photography/logos from Wikipedia/Wikimedia Commons for named institutions and technologies
+   */
+  public static async fetchEntityImage(entityOrTopic: string): Promise<string | null> {
+    if (!entityOrTopic || entityOrTopic.trim().length < 2) return null;
+    const cleanEntity = entityOrTopic.trim();
+    const cacheKey = cleanEntity.toLowerCase();
+
+    if (this.ENTITY_IMAGE_CACHE.has(cacheKey)) {
+      return this.ENTITY_IMAGE_CACHE.get(cacheKey) || null;
+    }
+
+    try {
+      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanEntity.replace(/\s+/g, "_"))}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "AletheiaNews/1.0 (contact@ciclops.io)",
+          "Accept": "application/json",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        const imgUrl = data.thumbnail?.source || data.originalimage?.source || null;
+        if (imgUrl && typeof imgUrl === "string" && imgUrl.startsWith("http")) {
+          this.ENTITY_IMAGE_CACHE.set(cacheKey, imgUrl);
+          return imgUrl;
+        }
+      }
+    } catch (e) {}
+
+    this.ENTITY_IMAGE_CACHE.set(cacheKey, "");
+    return null;
+  }
+
+  /**
+   * High-resolution, authentic editorial photojournalism categorized by specific domains
    */
   private static readonly THEMATIC_IMAGE_COLLECTIONS: Record<string, string[]> = {
-    space: [
-      "https://images.unsplash.com/photo-1517976487508-466d7e2e34bf?auto=format&fit=crop&w=1200&q=80", // Rocket blastoff
-      "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=1200&q=80", // Starship launchpad
-      "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80", // Earth from orbit
-      "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=1200&q=80", // Space station & satellite
-      "https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?auto=format&fit=crop&w=1200&q=80", // Rocket engine / exhaust
-      "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=1200&q=80", // Deep space telemetry
-      "https://images.unsplash.com/photo-1447433589675-4aaa569f3e05?auto=format&fit=crop&w=1200&q=80", // Starry sky launch trajectory
+    economics_policy: [
+      "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=1200&q=80", // Stock exchange market floor
+      "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&q=80", // Financial charts & macroeconomic data
+      "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=1200&q=80", // Currency & monetary policy
+      "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1200&q=80", // Balance sheet analysis & tax documents
+      "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=1200&q=80", // Capitol Hill & legislative chamber
     ],
-    autonomous: [
-      "https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=1200&q=80", // EV HUD & autonomous cockpit
-      "https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&w=1200&q=80", // Tesla steering & display
-      "https://images.unsplash.com/photo-1508974239320-0a029497e820?auto=format&fit=crop&w=1200&q=80", // Night highway speed trails
-      "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=1200&q=80", // Clean automotive design
-      "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&w=1200&q=80", // Futuristic concept vehicle
-      "https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&w=1200&q=80", // Electric charging & sensors
-      "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80", // High-tech sports car
-    ],
-    ai: [
+    ai_compute: [
       "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=1200&q=80", // Neural network / generative AI
-      "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80", // Abstract computational matrix
-      "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80", // Server rack / AI datacenter
-      "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80", // Cyber matrix code stream
-      "https://images.unsplash.com/photo-1531746790731-6c087fecd65a?auto=format&fit=crop&w=1200&q=80", // Robotics & synthetic intelligence
-      "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80", // Microprocessor silicon wafer
-      "https://images.unsplash.com/photo-1535378917042-10a22c95931a?auto=format&fit=crop&w=1200&q=80", // Cybernetic visual node
+      "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80", // AI server rack & datacenter
+      "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80", // Silicon wafer microprocessor
+      "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80", // Computational matrix
+      "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80", // Cyber security & algorithms
     ],
-    conflict: [
-      "https://images.unsplash.com/photo-1579273166152-d725a4e2b755?auto=format&fit=crop&w=1200&q=80", // Maritime radar / navigation
-      "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=80", // Global cargo freight / Strait of Hormuz
-      "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80", // Shipping container port infrastructure
-      "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1200&q=80", // Diplomatic meeting & strategy desk
-      "https://images.unsplash.com/photo-1512756290469-ec264b7fbf87?auto=format&fit=crop&w=1200&q=80", // Mission control / security screens
-      "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80", // Geopolitical financial district
-      "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=1200&q=80", // World map intelligence
+    defense_security: [
+      "https://images.unsplash.com/photo-1579273166152-d725a4e2b755?auto=format&fit=crop&w=1200&q=80", // Maritime radar navigation & defense
+      "https://images.unsplash.com/photo-1512756290469-ec264b7fbf87?auto=format&fit=crop&w=1200&q=80", // Command center tactical screens
+      "https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=1200&q=80", // Defense satellite dishes
+      "https://images.unsplash.com/photo-1516339901601-2e1562986307?auto=format&fit=crop&w=1200&q=80", // Geospatial surveillance grid
+      "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=1200&q=80", // Global geopolitical intelligence map
     ],
-    energy: [
-      "https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=1200&q=80", // Solar panel farm
-      "https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=1200&q=80", // Wind turbines at sunrise
-      "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1200&q=80", // Power grid transmission towers
-      "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1200&q=80", // Industrial manufacturing facility
+    space_aerospace: [
+      "https://images.unsplash.com/photo-1517976487508-466d7e2e34bf?auto=format&fit=crop&w=1200&q=80", // Rocket blastoff
+      "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?auto=format&fit=crop&w=1200&q=80", // Launchpad & Starship
+      "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80", // Orbital telemetry & Earth
+      "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=1200&q=80", // International space station
+      "https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?auto=format&fit=crop&w=1200&q=80", // Rocket propulsion combustion
+    ],
+    energy_grid: [
+      "https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=1200&q=80", // Solar utility array
+      "https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=1200&q=80", // Wind turbine renewable generation
+      "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1200&q=80", // High voltage transmission towers
+      "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=1200&q=80", // Grid substation transformer
       "https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=1200&q=80", // Battery chemistry laboratory
-      "https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=1200&q=80", // High-voltage electrical transformers
     ],
-    habitats: [
-      "https://images.unsplash.com/photo-1527786356703-4b100091cd2c?auto=format&fit=crop&w=1200&q=80", // Camper van on mountain highway
-      "https://images.unsplash.com/photo-1523987355523-c7b5b0dd90a7?auto=format&fit=crop&w=1200&q=80", // Off-grid solar expedition van
-      "https://images.unsplash.com/photo-1510312305653-8ed496efae75?auto=format&fit=crop&w=1200&q=80", // Remote wilderness camping
-      "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1200&q=80", // Scenic desert road trip
-      "https://images.unsplash.com/photo-1517824806704-9040b037703b?auto=format&fit=crop&w=1200&q=80", // Van interior workspace
-      "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80", // Alpine landscape road
+    biotech_health: [
+      "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?auto=format&fit=crop&w=1200&q=80", // Laboratory scientific research
+      "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&w=1200&q=80", // Medical science & pathology
+      "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80", // Clinical laboratory analysis
+      "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=1200&q=80", // Molecular biology
     ],
-    surveillance: [
-      "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80", // Earth satellite orbit
-      "https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=1200&q=80", // Radar and satellite dishes
-      "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80", // Satellite telemetry chip
-      "https://images.unsplash.com/photo-1516339901601-2e1562986307?auto=format&fit=crop&w=1200&q=80", // Aerial geospatial grid
+    robotics_automation: [
+      "https://images.unsplash.com/photo-1531746790731-6c087fecd65a?auto=format&fit=crop&w=1200&q=80", // Robotics & cybernetics
+      "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=1200&q=80", // Advanced automated manufacturing
+      "https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=1200&q=80", // Autonomous cockpit & telemetry
+      "https://images.unsplash.com/photo-1508974239320-0a029497e820?auto=format&fit=crop&w=1200&q=80", // Autonomous transport corridors
     ],
-    general: [
-      "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80", // Newspaper / journalism desk
-      "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80", // Digital news broadcast
-      "https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=1200&q=80", // Breaking news morning press
-      "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=1200&q=80", // Tech innovation studio
-      "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80", // Global connectivity
+    geopolitics_diplomacy: [
+      "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1200&q=80", // International diplomacy summit table
+      "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80", // Global governance & institutional architecture
+      "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=1200&q=80", // Maritime trade routes & container logistics
+      "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80", // Global trade port
+    ],
+    general_wire: [
+      "https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80", // News broadcast media
+      "https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=1200&q=80", // Global newsroom press
+      "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80", // Journalistic investigation desk
     ],
   };
 
   /**
-   * Resolves crisp, relevant high-resolution editorial imagery tailored for each topic with deterministic title-based variation
+   * Resolves crisp, relevant high-resolution editorial imagery tailored for each topic
    */
   public static getThematicEditorialImage(topic: string, title: string = ""): string {
     const combined = `${topic} ${title}`.toLowerCase();
-    let category = "general";
+    let category = "general_wire";
 
-    if (combined.includes("starship") || combined.includes("spacex") || combined.includes("rocket") || combined.includes("nasa") || combined.includes("launch") || combined.includes("space")) {
-      category = "space";
-    } else if (combined.includes("tesla") || combined.includes("fsd") || combined.includes("autopilot") || combined.includes("autonomous") || combined.includes("waymo") || combined.includes("vehicle") || combined.includes("drive") || combined.includes("car")) {
-      category = "autonomous";
-    } else if (combined.includes("ai") || combined.includes("agent") || combined.includes("model") || combined.includes("software") || combined.includes("compute") || combined.includes("neural") || combined.includes("coder") || combined.includes("developer")) {
-      category = "ai";
-    } else if (combined.includes("conflict") || combined.includes("war") || combined.includes("military") || combined.includes("iran") || combined.includes("hormuz") || combined.includes("sanction") || combined.includes("geopolitics") || combined.includes("trade") || combined.includes("arms")) {
-      category = "conflict";
-    } else if (combined.includes("solar") || combined.includes("battery") || combined.includes("grid") || combined.includes("energy") || combined.includes("power") || combined.includes("phosphate")) {
-      category = "energy";
-    } else if (combined.includes("van") || combined.includes("rv") || combined.includes("habitat") || combined.includes("living") || combined.includes("cabin") || combined.includes("mobile")) {
-      category = "habitats";
-    } else if (combined.includes("satellite") || combined.includes("surveillance") || combined.includes("remote sensing") || combined.includes("orbit")) {
-      category = "surveillance";
+    if (
+      combined.includes("tax") ||
+      combined.includes("fiscal") ||
+      combined.includes("ubi") ||
+      combined.includes("basic income") ||
+      combined.includes("rand") ||
+      combined.includes("economic") ||
+      combined.includes("economy") ||
+      combined.includes("inflation") ||
+      combined.includes("debt") ||
+      combined.includes("federal reserve") ||
+      combined.includes("tariff") ||
+      combined.includes("budget") ||
+      combined.includes("treasury")
+    ) {
+      category = "economics_policy";
+    } else if (
+      combined.includes("starship") ||
+      combined.includes("spacex") ||
+      combined.includes("rocket") ||
+      combined.includes("nasa") ||
+      combined.includes("launch") ||
+      combined.includes("space") ||
+      combined.includes("orbit") ||
+      combined.includes("satellite") ||
+      combined.includes("astronomy") ||
+      combined.includes("cislunar")
+    ) {
+      category = "space_aerospace";
+    } else if (
+      combined.includes("ai") ||
+      combined.includes("llm") ||
+      combined.includes("model") ||
+      combined.includes("deepseek") ||
+      combined.includes("openai") ||
+      combined.includes("anthropic") ||
+      combined.includes("gpu") ||
+      combined.includes("nvidia") ||
+      combined.includes("semiconductor") ||
+      combined.includes("chip") ||
+      combined.includes("compute") ||
+      combined.includes("software")
+    ) {
+      category = "ai_compute";
+    } else if (
+      combined.includes("defense") ||
+      combined.includes("military") ||
+      combined.includes("drone") ||
+      combined.includes("warfare") ||
+      combined.includes("radar") ||
+      combined.includes("pentagon") ||
+      combined.includes("arms") ||
+      combined.includes("missile") ||
+      combined.includes("security") ||
+      combined.includes("surveillance")
+    ) {
+      category = "defense_security";
+    } else if (
+      combined.includes("solar") ||
+      combined.includes("battery") ||
+      combined.includes("grid") ||
+      combined.includes("energy") ||
+      combined.includes("nuclear") ||
+      combined.includes("fusion") ||
+      combined.includes("power") ||
+      combined.includes("microgrid") ||
+      combined.includes("storage")
+    ) {
+      category = "energy_grid";
+    } else if (
+      combined.includes("health") ||
+      combined.includes("disease") ||
+      combined.includes("medical") ||
+      combined.includes("fda") ||
+      combined.includes("cancer") ||
+      combined.includes("gene") ||
+      combined.includes("clinical") ||
+      combined.includes("biotech")
+    ) {
+      category = "biotech_health";
+    } else if (
+      combined.includes("robot") ||
+      combined.includes("automation") ||
+      combined.includes("autonomous") ||
+      combined.includes("tesla") ||
+      combined.includes("waymo") ||
+      combined.includes("hardware")
+    ) {
+      category = "robotics_automation";
+    } else if (
+      combined.includes("china") ||
+      combined.includes("diplomacy") ||
+      combined.includes("geopolitics") ||
+      combined.includes("sanction") ||
+      combined.includes("trade") ||
+      combined.includes("treaty") ||
+      combined.includes("iran") ||
+      combined.includes("europe")
+    ) {
+      category = "geopolitics_diplomacy";
     }
 
-    const collection = this.THEMATIC_IMAGE_COLLECTIONS[category] || this.THEMATIC_IMAGE_COLLECTIONS.general;
+    const collection = this.THEMATIC_IMAGE_COLLECTIONS[category] || this.THEMATIC_IMAGE_COLLECTIONS.general_wire;
 
     // Compute deterministic hash from headline/title to ensure unique, stable images per story
     let hash = 0;

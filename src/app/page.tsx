@@ -941,6 +941,7 @@ export default function AletheiaHome() {
                         <img
                           src={card.image_url}
                           alt={card.headline}
+                          referrerPolicy="no-referrer"
                           className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
                           loading="lazy"
                           onError={(e) => {
