@@ -342,9 +342,16 @@ export default function AletheiaHome() {
         throw new Error(json.error || `Server responded with status ${res.status}`);
       }
 
-      // Check if AI chose to activate a feed filter based on conversational context
-      if (json.data.active_feed_filter && json.data.active_feed_filter.is_active) {
+      // Update or clear dynamic conversational AI feed filter
+      if (
+        json.data.active_feed_filter &&
+        json.data.active_feed_filter.is_active &&
+        (json.data.active_feed_filter.matched_event_ids?.length || json.data.active_feed_filter.topic)
+      ) {
         setAiFeedFilter(json.data.active_feed_filter);
+      } else {
+        // Automatically clear stale previous filter if new turn does not activate one
+        setAiFeedFilter(null);
       }
 
       const botMessage: ChatMessage = {

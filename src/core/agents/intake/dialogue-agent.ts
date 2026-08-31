@@ -138,15 +138,18 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
          "query": "exact search terms matching user inquiry"
        }
      }
-   - If the user's conversation focuses on a specific topic or controversy that corresponds to stories in their feed, you can trigger "filter_feed" or populate "active_feed_filter":
+
+4. DYNAMIC CONVERSATIONAL FEED ADAPTATION & FILTER CLEANUP:
+   - If the user discusses a topic that matches stories in their feed, set "active_feed_filter" to focus their news feed on those matching stories:
      {
-       "tool_call": {
-         "name": "filter_feed",
-         "filter_topic": "Topic Name",
+       "active_feed_filter": {
+         "is_active": true,
+         "topic": "Canonical Topic Name",
          "matched_event_ids": ["evt_123", "evt_456"],
-         "reasoning": "Curated to show relevant stories matching our discussion."
+         "filter_reason": "Curated to show relevant stories matching our discussion."
        }
      }
+   - CRITICAL: When the conversation shifts to a new topic or question that does NOT relate to the previously filtered topic, NEVER leave the old filter stuck! Either update "active_feed_filter" to the new topic, or set "is_active": false so stale filters are cleared immediately.
 
 When no tool call is needed (or once tool results have been provided), output strict JSON:
 {
@@ -162,7 +165,7 @@ When no tool call is needed (or once tool results have been provided), output st
     "is_active": boolean,
     "topic": string or null,
     "matched_event_ids": ["evt_123", ...],
-    "filter_reason": "Specific note explaining why the feed is filtered (e.g. 'Filtered to AI economic policy & UBI stories matching our discussion')"
+    "filter_reason": "Specific note explaining why the feed is filtered (or null/empty if no active filter)"
   },
   "extracted_topics": [
     {
