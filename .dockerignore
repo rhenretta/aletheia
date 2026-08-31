@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+data
+traces
+.env
+.env*.local
+*.tsbuildinfo
+npm-debug.log*
+.DS_Store
+terraform
