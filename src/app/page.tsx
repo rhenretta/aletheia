@@ -349,6 +349,23 @@ export default function AletheiaHome() {
           summary: c.summary,
         })) || [];
 
+      const now = new Date();
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const clientContext = {
+        clientTime: now.toISOString(),
+        timeZone: tz,
+        localFormatted: now.toLocaleString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZoneName: "short",
+        }),
+        location: tz.replace(/_/g, " "),
+      };
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -357,6 +374,7 @@ export default function AletheiaHome() {
           userId: effectiveUserId,
           attachedStory: attachedStory || undefined,
           currentStories: currentStoriesPayload,
+          clientContext,
         }),
       });
 

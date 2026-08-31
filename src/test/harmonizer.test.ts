@@ -38,6 +38,8 @@ describe("InterestHarmonizer: Semantic Topic Merging and Splitting", () => {
       discovery_parameters: {
         signal_threshold: 0.7,
         anti_preferences: [],
+        exploration_rate: 0.2,
+        depth_requirement: "practitioner",
       },
       historical_anchors: [],
       dwell_history: [],

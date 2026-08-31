@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     const body = await req.json();
-    const { history, userId, attachedStory, currentStories } = body as {
+    const { history, userId, attachedStory, currentStories, clientContext } = body as {
       history: ChatMessage[];
       userId?: string;
       attachedStory?: AttachedStoryContext;
@@ -20,6 +20,12 @@ export async function POST(req: NextRequest) {
         topic: string;
         summary: string;
       }>;
+      clientContext?: {
+        clientTime?: string;
+        timeZone?: string;
+        localFormatted?: string;
+        location?: string;
+      };
     };
 
     // Authenticated user session or explicit user ID
@@ -42,8 +48,14 @@ export async function POST(req: NextRequest) {
 
     let unifiedNode: UnifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
 
-    // 1. Run dialogue interaction with Context Agent (The Empath) framing and active feed stories
-    const response = await DialogueAgent.chat(history || [], unifiedNode, attachedStory, currentStories);
+    // 1. Run dialogue interaction with Context Agent (The Empath) framing, active feed stories, and client context
+    const response = await DialogueAgent.chat(
+      history || [],
+      unifiedNode,
+      attachedStory,
+      currentStories,
+      clientContext
+    );
 
     const fullHistory: ChatMessage[] = [
       ...history,

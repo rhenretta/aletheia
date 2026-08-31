@@ -85,7 +85,13 @@ export class DialogueAgent {
       headline: string;
       topic: string;
       summary: string;
-    }>
+    }>,
+    clientContext?: {
+      clientTime?: string;
+      timeZone?: string;
+      localFormatted?: string;
+      location?: string;
+    }
   ): Promise<DialogueResponse> {
     const startTime = Date.now();
     const executedTools: ToolExecution[] = [];
@@ -107,17 +113,28 @@ export class DialogueAgent {
       attachedStory
     );
 
-    const currentDateStr = new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    const now = new Date();
+    const currentDateStr =
+      clientContext?.localFormatted ||
+      now.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    const timeZoneStr = clientContext?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const locationStr = clientContext?.location || timeZoneStr;
 
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
 You engage in dual-intent conversations equipped with real-time tool execution and feed filtering capabilities:
 
-CURRENT DATE: ${currentDateStr}
+REAL-TIME TEMPORAL & SPATIAL GROUNDING:
+- CURRENT EXACT DATE & TIME: ${currentDateStr}
+- LOCAL TIMEZONE: ${timeZoneStr}
+- USER REGION / LOCATION: ${locationStr}
+- REAL-WORLD TIMESTAMP: ${clientContext?.clientTime || now.toISOString()}
+
+You are operating in real-time. All conversational statements regarding current events, test flights, geopolitical developments, scientific milestones, or policy schedules must be grounded against this exact date and time.
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING (CONNECTIONS INFORM DIRECTION, NEVER NARRATION):
