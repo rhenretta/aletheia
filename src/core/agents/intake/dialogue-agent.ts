@@ -52,6 +52,12 @@ export interface DialogueResponse {
     pedagogical_strategy: string;
     why_this_response: string;
   };
+  active_feed_filter?: {
+    is_active: boolean;
+    topic?: string;
+    matched_event_ids?: string[];
+    filter_reason?: string;
+  };
   context_generated?: GeneratedMessageContext;
   extracted_topics: Array<{
     topic: string;
@@ -68,12 +74,18 @@ export interface DialogueResponse {
 
 export class DialogueAgent {
   /**
-   * Dual-Intent Conversation with Context Agent Framing and Real-Time Tool Execution
+   * Dual-Intent Conversation with Context Agent Framing, Live Tools, and Dynamic Feed Filtering
    */
   public static async chat(
     history: ChatMessage[],
     currentGraph?: UserKnowledgeGraph | UnifiedTopicNode,
-    attachedStory?: AttachedStoryContext
+    attachedStory?: AttachedStoryContext,
+    currentStories?: Array<{
+      event_id: string;
+      headline: string;
+      topic: string;
+      summary: string;
+    }>
   ): Promise<DialogueResponse> {
     const startTime = Date.now();
     const executedTools: ToolExecution[] = [];
@@ -96,28 +108,35 @@ export class DialogueAgent {
     );
 
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
-You engage in dual-intent conversations equipped with real-time tool execution capabilities:
+You engage in dual-intent conversations equipped with real-time tool execution and feed filtering capabilities:
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING (CONNECTIONS INFORM DIRECTION, NEVER NARRATION):
    - Use known user interests, motivations, and knowledge graph anchors to SUBTLY SHAPE how you direct the conversation, the angles of inquiry you explore, and the depth of details you provide.
-   - NEVER narrate or echo user profile traits back to the user (e.g. NEVER say "As someone who values X...", "That fits your interest in Y...", "That's the same engineering rigor you appreciate").
-   - NEVER use the user's personal projects, hobbies, or previous off-grid builds (like RV, camper, or home builds) as analogies for geopolitical, military, or macroeconomic events.
-   - NEVER end turns with sycophantic praise or formulaic open-ended survey wrap-up questions ("Is that the angle that draws you in...?", "What do you think?").
-   - Let the underlying connection silently guide your perspective (e.g. when discussing defense, naturally touch on decentralized command, electronic warfare, and low-cost drone economics without having to announce why).
-2. NATURAL, RIGOROUS PEER TONE:
-   - Treat discussed topics as substantive, empirical subjects.
-   - Speak like a sharp, objective, thoughtful intellectual peer: direct, concise, grounded in operational realities, with zero condescension and zero sycophancy.
-3. RESPECT BOUNDARIES & SENSITIVITIES:
+   - NEVER narrate or echo user profile traits back to the user (e.g. NEVER say "As someone who values X...", "That fits your interest in Y...").
+   - NEVER end turns with sycophantic praise or formulaic open-ended survey wrap-up questions ("What do you think?").
+   - Speak like a sharp, objective, thoughtful intellectual peer: direct, concise, grounded in operational realities.
+
+2. RESPECT BOUNDARIES & SENSITIVITIES:
    - Follow the active sensitivities and hard boundaries provided in the Context Agent guidance.
-4. PROACTIVE REAL-TIME TOOL EXECUTION:
-   - If the user discusses breaking news, active geopolitical conflicts, military operations, or unverified claims without an attached story, PROACTIVELY trigger a tool call to ground your response in verified live facts:
-   {
-     "tool_call": {
-       "name": "search_internet" | "search_local_knowledge",
-       "query": "precise search query"
+
+3. PROACTIVE REAL-TIME TOOL & FEED CURATION EXECUTION:
+   - If the user discusses breaking news or unverified claims, trigger a tool call to search the live web:
+     {
+       "tool_call": {
+         "name": "search_internet",
+         "query": "precise search query"
+       }
      }
-   }
+   - If the user's conversation focuses on a specific topic, controversy, or question that corresponds to stories in their feed, you can PROACTIVELY trigger "filter_feed" or populate "active_feed_filter" to focus their news feed on the most relevant stories:
+     {
+       "tool_call": {
+         "name": "filter_feed",
+         "filter_topic": "Topic Name",
+         "matched_event_ids": ["evt_123", "evt_456"],
+         "reasoning": "Curated to show relevant stories matching our discussion."
+       }
+     }
 
 When no tool call is needed (or once tool results have been provided), output strict JSON:
 {
@@ -125,9 +144,15 @@ When no tool call is needed (or once tool results have been provided), output st
   "agent_internal_rationale": {
     "user_emotional_state_detected": "User mindset and orientation",
     "curiosity_focus_identified": "Core technological, geopolitical, or intellectual interest",
-    "intersections_analyzed": "Genuine, unforced relationships with other domains (or 'Standalone topic')",
+    "intersections_analyzed": "Genuine relationships with other domains (or 'Standalone topic')",
     "pedagogical_strategy": "Subtle conversational goal (e.g. provide tactical clarity, analyze operational friction)",
     "why_this_response": "Why this response framing was chosen"
+  },
+  "active_feed_filter": {
+    "is_active": boolean,
+    "topic": string or null,
+    "matched_event_ids": ["evt_123", ...],
+    "filter_reason": "Specific note explaining why the feed is filtered (e.g. 'Filtered to AI economic policy & UBI stories matching our discussion')"
   },
   "extracted_topics": [
     {
@@ -175,6 +200,12 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}
 ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergence_reason}`).join("\n")}`
       : "";
 
+    const storiesContext =
+      currentStories && currentStories.length > 0
+        ? `\nCURRENT STORIES ACTIVE IN USER'S NEWS FEED:
+${currentStories.map((s, i) => `[Story ${i + 1} | Event ID: "${s.event_id}" | Topic: "${s.topic}"]\nHeadline: ${s.headline}\nSummary: ${s.summary.slice(0, 200)}`).join("\n\n")}`
+        : "";
+
     const formattedHistory = history
       .map((m) => {
         const prefix = m.role === "assistant" ? "ALETHEIA" : "USER";
@@ -183,7 +214,7 @@ ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergen
       })
       .join("\n\n");
 
-    let prompt = `${knownContext}${storyContext}\n\nConversation History:\n${formattedHistory}`;
+    let prompt = `${knownContext}${storyContext}${storiesContext}\n\nConversation History:\n${formattedHistory}`;
 
     // Step 1: Initial LLM Evaluation (Can trigger tool call or respond directly)
     let result = await deepseekProvider.generateCompletion(prompt, {
@@ -203,7 +234,25 @@ ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergen
     if (parsed.tool_call) {
       const { name, query } = parsed.tool_call;
 
-      if (name === "search_internet" && query) {
+      if (name === "filter_feed") {
+        const filterTopic = parsed.tool_call.filter_topic || parsed.tool_call.topic;
+        const matchedIds = parsed.tool_call.matched_event_ids || parsed.tool_call.story_ids || [];
+        const filterReason = parsed.tool_call.reasoning || `Filtered feed to ${filterTopic || "relevant stories"} matching current discussion.`;
+
+        executedTools.push({
+          tool_name: "filter_feed",
+          query: filterTopic || matchedIds.join(", "),
+          results_summary: `Filtered feed: "${filterTopic || "focused stories"}" (${matchedIds.length} event IDs). Reason: ${filterReason}`,
+          items_retrieved: matchedIds.length,
+        });
+
+        parsed.active_feed_filter = {
+          is_active: true,
+          topic: filterTopic || undefined,
+          matched_event_ids: matchedIds.length > 0 ? matchedIds : undefined,
+          filter_reason: filterReason,
+        };
+      } else if (name === "search_internet" && query) {
         try {
           const liveArticles = await FreeNewsFetcher.searchNews(query, 5);
           const toolSummary = liveArticles
@@ -521,6 +570,7 @@ ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergen
         why_this_response: "Conversational continuation with real-time tools",
       },
       context_generated: contextGenerated,
+      active_feed_filter: parsed.active_feed_filter || undefined,
       extracted_topics: validatedExtractedTopics,
       interest_intersections: parsed.interest_intersections || [],
       adjacent_curiosity_frontiers: parsed.adjacent_curiosity_frontiers || [],

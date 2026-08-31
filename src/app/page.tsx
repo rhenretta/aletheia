@@ -94,6 +94,12 @@ export default function AletheiaHome() {
   >("all");
   const [cognitiveLoad, setCognitiveLoad] = useState<"low" | "balanced" | "deep_dive">("balanced");
   const [isTopicDropdownOpen, setIsTopicDropdownOpen] = useState(false);
+  const [aiFeedFilter, setAiFeedFilter] = useState<{
+    is_active?: boolean;
+    topic?: string;
+    matched_event_ids?: string[];
+    filter_reason?: string;
+  } | null>(null);
 
   // Contextual DevTools State
   const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
@@ -200,6 +206,7 @@ export default function AletheiaHome() {
     setPipelineResult(null);
     setAttachedStory(null);
     setSelectedContext(null);
+    setAiFeedFilter(null);
 
     try {
       const storageKey = `aletheia_chat_session_${effectiveUserId}`;
@@ -218,6 +225,7 @@ export default function AletheiaHome() {
     setPipelineResult(null);
     setAttachedStory(null);
     setSelectedContext(null);
+    setAiFeedFilter(null);
 
     try {
       const storageKey = `aletheia_chat_session_${effectiveUserId}`;
@@ -275,6 +283,7 @@ export default function AletheiaHome() {
       setPipelineResult(null);
       setAttachedStory(null);
       setSelectedContext(null);
+      setAiFeedFilter(null);
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error("Failed to reset profile:", err);
@@ -309,6 +318,14 @@ export default function AletheiaHome() {
     setChatError(null);
 
     try {
+      const currentStoriesPayload =
+        pipelineResult?.feed_cards?.map((c) => ({
+          event_id: c.event_id,
+          headline: c.headline,
+          topic: c.topic,
+          summary: c.summary,
+        })) || [];
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -316,12 +333,18 @@ export default function AletheiaHome() {
           history: newHistory,
           userId: effectiveUserId,
           attachedStory: attachedStory || undefined,
+          currentStories: currentStoriesPayload,
         }),
       });
 
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || `Server responded with status ${res.status}`);
+      }
+
+      // Check if AI chose to activate a feed filter based on conversational context
+      if (json.data.active_feed_filter && json.data.active_feed_filter.is_active) {
+        setAiFeedFilter(json.data.active_feed_filter);
       }
 
       const botMessage: ChatMessage = {
@@ -493,6 +516,21 @@ export default function AletheiaHome() {
   const frontierCount = feedCards.filter((c) => c.discovery_category === "curiosity_frontier" || c.is_exploration).length;
 
   const filteredFeedCards = feedCards.filter((c) => {
+    // 1. AI conversational feed filter (if activated by Dialogue Agent and not overridden)
+    if (aiFeedFilter && aiFeedFilter.is_active !== false) {
+      if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
+        if (!aiFeedFilter.matched_event_ids.includes(c.event_id)) {
+          return false;
+        }
+      } else if (aiFeedFilter.topic) {
+        const lowerCardTopic = c.topic.toLowerCase();
+        const lowerFilterTopic = aiFeedFilter.topic.toLowerCase();
+        if (!lowerCardTopic.includes(lowerFilterTopic) && !lowerFilterTopic.includes(lowerCardTopic)) {
+          return false;
+        }
+      }
+    }
+
     const matchesTopic = selectedTopicFilter === "all" || c.topic.toLowerCase() === selectedTopicFilter.toLowerCase();
     const matchesCategory =
       selectedCategoryFilter === "all" ||
@@ -779,6 +817,30 @@ export default function AletheiaHome() {
               </div>
             </div>
           </div>
+
+          {/* AI Focus Filter Banner (if active) */}
+          {aiFeedFilter && aiFeedFilter.is_active !== false && (
+            <div className="p-3.5 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2.5 text-xs text-cyan-200">
+                <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 animate-pulse" />
+                <span>
+                  <strong className="text-cyan-300 font-semibold">AI Feed Focus:</strong>{" "}
+                  {aiFeedFilter.filter_reason || `Focusing on "${aiFeedFilter.topic}"`}
+                  <span className="text-cyan-400/80 text-[11px] ml-1.5 font-mono">
+                    ({filteredFeedCards.length} matching {filteredFeedCards.length === 1 ? "story" : "stories"})
+                  </span>
+                </span>
+              </div>
+              <button
+                onClick={() => setAiFeedFilter(null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs border border-white/10 flex items-center gap-1.5 transition font-medium flex-shrink-0"
+                title="Override and view all news stories"
+              >
+                <X className="w-3.5 h-3.5 text-slate-400" />
+                <span>Show All Stories</span>
+              </button>
+            </div>
+          )}
 
           {/* Stories Stream */}
           {filteredFeedCards.length === 0 ? (

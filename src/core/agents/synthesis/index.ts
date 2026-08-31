@@ -231,7 +231,10 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
           recency_label: recencyLabel,
           is_exploration: isExploration,
           anchor_concept: isExploration ? anchorConcept : undefined,
-          image_url: FreeNewsFetcher.getThematicEditorialImage(cleanTopic, headline),
+          image_url:
+            effectiveArticles.find(
+              (a) => a.image_url && a.image_url.startsWith("http") && !a.image_url.includes("unsplash.com")
+            )?.image_url || undefined,
           widget_data: {
             chart_type: "delta_bar",
             data_points: dataPoints,

@@ -112,13 +112,25 @@ export class FreeNewsFetcher {
 
       const authorBiasRating = this.classifyPublisherStance(sourceName);
 
-      // Extract image URL from enclosure, media:content, or img tag
+      // Extract genuine publisher image URL from enclosure, media:content, media:thumbnail, or img tag
       const mediaMatch = /<media:(?:content|thumbnail)[^>]*url=["']([^"']+)["']/i.exec(itemContent);
       const enclosureMatch = /<enclosure[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']+["']/i.exec(itemContent);
-      const imgMatch = /<img[^>]+src=["']([^"']+)["']/i.exec(itemContent);
+      const imgMatch = /<img[^>]+src=["']([^"']+)["']/i.exec(itemContent) || /&lt;img[^>]+src=["']([^"']+)["']/i.exec(itemContent);
+      const descImgMatch = /(https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp|avif)(?:\?[^\s"'<>]*)?)/i.exec(itemContent);
 
-      const parsedImage = mediaMatch ? mediaMatch[1] : enclosureMatch ? enclosureMatch[1] : imgMatch ? imgMatch[1] : "";
-      const imageUrl = parsedImage || this.getThematicEditorialImage(topic, title);
+      let parsedImage = "";
+      if (mediaMatch && mediaMatch[1] && mediaMatch[1].startsWith("http")) {
+        parsedImage = mediaMatch[1];
+      } else if (enclosureMatch && enclosureMatch[1] && enclosureMatch[1].startsWith("http")) {
+        parsedImage = enclosureMatch[1];
+      } else if (imgMatch && imgMatch[1] && imgMatch[1].startsWith("http")) {
+        parsedImage = imgMatch[1];
+      } else if (descImgMatch && descImgMatch[1]) {
+        parsedImage = descImgMatch[1];
+      }
+
+      // Only retain genuine publisher images; do NOT fallback to arbitrary Unsplash stock photos
+      const imageUrl = parsedImage || undefined;
 
       articles.push({
         source_url: sourceUrl || `https://news.google.com/search?q=${encodeURIComponent(topic)}`,
