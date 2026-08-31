@@ -77,15 +77,6 @@ export class FreeNewsFetcher {
       }
     }
 
-    // 3. Fallback: if still empty and has a known country/subject (like Iran), search that directly
-    if (articles.length === 0) {
-      const entities = ["Iran", "Taiwan", "China", "SpaceX", "Starship", "Federal Reserve", "Inflation", "Nvidia", "AI"];
-      const matchedEntity = entities.find((e) => new RegExp(`\\b${e}\\b`, "i").test(cleanTopic));
-      if (matchedEntity) {
-        articles = await this.fetchRssForQuery(matchedEntity);
-      }
-    }
-
     return articles.slice(0, maxArticles);
   }
 
