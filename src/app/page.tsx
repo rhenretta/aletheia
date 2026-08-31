@@ -61,17 +61,17 @@ export default function AletheiaHome() {
   const { data: session, status: authStatus } = useSession();
   const effectiveUserId = session?.user?.email
     ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
-    : "usr_default";
+    : "usr_guest";
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome-msg",
-      role: "assistant",
-      content:
-        "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const defaultWelcomeMessage: ChatMessage = {
+    id: "welcome-msg",
+    role: "assistant",
+    content:
+      "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
+    timestamp: new Date().toISOString(),
+  };
+
+  const [messages, setMessages] = useState<ChatMessage[]>([defaultWelcomeMessage]);
   const [inputPrompt, setInputPrompt] = useState("");
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [attachedStory, setAttachedStory] = useState<AttachedStoryContext | null>(null);
@@ -125,6 +125,13 @@ export default function AletheiaHome() {
 
   // Rehydrate existing persisted session & knowledge graph on mount or when auth user switches
   useEffect(() => {
+    // Reset state for new user
+    setMessages([defaultWelcomeMessage]);
+    setUserGraph(null);
+    setUnifiedTopicNode(null);
+    setExtractedTopics([]);
+    setPipelineResult(null);
+
     try {
       const localCached = localStorage.getItem(`aletheia_chat_session_${effectiveUserId}`);
       if (localCached) {
@@ -141,7 +148,9 @@ export default function AletheiaHome() {
         const res = await fetch(`/api/session?userId=${encodeURIComponent(effectiveUserId)}`);
         const data = await res.json();
         if (data.success) {
-          if (data.messages && data.messages.length > 0) setMessages(data.messages);
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          }
           if (data.unified_topic_node) setUnifiedTopicNode(data.unified_topic_node);
           if (data.user_graph) setUserGraph(data.user_graph);
           if (data.extracted_topics && data.extracted_topics.length > 0) setExtractedTopics(data.extracted_topics);
