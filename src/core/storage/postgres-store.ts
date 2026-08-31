@@ -347,7 +347,18 @@ export class PostgresStore {
   }
 
   public async saveChatSession(userId: string, messages: any[], extractedTopics: any[]): Promise<void> {
-    this.memoryChatSessions.set(userId, { messages, extracted_topics: extractedTopics });
+    // Accumulate extracted topics across conversational history
+    const existing = this.memoryChatSessions.get(userId);
+    const topicMap = new Map<string, any>();
+    (existing?.extracted_topics || []).forEach((t: any) => {
+      if (t.topic) topicMap.set(t.topic.toLowerCase(), t);
+    });
+    extractedTopics.forEach((t: any) => {
+      if (t.topic) topicMap.set(t.topic.toLowerCase(), t);
+    });
+    const accumulatedTopics = Array.from(topicMap.values());
+
+    this.memoryChatSessions.set(userId, { messages, extracted_topics: accumulatedTopics });
     this.saveToDisk();
 
     if (this.pool && this.isConnected) {
@@ -359,7 +370,7 @@ export class PostgresStore {
              messages = EXCLUDED.messages,
              extracted_topics = EXCLUDED.extracted_topics,
              last_updated = NOW()`,
-          [userId, JSON.stringify(messages), JSON.stringify(extractedTopics)]
+          [userId, JSON.stringify(messages), JSON.stringify(accumulatedTopics)]
         );
       } catch (err) {
         console.warn("PostgresStore: Error saving chat session:", err);
