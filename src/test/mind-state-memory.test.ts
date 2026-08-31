@@ -180,31 +180,33 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
   });
 
   it("DialogueAgent generates structured context envelope and 6-stage agentic flow", async () => {
-    vi.spyOn(deepseekProvider, "generateCompletion").mockResolvedValueOnce({
-      text: JSON.stringify({
-        message: "Solid-state battery anodes face primary constraints around lithium dendrite penetration and volumetric expansion during high C-rate cycling.",
-        agent_internal_rationale: {
-          user_emotional_state_detected: "Analytical and technically rigorous",
-          curiosity_focus_identified: "Solid-state electrochemistry",
-          intersections_analyzed: "Materials science and autonomous systems",
-          pedagogical_strategy: "Direct engineering analysis",
-          why_this_response: "Focus on primary mechanical and electrochemical failure modes.",
+    const mockJson = JSON.stringify({
+      message: "Solid-state battery anodes face primary constraints around lithium dendrite penetration and volumetric expansion during high C-rate cycling.",
+      agent_internal_rationale: {
+        user_emotional_state_detected: "Analytical and technically rigorous",
+        curiosity_focus_identified: "Solid-state electrochemistry",
+        intersections_analyzed: "Materials science and autonomous systems",
+        pedagogical_strategy: "Direct engineering analysis",
+        why_this_response: "Focus on primary mechanical and electrochemical failure modes.",
+      },
+      extracted_topics: [
+        {
+          topic: "Solid-State Batteries",
+          weight: 0.9,
+          reasoning: "Deep inquiry into electrochemical constraints",
+          confidence_score: 0.95,
+          evidence_quote: "core technical constraints in solid-state battery anodes",
         },
-        extracted_topics: [
-          {
-            topic: "Solid-State Batteries",
-            weight: 0.9,
-            reasoning: "Deep inquiry into electrochemical constraints",
-            confidence_score: 0.95,
-            evidence_quote: "core technical constraints in solid-state battery anodes",
-          },
-        ],
-        interest_intersections: [],
-        adjacent_curiosity_frontiers: [],
-        is_profile_ready: true,
-        suggested_queries: ["anode interface impedance", "lithium metal dendrite prevention"],
-      }),
-      tokensUsed: 420,
+      ],
+      interest_intersections: [],
+      adjacent_curiosity_frontiers: [],
+      is_profile_ready: true,
+      suggested_queries: ["anode interface impedance", "lithium metal dendrite prevention"],
+    });
+
+    vi.spyOn(deepseekProvider, "generateStream").mockImplementation(async function* () {
+      yield mockJson;
+      return { fullText: mockJson, tokensUsed: 420 };
     });
 
     const node = DataPersistenceStore.createDefaultUnifiedTopicNode("usr_flow_test");

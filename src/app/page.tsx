@@ -413,6 +413,17 @@ export default function AletheiaHome() {
         location: tz.replace(/_/g, " "),
       };
 
+      const botMessageId = `bot_${Date.now()}`;
+      const initialBotMessage: ChatMessage = {
+        id: botMessageId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        attached_story: attachedStory || undefined,
+      };
+
+      setMessages([...newHistory, initialBotMessage]);
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -425,80 +436,104 @@ export default function AletheiaHome() {
         }),
       });
 
-      const text = await res.text();
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch (parseErr) {
-        throw new Error(
-          res.status === 504 || res.status === 502
-            ? "The AI is taking longer than expected. Please try your question again."
-            : `Server response error (${res.status}). Please try again.`
-        );
+      if (!res.ok) {
+        throw new Error(`Server responded with status ${res.status}`);
       }
 
-      if (!res.ok || !json.success) {
-        throw new Error(json?.error || `Server responded with status ${res.status}`);
-      }
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let accumulatedContent = "";
 
-      // Update or set dynamic conversational AI feed filter
-      if (
-        json.data.active_feed_filter &&
-        json.data.active_feed_filter.is_active &&
-        (json.data.active_feed_filter.matched_event_ids?.length || json.data.active_feed_filter.topic)
-      ) {
-        setAiFeedFilter(json.data.active_feed_filter);
+      if (!reader) throw new Error("ReadableStream not supported");
 
-        // If targeted curation is requested, run async pipeline fetch to generate stories on the fly
-        if (
-          json.data.active_feed_filter.trigger_targeted_curation &&
-          (json.data.active_feed_filter.curation_query || json.data.active_feed_filter.topic)
-        ) {
-          handleTargetedCuration(
-            json.data.active_feed_filter.curation_query || json.data.active_feed_filter.topic,
-            json.data.active_feed_filter.topic
-          );
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() || "";
+
+        for (const block of blocks) {
+          const eventMatch = /^event:\s*(\w+)/m.exec(block);
+          const dataMatch = /^data:\s*(.+)$/m.exec(block);
+          if (!eventMatch || !dataMatch) continue;
+
+          const eventType = eventMatch[1];
+          let data: any = {};
+          try {
+            data = JSON.parse(dataMatch[1]);
+          } catch (e) {}
+
+          if (eventType === "token" && data.token) {
+            accumulatedContent += data.token;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? { ...msg, content: accumulatedContent }
+                  : msg
+              )
+            );
+          } else if (eventType === "meta" && data.success) {
+            const metaData = data.data;
+            if (data.unified_topic_node) setUnifiedTopicNode(data.unified_topic_node);
+            if (data.user_graph) setUserGraph(data.user_graph);
+
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      content: metaData.message || accumulatedContent,
+                      trace_id: metaData.trace_id,
+                      context_trace_id: metaData.context_trace_id,
+                      tool_executions: metaData.tool_executions,
+                      agent_internal_rationale: metaData.agent_internal_rationale,
+                      context_generated: metaData.context_generated,
+                    }
+                  : msg
+              )
+            );
+
+            if (
+              metaData.active_feed_filter &&
+              metaData.active_feed_filter.is_active &&
+              (metaData.active_feed_filter.matched_event_ids?.length || metaData.active_feed_filter.topic)
+            ) {
+              setAiFeedFilter(metaData.active_feed_filter);
+
+              if (
+                metaData.active_feed_filter.trigger_targeted_curation &&
+                (metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic)
+              ) {
+                handleTargetedCuration(
+                  metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic,
+                  metaData.active_feed_filter.topic
+                );
+              }
+            } else {
+              setAiFeedFilter(null);
+            }
+
+            if (metaData.extracted_topics && metaData.extracted_topics.length > 0) {
+              setExtractedTopics((prev) => {
+                const map = new Map<string, { topic: string; weight: number; reasoning: string }>();
+                prev.forEach((t) => map.set(t.topic.toLowerCase(), t));
+                metaData.extracted_topics.forEach((t: any) =>
+                  map.set(t.topic.toLowerCase(), {
+                    topic: t.topic,
+                    weight: t.weight || 0.8,
+                    reasoning: t.reasoning || "Learned from dialogue.",
+                  })
+                );
+                return Array.from(map.values());
+              });
+            }
+          } else if (eventType === "error") {
+            throw new Error(data.message || "Chat streaming error");
+          }
         }
-      } else {
-        // Automatically clear stale previous filter if new turn does not activate one
-        setAiFeedFilter(null);
-      }
-
-      const botMessage: ChatMessage = {
-        id: `bot_${Date.now()}`,
-        role: "assistant",
-        content: json.data.message,
-        timestamp: new Date().toISOString(),
-        trace_id: json.data.trace_id,
-        context_trace_id: json.data.context_trace_id,
-        attached_story: attachedStory || undefined,
-        tool_executions: json.data.tool_executions,
-        agent_internal_rationale: json.data.agent_internal_rationale,
-        context_generated: json.data.context_generated,
-      };
-
-      setMessages([...newHistory, botMessage]);
-
-      if (json.unified_topic_node) {
-        setUnifiedTopicNode(json.unified_topic_node);
-      }
-      if (json.user_graph) {
-        setUserGraph(json.user_graph);
-      }
-
-      if (json.data.extracted_topics && json.data.extracted_topics.length > 0) {
-        setExtractedTopics((prev) => {
-          const map = new Map<string, { topic: string; weight: number; reasoning: string }>();
-          prev.forEach((t) => map.set(t.topic.toLowerCase(), t));
-          json.data.extracted_topics.forEach((t: any) =>
-            map.set(t.topic.toLowerCase(), {
-              topic: t.topic,
-              weight: t.weight,
-              reasoning: t.reasoning,
-            })
-          );
-          return Array.from(map.values());
-        });
       }
 
       setRefreshTrigger((prev) => prev + 1);

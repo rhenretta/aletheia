@@ -97,6 +97,103 @@ export class DeepSeekProvider {
   }
 
   /**
+   * Generates a streaming completion from DeepSeek API, yielding chunks as they arrive.
+   */
+  public async *generateStream(
+    prompt: string,
+    options: LLMCompletionOptions = {}
+  ): AsyncGenerator<string, { fullText: string; tokensUsed: number }> {
+    if (!this.isConfigured()) {
+      const fallbackJson = JSON.stringify({
+        message: "Aletheia live intelligence response.",
+        agent_internal_rationale: {
+          user_emotional_state_detected: "Analytical",
+          curiosity_focus_identified: "General",
+          intersections_analyzed: "None",
+          pedagogical_strategy: "Direct",
+          why_this_response: "Local environment fallback",
+        },
+        extracted_topics: [],
+        active_feed_filter: { is_active: false },
+      });
+      yield fallbackJson;
+      return { fullText: fallbackJson, tokensUsed: 50 };
+    }
+
+    const model = options.model || this.defaultModel;
+    const messages = [];
+
+    if (options.systemPrompt) {
+      messages.push({ role: "system", content: options.systemPrompt });
+    }
+    messages.push({ role: "user", content: prompt });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 60000);
+
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: options.temperature ?? 0.5,
+          max_tokens: options.maxTokens ?? 1500,
+          response_format: { type: "json_object" },
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok || !response.body) {
+        const errText = await response.text();
+        throw new Error(`DeepSeek API stream error (HTTP ${response.status}): ${errText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let fullText = "";
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data:")) continue;
+          if (trimmed === "data: [DONE]") break;
+
+          const jsonStr = trimmed.slice(5).trim();
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content || "";
+            if (delta) {
+              fullText += delta;
+              yield delta;
+            }
+          } catch (e) {}
+        }
+      }
+
+      return { fullText, tokensUsed: Math.ceil(fullText.length / 4) };
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
+  /**
    * Structured extraction of PureFactObject using DeepSeek
    */
   public async extractEpistemologyDelta(

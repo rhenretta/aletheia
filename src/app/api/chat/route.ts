@@ -50,92 +50,136 @@ export async function POST(req: NextRequest) {
 
     let unifiedNode: UnifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
 
-    // 1. Run dialogue interaction with Context Agent (The Empath) framing, active feed stories, and client context
-    const response = await DialogueAgent.chat(
-      history || [],
-      unifiedNode,
-      attachedStory,
-      currentStories,
-      clientContext
-    );
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const sendEvent = (event: string, data: any) => {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        };
 
-    const fullHistory: ChatMessage[] = [
-      ...history,
-      {
-        id: `bot_${Date.now()}`,
-        role: "assistant" as const,
-        content: response.message,
-        timestamp: new Date().toISOString(),
-        trace_id: response.trace_id,
-        context_trace_id: response.context_trace_id,
-        attached_story: attachedStory,
-        tool_executions: response.tool_executions,
-        agent_internal_rationale: response.agent_internal_rationale,
-        context_generated: response.context_generated,
-      },
-    ];
+        try {
+          const dialogueStream = DialogueAgent.chatStream(
+            history || [],
+            unifiedNode,
+            attachedStory,
+            currentStories,
+            clientContext
+          );
 
-    // 2. Invoke Observer Agent (The Active Listener) to silently adapt Unified Topic Node
-    try {
-      const observationResult = await ObserverAgent.observeAndAdapt(
-        unifiedNode,
-        fullHistory.map((m) => ({ role: m.role, content: m.content }))
-      );
-      unifiedNode = observationResult.adapted_node;
-    } catch (err) {
-      console.warn("Chat route: Observer adaptation failed:", err);
-    }
+          let finalResponse: any = null;
 
-    // 3. Ensure any validated extracted topics from DialogueAgent are permanently merged into unifiedNode
-    if (response.extracted_topics && response.extracted_topics.length > 0) {
-      unifiedNode.topics = unifiedNode.topics || {};
-      for (const t of response.extracted_topics) {
-        if (t.topic && typeof t.topic === "string") {
-          const existing = unifiedNode.topics[t.topic];
-          unifiedNode.topics[t.topic] = {
-            weight: Number(Math.min(1.0, Math.max(0.2, (existing?.weight || t.weight || 0.6) + 0.05)).toFixed(2)),
-            why_they_care: t.reasoning || existing?.why_they_care || "Expressed substantive interest during conversation.",
-            technical_depth: existing?.technical_depth || "practitioner",
-            curiosity_vectors: existing?.curiosity_vectors || [t.topic],
-            last_discussed_at: new Date().toISOString(),
-          };
+          for await (const chunk of dialogueStream) {
+            if (chunk.type === "token") {
+              sendEvent("token", { token: chunk.token });
+            } else if (chunk.type === "tool_start") {
+              sendEvent("tool_start", { tool_name: chunk.tool_name, query: chunk.query });
+            } else if (chunk.type === "tool_complete") {
+              sendEvent("tool_complete", {
+                tool_name: chunk.tool_name,
+                query: chunk.query,
+                summary: chunk.summary,
+              });
+            } else if (chunk.type === "meta") {
+              finalResponse = chunk.data;
+            }
+          }
+
+          if (finalResponse) {
+            const fullHistory: ChatMessage[] = [
+              ...history,
+              {
+                id: `bot_${Date.now()}`,
+                role: "assistant" as const,
+                content: finalResponse.message,
+                timestamp: new Date().toISOString(),
+                trace_id: finalResponse.trace_id,
+                context_trace_id: finalResponse.context_trace_id,
+                attached_story: attachedStory,
+                tool_executions: finalResponse.tool_executions,
+                agent_internal_rationale: finalResponse.agent_internal_rationale,
+                context_generated: finalResponse.context_generated,
+              },
+            ];
+
+            // 2. Invoke Observer Agent in background
+            try {
+              const observationResult = await ObserverAgent.observeAndAdapt(
+                unifiedNode,
+                fullHistory.map((m) => ({ role: m.role, content: m.content }))
+              );
+              unifiedNode = observationResult.adapted_node;
+            } catch (err) {
+              console.warn("Chat route: Observer adaptation failed:", err);
+            }
+
+            // 3. Ensure any validated extracted topics are merged into unifiedNode
+            if (finalResponse.extracted_topics && finalResponse.extracted_topics.length > 0) {
+              unifiedNode.topics = unifiedNode.topics || {};
+              for (const t of finalResponse.extracted_topics) {
+                if (t.topic && typeof t.topic === "string") {
+                  const existing = unifiedNode.topics[t.topic];
+                  unifiedNode.topics[t.topic] = {
+                    weight: Number(Math.min(1.0, Math.max(0.2, (existing?.weight || t.weight || 0.6) + 0.05)).toFixed(2)),
+                    why_they_care: t.reasoning || existing?.why_they_care || "Expressed substantive interest during conversation.",
+                    technical_depth: existing?.technical_depth || "practitioner",
+                    curiosity_vectors: existing?.curiosity_vectors || [t.topic],
+                    last_discussed_at: new Date().toISOString(),
+                  };
+                }
+              }
+              await postgresStore.saveUnifiedTopicNode(unifiedNode);
+            }
+
+            // 4. Targeted Curator Signal
+            const filter = finalResponse.active_feed_filter;
+            const needsCuration =
+              filter &&
+              filter.is_active &&
+              (filter.trigger_targeted_curation || !filter.matched_event_ids || filter.matched_event_ids.length === 0);
+
+            if (needsCuration && filter.topic) {
+              const queryTopic = filter.curation_query || filter.topic;
+              finalResponse.active_feed_filter = {
+                ...filter,
+                is_active: true,
+                trigger_targeted_curation: true,
+                curation_query: queryTopic,
+                filter_reason: `Curating fresh live wire coverage for "${filter.topic}"...`,
+              };
+            }
+
+            // 5. Persist chat session history
+            await postgresStore.saveChatSession(
+              effectiveUserId,
+              fullHistory,
+              finalResponse.extracted_topics || []
+            );
+
+            const userGraph = await postgresStore.getUserGraph(effectiveUserId);
+
+            sendEvent("meta", {
+              success: true,
+              data: finalResponse,
+              unified_topic_node: unifiedNode,
+              user_graph: userGraph,
+            });
+          }
+
+          sendEvent("done", {});
+          controller.close();
+        } catch (err: any) {
+          sendEvent("error", { message: err?.message || "Streaming failed" });
+          controller.close();
         }
-      }
-      await postgresStore.saveUnifiedTopicNode(unifiedNode);
-    }
+      },
+    });
 
-    // 4. Targeted Curator Signal: If topic needs curation, mark it for async client pipeline fetch
-    const filter = response.active_feed_filter;
-    const needsCuration =
-      filter &&
-      filter.is_active &&
-      (filter.trigger_targeted_curation || !filter.matched_event_ids || filter.matched_event_ids.length === 0);
-
-    if (needsCuration && filter.topic) {
-      const queryTopic = filter.curation_query || filter.topic;
-      response.active_feed_filter = {
-        ...filter,
-        is_active: true,
-        trigger_targeted_curation: true,
-        curation_query: queryTopic,
-        filter_reason: `Curating fresh live wire coverage for "${filter.topic}"...`,
-      };
-    }
-
-    // 5. Persist chat session history and accumulated topics to PostgreSQL
-    await postgresStore.saveChatSession(
-      effectiveUserId,
-      fullHistory,
-      response.extracted_topics || []
-    );
-
-    const userGraph = await postgresStore.getUserGraph(effectiveUserId);
-
-    return NextResponse.json({
-      success: true,
-      data: response,
-      unified_topic_node: unifiedNode,
-      user_graph: userGraph,
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Chat intake failed";
