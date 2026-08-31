@@ -1,8 +1,3 @@
-# Availability Zones in Region
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
 # --- Cost-Optimized RDS PostgreSQL Infrastructure ($0 NAT Gateway overhead) ---
 resource "random_password" "db_password" {
   length           = 24
@@ -18,7 +13,7 @@ locals {
 resource "aws_db_subnet_group" "rds" {
   count       = var.create_rds ? 1 : 0
   name        = "${var.app_name}-db-subnet-group"
-  subnet_ids  = data.aws_subnets.default.ids
+  subnet_ids  = [aws_subnet.public_1.id, aws_subnet.public_2.id]
   description = "Subnet group for ${var.app_name} RDS PostgreSQL"
 
   tags = {
@@ -31,7 +26,7 @@ resource "aws_security_group" "rds" {
   count       = var.create_rds ? 1 : 0
   name        = "${var.app_name}-rds-sg"
   description = "Allow PostgreSQL inbound traffic for ECS tasks and CI/CD migrations"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description = "PostgreSQL access from ECS Tasks"

@@ -1,20 +1,8 @@
-# Network & VPC Configuration
-data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
-
 # Security Groups
 resource "aws_security_group" "alb" {
   name        = "${var.app_name}-alb-sg"
   description = "Allow inbound HTTP/HTTPS traffic to ALB"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description = "HTTP from anywhere (CloudFront/direct)"
@@ -39,7 +27,7 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "ecs_tasks" {
   name        = "${var.app_name}-ecs-tasks-sg"
   description = "Allow inbound traffic from ALB only"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "Traffic from ALB"
@@ -67,7 +55,7 @@ resource "aws_lb" "main" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = data.aws_subnets.default.ids
+  subnets            = [aws_subnet.public_1.id, aws_subnet.public_2.id]
 
   tags = {
     Name = "${var.app_name}-alb"
@@ -78,7 +66,7 @@ resource "aws_lb_target_group" "app" {
   name        = "${var.app_name}-tg"
   port        = 3000
   protocol    = "HTTP"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.main.id
   target_type = "ip"
 
   health_check {
@@ -272,7 +260,7 @@ resource "aws_ecs_service" "app" {
 
   network_configuration {
     security_groups  = [aws_security_group.ecs_tasks.id]
-    subnets          = data.aws_subnets.default.ids
+    subnets          = [aws_subnet.public_1.id, aws_subnet.public_2.id]
     assign_public_ip = true
   }
 
