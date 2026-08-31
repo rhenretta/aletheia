@@ -19,7 +19,7 @@ variable "environment" {
 variable "app_name" {
   description = "Application name used for resource naming"
   type        = string
-  default     = "ai-news"
+  default     = "aletheia"
 }
 
 variable "domain_name" {
@@ -56,6 +56,45 @@ variable "ecs_desired_count" {
   description = "Desired number of running ECS Fargate tasks"
   type        = number
   default     = 1
+}
+
+# --- Database (RDS PostgreSQL) ---
+
+variable "create_rds" {
+  description = "Whether to provision a dedicated AWS RDS PostgreSQL db.t4g.micro instance"
+  type        = bool
+  default     = true
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "RDS allocated storage in GB (gp3)"
+  type        = number
+  default     = 20
+}
+
+variable "db_name" {
+  description = "Database name for PostgreSQL"
+  type        = string
+  default     = "aletheia_news"
+}
+
+variable "db_username" {
+  description = "Master username for RDS PostgreSQL"
+  type        = string
+  default     = "postgres"
+}
+
+variable "db_password" {
+  description = "Master password for RDS PostgreSQL (auto-generated if left blank)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 # --- Runtime Secrets & Configs ---

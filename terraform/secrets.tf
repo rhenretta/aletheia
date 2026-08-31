@@ -23,7 +23,7 @@ resource "aws_ssm_parameter" "database_url" {
   name        = "/${var.app_name}/${var.environment}/DATABASE_URL"
   description = "PostgreSQL connection string for ${var.app_name}"
   type        = "SecureString"
-  value       = var.database_url != "" ? var.database_url : "postgresql://postgres:postgres@localhost:5432/aletheia_news"
+  value       = local.generated_database_url
 
   lifecycle {
     ignore_changes = [value]

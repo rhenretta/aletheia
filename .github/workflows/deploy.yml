@@ -1,4 +1,4 @@
-name: Deploy Aletheia AI News to AWS (news.ciclops.io)
+name: Deploy Aletheia to AWS (news.ciclops.io)
 
 on:
   push:
@@ -14,12 +14,12 @@ on:
         default: false
 
 concurrency:
-  group: deploy-ai-news
+  group: deploy-aletheia
   cancel-in-progress: false
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: ai-news
+  ECR_REPOSITORY: aletheia
 
 jobs:
   validate:
@@ -101,7 +101,6 @@ jobs:
         working-directory: terraform
         env:
           TF_VAR_deepseek_api_key: ${{ secrets.DEEPSEEK_API_KEY }}
-          TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
           TF_VAR_nextauth_secret: ${{ secrets.NEXTAUTH_SECRET }}
           TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
           TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -109,6 +108,13 @@ jobs:
         run: |
           echo "Applying Terraform Infrastructure..."
           terraform apply -auto-approve
+
+      - name: Run Database Schema Migrations
+        run: |
+          echo "Fetching provisioned DATABASE_URL from Terraform output..."
+          PROVISIONED_DB_URL=$(terraform -chdir=terraform output -raw database_url)
+          echo "Running database schema migrations against RDS PostgreSQL..."
+          DATABASE_URL="$PROVISIONED_DB_URL" npm run db:migrate
 
       - name: Trigger ECS Service Deployment
         run: |

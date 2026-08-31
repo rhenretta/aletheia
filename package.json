@@ -1,5 +1,5 @@
 {
-  "name": "aletheia-news-agent",
+  "name": "aletheia",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "doc-sync": "tsx src/scripts/sync-docs.ts"
+    "doc-sync": "tsx src/scripts/sync-docs.ts",
+    "db:migrate": "tsx src/scripts/migrate-db.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
