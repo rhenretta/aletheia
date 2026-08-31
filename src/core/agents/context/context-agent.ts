@@ -75,7 +75,7 @@ export class ContextAgent {
    - Frame explanations directly at this level without patronizing or over-simplifying.
 
 4. ACTIVATED GRAPH TOPICS & MOTIVATIONS (WHY THEY CARE):
-${whyTheyCareLines.length > 0 ? whyTheyCareLines.join("\n") : "   * High-agency technology, engineering elegance, and autonomous resilience."}
+${whyTheyCareLines.length > 0 ? whyTheyCareLines.join("\n") : "   * General inquiry without pre-assigned domain anchors."}
 ${intersectionLines.length > 0 ? `\nACTIVE GRAPH INTERSECTIONS:\n${intersectionLines.join("\n")}` : ""}
 
 5. ACTIVE PSYCHOLOGICAL SAFEGUARDS & BOUNDARIES:

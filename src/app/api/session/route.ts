@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     : null;
 
   if (!effectiveUserId) {
-    // Unauthenticated Guest: Return clean demo baseline topic node and empty conversation
+    // Unauthenticated Guest: Return clean baseline topic node and empty conversation
     const guestNode = DataPersistenceStore.createDefaultUnifiedTopicNode("usr_guest");
     const facts = await postgresStore.getAllFacts();
 
@@ -32,14 +32,9 @@ export async function GET(req: NextRequest) {
       unified_topic_node: guestNode,
       user_graph: {
         user_id: "usr_guest",
-        topic_weights: {
-          "Autonomous Systems": 0.88,
-          "Space Exploration": 0.82,
-          "Next-Gen Energy": 0.76,
-          "Privacy & Cryptography": 0.72,
-        },
+        topic_weights: {},
         cognitive_load_state: "balanced",
-        historical_anchors: ["Autonomy", "Engineering Rigor"],
+        historical_anchors: [],
         dwell_history: [],
         last_updated: new Date().toISOString(),
       },

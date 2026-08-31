@@ -49,9 +49,7 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
     }> = [];
 
     const userTopics = state.user_graph ? Object.keys(state.user_graph.topic_weights) : [];
-    const canonicalUserTopics = userTopics.length > 0
-      ? userTopics
-      : ["Autonomous Mobility & FSD", "SpaceX & Aerospace", "Off-Grid Energy & Habitats", "Agentic AI Systems"];
+    const canonicalUserTopics = userTopics;
 
     const stopWords = new Set(["with", "from", "that", "this", "after", "over", "into", "amid", "says", "more", "will", "about", "latest", "what", "their"]);
 
@@ -61,7 +59,7 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
       // Use the explicit topic category under which this article was fetched
       let bestTopic = article.topic_category || "";
 
-      if (!bestTopic) {
+      if (!bestTopic && canonicalUserTopics.length > 0) {
         let bestScore = 0;
         for (const topic of canonicalUserTopics) {
           const keywords = topic.toLowerCase().split(/[\s&/,-]+/);
@@ -76,24 +74,10 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
             bestTopic = topic;
           }
         }
+      }
 
-        if (bestScore === 0) {
-          if (artText.includes("car") || artText.includes("drive") || artText.includes("tesla") || artText.includes("vehicle") || artText.includes("autopilot")) {
-            bestTopic = "Autonomous Mobility & FSD";
-          } else if (artText.includes("space") || artText.includes("rocket") || artText.includes("launch") || artText.includes("starship") || artText.includes("nasa")) {
-            bestTopic = "SpaceX & Aerospace";
-          } else if (artText.includes("solar") || artText.includes("battery") || artText.includes("grid") || artText.includes("power") || artText.includes("energy")) {
-            bestTopic = "Off-Grid Energy & Power";
-          } else if (artText.includes("habitat") || artText.includes("van") || artText.includes("rv") || artText.includes("home") || artText.includes("living")) {
-            bestTopic = "Autonomous Mobile Habitats";
-          } else if (artText.includes("war") || artText.includes("conflict") || artText.includes("military") || artText.includes("iran") || artText.includes("missile") || artText.includes("sanction")) {
-            bestTopic = "Global Conflicts & Geopolitics";
-          } else if (artText.includes("ai ") || artText.includes("llm") || artText.includes("agent") || artText.includes("model") || artText.includes("deepseek") || artText.includes("openai")) {
-            bestTopic = "Agentic AI Systems";
-          } else {
-            bestTopic = "Global Intelligence";
-          }
-        }
+      if (!bestTopic) {
+        bestTopic = "General News";
       }
 
       // Extract significant title words for event-level clustering

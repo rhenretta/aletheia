@@ -226,7 +226,7 @@ ${storyInfo}`;
     const primaryDepth = selectedTopics[0]?.calibrated_depth || "practitioner";
 
     return {
-      identified_discussion_subject: attachedStory?.topic || (selectedTopics[0]?.topic_name || "Autonomous Systems"),
+      identified_discussion_subject: attachedStory?.topic || (selectedTopics[0]?.topic_name || "General Inquiry"),
       selected_topics: selectedTopics.slice(0, 3),
       calibrated_overall_depth: primaryDepth,
       active_intersections: [],

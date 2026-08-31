@@ -23,11 +23,8 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
     const validated = UnifiedTopicNodeSchema.parse(defaultNode);
 
     expect(validated.user_id).toBe("usr_mindstate_1");
-    expect(validated.topics["Autonomous Systems"]).toBeDefined();
-    expect(validated.topics["Autonomous Systems"].why_they_care).toContain("self-sufficiency");
-    expect(validated.topics["Autonomous Systems"].technical_depth).toBe("expert");
+    expect(Object.keys(validated.topics).length).toBe(0);
     expect(validated.psychological_profile.emotional_trajectory).toBeDefined();
-    expect(validated.psychological_profile.sensitivities.length).toBeGreaterThan(0);
     expect(validated.psychological_profile.boundaries.length).toBeGreaterThan(0);
     expect(validated.discovery_parameters.signal_threshold).toBeGreaterThan(0.5);
     expect(validated.discovery_parameters.anti_preferences).toContain("clickbait");
@@ -81,6 +78,15 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
 
   it("ContextAgent (The Empath) generates empathetic framing, resolves semantic topics, and logs traces", async () => {
     const node = DataPersistenceStore.createDefaultUnifiedTopicNode("usr_empath_test");
+    node.topics["Geopolitics"] = {
+      weight: 0.85,
+      why_they_care: "Understanding international defense dynamics.",
+      technical_depth: "practitioner",
+      curiosity_vectors: ["defense", "asymmetric"],
+      last_discussed_at: new Date().toISOString(),
+    };
+    node.psychological_profile.sensitivities = ["Avoid alarmist hyperbole"];
+
     const framing = await ContextAgent.generateContextFraming(
       node,
       [
@@ -124,6 +130,13 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
 
   it("ObserverAgent (The Active Listener) adapts mind-state and updates weights from telemetry", async () => {
     const node = DataPersistenceStore.createDefaultUnifiedTopicNode("usr_observer_test");
+    node.topics["Autonomous Systems"] = {
+      weight: 0.85,
+      why_they_care: "Deep interest in self-sufficiency.",
+      technical_depth: "expert",
+      curiosity_vectors: ["autonomous robotics"],
+      last_discussed_at: new Date().toISOString(),
+    };
     const initialWeight = node.topics["Autonomous Systems"].weight;
 
     const mockTelemetry: BehavioralTelemetry[] = [
@@ -225,6 +238,13 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
 
   it("SemanticTopicResolver identifies discussion subject and performs graph-aware topic selection", async () => {
     const node = DataPersistenceStore.createDefaultUnifiedTopicNode("usr_semantic_test");
+    node.topics["Electronic Warfare"] = {
+      weight: 0.85,
+      why_they_care: "Tactical defense dynamics.",
+      technical_depth: "practitioner",
+      curiosity_vectors: ["drone", "jamming", "electronic countermeasures"],
+      last_discussed_at: new Date().toISOString(),
+    };
     const result = await ContextAgent.generateContextFraming(
       node,
       [

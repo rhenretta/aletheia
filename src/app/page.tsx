@@ -340,7 +340,7 @@ export default function AletheiaHome() {
         targetTopics ||
         (activeTopics.length > 0
           ? activeTopics
-          : ["Full Self-Driving", "SpaceX Starship", "Global Conflicts", "Autonomous Mobile Habitats"]);
+          : ["Technology", "Science", "World News", "Artificial Intelligence"]);
 
       const res = await fetch("/api/pipeline", {
         method: "POST",

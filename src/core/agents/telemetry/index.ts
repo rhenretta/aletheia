@@ -70,15 +70,9 @@ export class TelemetryGraphEngine {
   public static createDefaultGraph(userId: string): UserKnowledgeGraph {
     return {
       user_id: userId,
-      topic_weights: {
-        "Geopolitics": 0.70,
-        "Macroeconomics": 0.65,
-        "Artificial Intelligence": 0.85,
-        "Biotech & Longevity": 0.40,
-        "Energy & Climate": 0.50,
-      },
+      topic_weights: {},
       cognitive_load_state: "balanced",
-      historical_anchors: ["Artificial Intelligence", "Geopolitics"],
+      historical_anchors: [],
       dwell_history: [],
       last_updated: new Date().toISOString(),
     };

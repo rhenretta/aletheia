@@ -50,20 +50,20 @@ Key values & mindset: Seeks autonomy, reduction of friction, sanctuary/isolation
         }
 
         let headline = effectiveArticles[0]?.title || `Breaking: Latest Developments in ${cleanTopic}`;
-        let personalizedFraming = `Curated for your interest in ${cleanTopic} and related autonomous frontier engineering.`;
+        let personalizedFraming = `Curated report for ${cleanTopic}.`;
         let summary = effectiveArticles[0]?.raw_text.slice(0, 200) || cleanFacts.slice(0, 2).join(" ");
         let expansionText = cleanFacts.slice(2).join(" ") || cleanFacts.join(" ");
 
         // If DeepSeek is configured, generate dynamic journalistic news story
         if (deepseekProvider.isConfigured()) {
           try {
-            const userProfilePrompt = userGraph
+            const userProfilePrompt = userGraph && Object.keys(userGraph.topic_weights).length > 0
               ? `READER INTELLECTUAL PROFILE & VALUES:
 - Key Topic Interests: ${Object.keys(userGraph.topic_weights).join(", ")}
-- Known Historical Anchors: ${userGraph.historical_anchors?.join(", ") || "Autonomy, high-agency technology, engineering systems"}
-- Intersectional Themes: ${userGraph.interest_intersections?.map((i) => `${i.interest_a} & ${i.interest_b} (${i.intersection_theme})`).join("; ") || "Systemic resilience and technical friction reduction"}
-- Adjacent Curiosities: ${userGraph.adjacent_curiosity_frontiers?.map((f) => f.topic).join(", ") || "Frontier engineering, autonomy, resilient systems"}`
-              : "General intellectual reader focused on empirical evidence, engineering rigor, and structural implications.";
+- Known Historical Anchors: ${userGraph.historical_anchors?.join(", ") || "General Inquiry"}
+- Intersectional Themes: ${userGraph.interest_intersections?.map((i) => `${i.interest_a} & ${i.interest_b} (${i.intersection_theme})`).join("; ") || "None"}
+- Adjacent Curiosities: ${userGraph.adjacent_curiosity_frontiers?.map((f) => f.topic).join(", ") || "None"}`
+              : "General intellectual reader focused on empirical evidence, factual accuracy, and structural implications.";
 
             const systemPrompt = `You are a premier investigative journalist crafting a concise, compelling news story tailored for a discerning reader.
 
@@ -142,9 +142,7 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
             (i) =>
               i.intersection_theme.toLowerCase().includes(cleanTopic.toLowerCase()) ||
               cleanTopic.toLowerCase().includes(i.intersection_theme.toLowerCase())
-          ) ||
-          cleanTopic.toLowerCase().includes("habitat") ||
-          cleanTopic.toLowerCase().includes("nomadic");
+          );
 
         if (isFrontier) {
           discoveryCategory = "curiosity_frontier";
@@ -156,7 +154,7 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
 
         // Check if this topic matches an exploration anchor
         const isExploration = discoveryCategory === "curiosity_frontier" || (userGraph?.topic_weights[cleanTopic] || 0) < 0.75;
-        const anchorConcept = userGraph?.historical_anchors?.[0] || "Autonomous Engineering";
+        const anchorConcept = userGraph?.historical_anchors?.[0] || cleanTopic;
 
         const dataPoints = [
           { label: "Agreed Facts", value: Math.max(cleanFacts.length, 1), category: "Consensus" },

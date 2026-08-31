@@ -40,83 +40,31 @@ export class DataPersistenceStore {
   public static createDefaultUnifiedTopicNode(userId: string = "usr_default"): UnifiedTopicNode {
     return {
       user_id: userId,
-      topics: {
-        "Autonomous Systems": {
-          weight: 0.88,
-          why_they_care: "Deep interest in self-sufficiency, reduction of mechanical and logistical friction, and operational independence.",
-          technical_depth: "expert",
-          curiosity_vectors: ["autonomous robotics", "redundant control loops", "actuator engineering"],
-          last_discussed_at: new Date().toISOString(),
-        },
-        "Space Exploration": {
-          weight: 0.82,
-          why_they_care: "Fascination with frontier propulsion, multi-planetary life support, and extreme engineering resilience.",
-          technical_depth: "expert",
-          curiosity_vectors: ["Starship heat shielding", "methalox cycle engines", "orbital refueling"],
-          last_discussed_at: new Date().toISOString(),
-        },
-        "Next-Gen Energy": {
-          weight: 0.76,
-          why_they_care: "Seeks scalable, high-density, sovereign energy infrastructure to ensure baseline civilizational resilience.",
-          technical_depth: "practitioner",
-          curiosity_vectors: ["solid-state batteries", "small modular reactors", "microgrids"],
-          last_discussed_at: new Date().toISOString(),
-        },
-        "Privacy & Cryptography": {
-          weight: 0.72,
-          why_they_care: "Values individual sovereignty, verifiable compute, and sanctuary from centralized surveillance architectures.",
-          technical_depth: "expert",
-          curiosity_vectors: ["zero-knowledge proofs", "local offline LLMs", "encrypted communications"],
-          last_discussed_at: new Date().toISOString(),
-        },
-      },
+      topics: {},
       psychological_profile: {
-        emotional_trajectory: "Intellectually curious, analytically grounded, appreciative of high-agency engineering and sovereign systems, fatigued by hyperbolic marketing narratives.",
-        sensitivities: [
-          "Avoid breathless tech hype or unsubstantiated PR claims",
-          "Do not patronize or over-explain basic technical concepts",
-          "Respect personal privacy and high-agency perspective",
-        ],
+        emotional_trajectory: "Open, curious, and exploratory",
+        sensitivities: [],
         boundaries: [
           "Never speak out of turn or hallucinate facts",
           "Strict adherence to verifiable evidence",
           "No moralizing or patronizing meta-commentary",
         ],
-        communication_style: "Direct, concise, rigorous, grounded peer with zero condescension",
+        communication_style: "Direct, concise, rigorous peer",
       },
       discovery_parameters: {
-        signal_threshold: 0.75,
+        signal_threshold: 0.70,
         anti_preferences: [
           "clickbait",
           "partisan outrage",
-          "speculative crypto pump",
-          "celebrity gossip",
-          "rehashed PR releases",
+          "sensationalism",
         ],
         exploration_rate: 0.20,
         depth_requirement: "practitioner",
       },
-      historical_anchors: [
-        "Autonomy",
-        "Engineering Rigor",
-        "Sovereign Systems",
-        "Structural Resilience",
-      ],
-      interest_intersections: [
-        {
-          interest_a: "Autonomous Systems",
-          interest_b: "Next-Gen Energy",
-          intersection_theme: "Off-Grid Autonomous Infrastructure",
-          hypothesis: "Decentralized energy microgrids enable true unattended autonomous operation in extreme environments.",
-        },
-      ],
-      adjacent_curiosity_frontiers: [
-        {
-          topic: "Satellite Direct-to-Cell",
-          connected_to: ["Autonomous Systems", "Space Exploration"],
-          rationale: "Eliminates terrestrial communication single-points-of-failure for autonomous remote systems.",
-        },
-      ],
+      historical_anchors: [],
+      interest_intersections: [],
+      adjacent_curiosity_frontiers: [],
+      dwell_history: [],
       last_updated: new Date().toISOString(),
     };
   }
