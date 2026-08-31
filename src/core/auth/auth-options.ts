@@ -105,10 +105,11 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
+        const customUser = session.user as { name?: string | null; email?: string | null; image?: string | null; id?: string; role?: string };
         if (token.id) {
-          session.user.id = token.id as string;
+          customUser.id = token.id as string;
         }
-        session.user.role = (token.role as string) || "USER";
+        customUser.role = (token.role as string) || "USER";
       }
       return session;
     },
