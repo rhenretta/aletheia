@@ -392,6 +392,8 @@ export default function AletheiaHome() {
           headline: c.headline,
           topic: c.topic,
           summary: c.summary,
+          fact_bullets: c.fact_bullets,
+          disputed_claims: c.disputed_claims,
         })) || [];
 
       const now = new Date();

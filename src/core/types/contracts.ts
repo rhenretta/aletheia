@@ -555,6 +555,16 @@ export interface AgenticContextFlowStep {
   status: "completed" | "active" | "skipped";
 }
 
+export interface RetrievedStoryContext {
+  event_id: string;
+  headline: string;
+  topic: string;
+  summary: string;
+  fact_bullets?: string[];
+  relevance_score: number;
+  relevance_rationale?: string;
+}
+
 /**
  * Full Generated Context Envelope for Chat Messages
  */
@@ -566,6 +576,7 @@ export interface GeneratedMessageContext {
   active_boundaries?: string[];
   why_they_care_context?: string[];
   pedagogical_strategy?: string;
+  retrieved_stories?: RetrievedStoryContext[];
   tools_executed?: Array<{
     tool_name: string;
     query: string;

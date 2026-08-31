@@ -107,12 +107,13 @@ export class DialogueAgent {
       unifiedNode = await postgresStore.getUnifiedTopicNode("usr_default");
     }
 
-    // 2. Invoke Context Agent (The Empath) for AI semantic topic resolution, psychological framing and boundaries
+    // 2. Invoke Context Agent (The Empath) for AI semantic topic resolution, psychological framing, boundaries, and contextual story relevance retrieval
     const contextFraming = await ContextAgent.generateContextFraming(
       unifiedNode,
       history.map((m) => ({ role: m.role, content: m.content })),
       lastUserMessage,
-      attachedStory
+      attachedStory,
+      currentStories
     );
 
     const now = new Date();
@@ -246,12 +247,6 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}
 ${(attachedStory.disputed_claims || []).map((d) => `  * ${d.claim}: ${d.divergence_reason}`).join("\n")}`
       : "";
 
-    const storiesContext =
-      currentStories && currentStories.length > 0
-        ? `\nCURRENT STORIES ACTIVE IN USER'S NEWS FEED:
-${currentStories.map((s, i) => `[Story ${i + 1} | Event ID: "${s.event_id}" | Topic: "${s.topic}"]\nHeadline: ${s.headline}\nSummary: ${s.summary.slice(0, 200)}`).join("\n\n")}`
-        : "";
-
     const formattedHistory = history
       .map((m) => {
         const prefix = m.role === "assistant" ? "ALETHEIA" : "USER";
@@ -260,7 +255,7 @@ ${currentStories.map((s, i) => `[Story ${i + 1} | Event ID: "${s.event_id}" | To
       })
       .join("\n\n");
 
-    let prompt = `${knownContext}${storyContext}${storiesContext}\n\nConversation History:\n${formattedHistory}`;
+    let prompt = `${knownContext}${storyContext}\n\nConversation History:\n${formattedHistory}`;
 
     // Step 1: Initial LLM Evaluation (Can trigger tool call or respond directly)
     let result = await deepseekProvider.generateCompletion(prompt, {
@@ -579,6 +574,7 @@ ${currentStories.map((s, i) => `[Story ${i + 1} | Event ID: "${s.event_id}" | To
       active_boundaries: contextFraming.active_boundaries,
       why_they_care_context: contextFraming.why_they_care_context,
       pedagogical_strategy: parsed.agent_internal_rationale?.pedagogical_strategy,
+      retrieved_stories: contextFraming.retrieved_stories,
       tools_executed: executedTools,
       agent_internal_rationale: parsed.agent_internal_rationale,
       agentic_flow: agenticFlowSteps,

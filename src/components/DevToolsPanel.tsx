@@ -26,6 +26,7 @@ import {
   Eye,
   Sliders,
   Network,
+  Newspaper,
 } from "lucide-react";
 import {
   AgentTraceLog,
@@ -1061,6 +1062,47 @@ export default function DevToolsPanel({
                                       </div>
                                     ))}
                                   </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Contextually Retrieved Stories & Verified Facts */}
+                            {contextGen.retrieved_stories && contextGen.retrieved_stories.length > 0 && (
+                              <div className="p-3 rounded-lg bg-teal-950/40 border border-teal-500/30 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono text-teal-300 uppercase font-bold flex items-center gap-1.5">
+                                    <Newspaper className="w-3.5 h-3.5 text-teal-400" />
+                                    Relevant Stories Injected into Context ({contextGen.retrieved_stories.length})
+                                  </span>
+                                </div>
+
+                                <div className="space-y-2 text-[11px] pt-1">
+                                  {contextGen.retrieved_stories.map((rs: any, rIdx: number) => (
+                                    <div
+                                      key={rIdx}
+                                      className="p-2.5 rounded bg-slate-950/80 border border-white/5 space-y-1.5 text-[10px]"
+                                    >
+                                      <div className="flex items-center justify-between font-mono">
+                                        <span className="text-teal-300 font-bold truncate max-w-[280px]">
+                                          {rs.headline}
+                                        </span>
+                                        <span className="text-emerald-400 font-mono font-semibold">
+                                          {Math.round((rs.relevance_score || 0.8) * 100)}% Relevance
+                                        </span>
+                                      </div>
+                                      <p className="text-slate-300 text-[10px] line-clamp-2">{rs.summary}</p>
+                                      {rs.fact_bullets && rs.fact_bullets.length > 0 && (
+                                        <div className="pl-2 border-l border-teal-500/30 space-y-0.5 text-[9px] text-slate-400">
+                                          {rs.fact_bullets.slice(0, 2).map((fb: string, fIdx: number) => (
+                                            <div key={fIdx}>• {fb}</div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <div className="text-[9px] text-teal-400/80 font-mono italic">
+                                        Rationale: {rs.relevance_rationale || "Topic alignment"}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             )}
