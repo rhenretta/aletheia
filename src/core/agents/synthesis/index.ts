@@ -10,6 +10,7 @@ import {
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
+import { ArticleImageResolver } from "../../ingestion/article-image-resolver";
 import { deepseekProvider } from "../../llm/deepseek-provider";
 
 export class SynthesisEngine {
@@ -26,6 +27,8 @@ export class SynthesisEngine {
       ? `User revealed topics: ${Object.keys(userGraph.topic_weights).join(", ")}.
 Key values & mindset: Seeks autonomy, reduction of friction, sanctuary/isolation, engineering elegance, and high-agency technology.`
       : "General factual intelligence seeker.";
+
+    const usedFeedImages = new Set<string>();
 
     // Synthesize all atomic cards in parallel
     const rawCards = await Promise.all(
@@ -214,32 +217,41 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
           headline = effectiveArticles[0].title;
         }
 
+        // 1. First priority: Genuine publisher image already attached to ingested article
         let cardImageUrl: string | undefined = effectiveArticles.find(
-            (a) => a.image_url && a.image_url.startsWith("http")
-          )?.image_url;
+          (a) => a.image_url && ArticleImageResolver.isValidEditorialImage(a.image_url)
+        )?.image_url;
 
-          // If no direct image from source feed, resolve Wikipedia entity photo
-          if (!cardImageUrl) {
-            const entityCandidate =
-              fact.verified_entities?.[0] ||
-              headline.match(/\b([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)*)\b/g)?.find(
-                (e) =>
-                  e.length > 3 &&
-                  !["This", "That", "What", "When", "Where", "With", "From", "Into", "Over", "Under", "After", "Before", "News", "Report"].includes(e)
-              );
-
-            if (entityCandidate) {
-              const wikiImg = await FreeNewsFetcher.fetchEntityImage(entityCandidate);
-              if (wikiImg) {
-                cardImageUrl = wikiImg;
+        // 2. Second priority: Scrape authentic OpenGraph / Twitter editorial photo from corroborating source web pages
+        if (!cardImageUrl) {
+          for (const art of effectiveArticles.slice(0, 2)) {
+            if (art.source_url && art.source_url.startsWith("http")) {
+              const ogImg = await ArticleImageResolver.fetchOpenGraphImage(art.source_url);
+              if (ogImg) {
+                cardImageUrl = ogImg;
+                break;
               }
             }
           }
+        }
 
-          // Fallback to domain-accurate editorial photojournalism
-          if (!cardImageUrl) {
-            cardImageUrl = FreeNewsFetcher.getThematicEditorialImage(cleanTopic, headline);
+        // 3. Third priority: Specific named entity photography (bypassing generic flags/logos)
+        if (!cardImageUrl) {
+          const entityImg = await ArticleImageResolver.fetchSpecificEntityImage(
+            fact.verified_entities,
+            headline
+          );
+          if (entityImg) {
+            cardImageUrl = entityImg;
           }
+        }
+
+        // 4. Fourth priority: Story-tailored unique visual archetype (guaranteed zero duplicates)
+        if (!cardImageUrl || usedFeedImages.has(cardImageUrl)) {
+          cardImageUrl = ArticleImageResolver.resolveUniqueFallbackImage(cleanTopic, headline, usedFeedImages);
+        } else {
+          usedFeedImages.add(cardImageUrl);
+        }
 
         return {
           event_id: fact.event_id,
