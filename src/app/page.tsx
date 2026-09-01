@@ -892,13 +892,12 @@ export default function AletheiaHome() {
       const topicToFilter = aiFeedFilter.topic;
       if (topicToFilter && topicToFilter !== "all") {
         const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter, rankingSeenSnapshot);
-        if (semanticallyFiltered.length > 0) {
-          return semanticallyFiltered;
-        }
+        return semanticallyFiltered;
       }
       if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
         return pool.filter((c) => aiFeedFilter.matched_event_ids!.includes(c.event_id));
       }
+      return [];
     }
 
     // 2. Multi-Vector Semantic Affinity Filtering, Neural Graph Ranking & Freshness Recency Decay
@@ -1273,9 +1272,12 @@ export default function AletheiaHome() {
               {/* Left: Discovery Horizon Segmented Switcher */}
               <div className="flex flex-wrap items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-white/5 text-xs font-mono">
                 <button
-                  onClick={() => setSelectedCategoryFilter("all")}
+                  onClick={() => {
+                    setSelectedCategoryFilter("all");
+                    setAiFeedFilter(null);
+                  }}
                   className={`px-3 py-1.5 rounded-lg transition font-medium ${
-                    selectedCategoryFilter === "all"
+                    selectedCategoryFilter === "all" && !aiFeedFilter
                       ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
                       : "text-slate-400 hover:text-white"
                   }`}
@@ -1644,24 +1646,27 @@ export default function AletheiaHome() {
             <>
               {/* AI Focus Filter Banner (if active) */}
               {aiFeedFilter && aiFeedFilter.is_active !== false && (
-                <div className="p-3.5 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="p-3.5 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center gap-2.5 text-xs text-cyan-200">
                     <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 animate-pulse" />
                     <span>
-                      <strong className="text-cyan-300 font-semibold">AI Feed Focus:</strong>{" "}
-                      {aiFeedFilter.filter_reason || `Focusing on "${aiFeedFilter.topic}"`}
-                      <span className="text-cyan-400/80 text-[11px] ml-1.5 font-mono">
-                        ({filteredFeedCards.length} matching {filteredFeedCards.length === 1 ? "story" : "stories"})
+                      <strong className="text-cyan-300 font-mono font-semibold">Active Discussion Focus:</strong>{" "}
+                      <span className="text-white font-bold">&quot;{aiFeedFilter.topic}&quot;</span>
+                      <span className="text-slate-300 text-[11px] ml-1.5">
+                        — {aiFeedFilter.filter_reason || `Filtered by ongoing dialogue`}
+                      </span>
+                      <span className="text-cyan-400 text-[11px] ml-2 font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/30">
+                        {filteredFeedCards.length} of {feedCards.length} {filteredFeedCards.length === 1 ? "story" : "stories"}
                       </span>
                     </span>
                   </div>
                   <button
                     onClick={() => setAiFeedFilter(null)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs border border-white/10 flex items-center gap-1.5 transition font-medium flex-shrink-0"
-                    title="Override and view all news stories"
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white text-xs border border-white/20 flex items-center gap-1.5 transition font-mono font-medium flex-shrink-0 shadow-sm"
+                    title="Remove active topic filter and show all stories"
                   >
                     <X className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Show All Stories</span>
+                    <span>Show All ({feedCards.length})</span>
                   </button>
                 </div>
               )}
@@ -1704,14 +1709,29 @@ export default function AletheiaHome() {
                 <>
                   <ShieldCheck className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
                   <div className="text-sm font-semibold text-slate-200">
-                    {feedCards.length === 0 ? "Feed Cleared" : `No stories found for "${selectedTopicFilter}".`}
+                    {feedCards.length === 0
+                      ? "Feed Cleared"
+                      : aiFeedFilter && aiFeedFilter.is_active !== false
+                      ? `No stories currently in feed matching "${aiFeedFilter.topic}".`
+                      : `No stories found for "${selectedTopicFilter}".`}
                   </div>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
                     {feedCards.length === 0
                       ? `Your news stream is empty. Your conversation history and ${totalInterestsCount} tracked interests are preserved.`
+                      : aiFeedFilter && aiFeedFilter.is_active !== false
+                      ? "Click 'Show All Stories' to return to your complete news feed, or refresh news to fetch stories."
                       : "Try clearing your topic filter or selecting All Topics from the dropdown."}
                   </p>
                   <div className="flex items-center justify-center gap-3 pt-2">
+                    {aiFeedFilter && aiFeedFilter.is_active !== false && (
+                      <button
+                        onClick={() => setAiFeedFilter(null)}
+                        className="px-4 py-2 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 font-mono text-xs inline-flex items-center gap-1.5 transition shadow-sm"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Show All Stories ({feedCards.length})</span>
+                      </button>
+                    )}
                     {selectedTopicFilter !== "all" && (
                       <button
                         onClick={() => setSelectedTopicFilter("all")}

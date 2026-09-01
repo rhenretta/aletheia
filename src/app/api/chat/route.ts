@@ -133,9 +133,26 @@ export async function POST(req: NextRequest) {
               await postgresStore.saveUnifiedTopicNode(unifiedNode);
             }
 
-            // 4. Feed Filter Preservation
-            // Only preserve explicit active_feed_filter if specifically activated without forcing unsolicited curation runs
-            if (!finalResponse.active_feed_filter) {
+            // 4. Active Discussion Topic Feed Filtering
+            let filter = finalResponse.active_feed_filter;
+            const contextGen = finalResponse.context_generated as any;
+            const primaryTopic =
+              (filter && filter.is_active && filter.topic)
+                ? filter.topic
+                : attachedStory?.topic ||
+                  contextGen?.identified_topic ||
+                  finalResponse.extracted_topics?.[0]?.topic;
+
+            if (primaryTopic && primaryTopic !== "all" && primaryTopic !== "General") {
+              const matchedIds = (contextGen?.relevant_stories || []).map((s: any) => s.event_id);
+              finalResponse.active_feed_filter = {
+                is_active: true,
+                topic: primaryTopic,
+                matched_event_ids: matchedIds,
+                filter_reason: filter?.filter_reason || `Focusing on "${primaryTopic}" from active discussion`,
+                trigger_targeted_curation: false,
+              };
+            } else if (!finalResponse.active_feed_filter) {
               finalResponse.active_feed_filter = { is_active: false };
             }
 
