@@ -10,6 +10,7 @@ import {
   Layers,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   RefreshCw,
   Terminal,
   Activity,
@@ -690,12 +691,45 @@ export default function AletheiaHome() {
     setIsDevToolsOpen(true);
   };
 
-  const feedCards = pipelineResult?.feed_cards || [];
+  const rawFeedCards = pipelineResult?.feed_cards || [];
+  
+  // Categorize cards into revealed preferences, thematic bridges, and curiosity frontiers
+  const feedCards = React.useMemo(() => {
+    return rawFeedCards.map((card, idx) => {
+      let category = card.discovery_category;
+      if (!category) {
+        const text = `${card.topic} ${card.headline}`.toLowerCase();
+        if (
+          text.includes("game") ||
+          text.includes("steam") ||
+          text.includes("quantum") ||
+          text.includes("frontier") ||
+          text.includes("fusion") ||
+          card.is_exploration
+        ) {
+          category = "curiosity_frontier";
+        } else if (
+          text.includes("strategy") ||
+          text.includes("trade") ||
+          text.includes("naval") ||
+          text.includes("doctrine") ||
+          text.includes("asymmetry") ||
+          (idx % 4 === 1)
+        ) {
+          category = "thematic_intersection";
+        } else {
+          category = "revealed_preference";
+        }
+      }
+      return { ...card, discovery_category: category };
+    });
+  }, [rawFeedCards]);
+
   const distinctTopics = Array.from(new Set(feedCards.map((c) => c.topic)));
 
-  const prefCount = feedCards.filter((c) => c.discovery_category === "revealed_preference" || !c.discovery_category).length;
+  const prefCount = feedCards.filter((c) => c.discovery_category === "revealed_preference").length;
   const bridgeCount = feedCards.filter((c) => c.discovery_category === "thematic_intersection").length;
-  const frontierCount = feedCards.filter((c) => c.discovery_category === "curiosity_frontier" || c.is_exploration).length;
+  const frontierCount = feedCards.filter((c) => c.discovery_category === "curiosity_frontier").length;
 
   const filteredFeedCards = React.useMemo(() => {
     let pool = feedCards;
@@ -1341,118 +1375,226 @@ export default function AletheiaHome() {
                       </div>
                     )}
 
-                    {/* Cinematic News Image Banner */}
-                    {card.image_url && (
-                      <div
-                        className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden cursor-pointer group/img border border-white/10 bg-slate-900 mt-3"
-                        onClick={() => toggleCardExpansion(card.event_id)}
-                      >
-                        <img
-                          src={card.image_url}
-                          alt={card.headline}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
-                          loading="lazy"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = "none";
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
-                        <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] font-mono text-white/90">
+                    {/* Cognitive Load Mode: LOW (Executive Distill Mode) */}
+                    {cognitiveLoad === "low" ? (
+                      <div className="space-y-2.5 pt-1">
+                        {/* Compact Headline */}
+                        <h3
+                          className="text-lg font-bold text-white tracking-tight leading-snug hover:text-cyan-300 transition cursor-pointer"
+                          onClick={() => toggleCardExpansion(card.event_id)}
+                        >
+                          {sanitizeDisplay(card.headline)}
+                        </h3>
+
+                        {/* 1-Sentence Executive Bottom Line */}
+                        <p className="text-sm text-slate-200 font-normal leading-relaxed">
+                          {sanitizeDisplay(card.summary.split(/(?<=[.!?])\s+/)[0] || card.summary)}
+                        </p>
+
+                        {/* Top 2 Key Fact Bullets */}
+                        {card.fact_bullets && card.fact_bullets.length > 0 && (
+                          <div className="space-y-1.5 pt-1">
+                            {card.fact_bullets.slice(0, 2).map((bullet, bIdx) => (
+                              <div key={bIdx} className="flex items-start gap-2 text-xs text-slate-300 font-mono">
+                                <span className="text-emerald-400 font-bold">•</span>
+                                <span>{sanitizeDisplay(bullet.replace(/^[•\s-]+/, ""))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Compact Sources Strip */}
+                        <div className="pt-2 flex items-center justify-between text-[11px] font-mono text-slate-500 border-t border-white/5">
+                          <span>{card.sources[0]?.name || "Verified Wire"} ({card.sources.length} sources)</span>
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedTopicFilter(card.topic);
-                              setSelectedCategoryFilter("all");
-                              setAiFeedFilter(null);
-                            }}
-                            className="px-2 py-0.5 rounded-md bg-slate-950/80 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-semibold cursor-pointer transition"
-                            title={`Filter feed by "${card.topic}"`}
+                            onClick={() => handleDiscussStory(card)}
+                            className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition"
                           >
-                            {card.topic}
+                            <MessageSquare className="w-3 h-3" />
+                            Discuss
                           </button>
-                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
-                            {card.sources[0]?.name || "Verified Wire"}
-                          </span>
                         </div>
                       </div>
-                    )}
-
-                    {/* Headline */}
-                    <h3
-                      className="text-xl font-bold text-white tracking-tight leading-snug hover:text-cyan-300 transition cursor-pointer"
-                      onClick={() => toggleCardExpansion(card.event_id)}
-                    >
-                      {sanitizeDisplay(card.headline)}
-                    </h3>
-
-                    {/* Lead Paragraph Hook */}
-                    <div className="space-y-3 font-sans pt-1">
-                      <p className="text-base text-slate-100 font-normal leading-relaxed">
-                        {card.summary
-                          .split(/(?<=[.!?])\s+/)
-                          .filter((s) => s.trim().length > 0)
-                          .map((sentence, sIdx) => (
-                            <span
-                              key={sIdx}
-                              onClick={() => {
-                                const clean = sentence.toLowerCase();
-                                const matchingSource =
-                                  card.sources.find((src) =>
-                                    (src.raw_text || "").toLowerCase().includes(clean.slice(0, 25))
-                                  ) || card.sources[0];
-
-                                const enriched: EventSourceArticle = {
-                                  ...matchingSource,
-                                  highlighted_passages: [sentence, ...(matchingSource.highlighted_passages || [])],
-                                };
-                                setSelectedReadingSource({ source: enriched, card });
+                    ) : cognitiveLoad === "deep_dive" ? (
+                      /* Cognitive Load Mode: DEEP DIVE (Comprehensive Intelligence Memo) */
+                      <div className="space-y-4 pt-1">
+                        {/* Cinematic Image Banner */}
+                        {card.image_url && (
+                          <div className="relative w-full h-48 sm:h-56 rounded-xl overflow-hidden border border-white/10 bg-slate-900 mt-2">
+                            <img
+                              src={card.image_url}
+                              alt={card.headline}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none";
                               }}
-                              className="hover:bg-cyan-500/20 hover:text-cyan-100 cursor-pointer transition rounded px-1 -mx-1 inline-block"
-                              title="Click to view original source reporting and highlighted passage"
-                            >
-                              {sanitizeDisplay(sentence)}{" "}
-                            </span>
-                          ))}
-                      </p>
-                    </div>
-
-                    {/* Expand / Collapse Action Bar */}
-                    <div className="pt-2 flex items-center justify-between border-t border-white/5">
-                      <button
-                        onClick={() => toggleCardExpansion(card.event_id)}
-                        className="text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition py-1 group"
-                      >
-                        {isExpanded ? (
-                          <>
-                            <span>Collapse Story</span>
-                            <ChevronUp className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition" />
-                          </>
-                        ) : (
-                          <>
-                            <span>Read Full Story & Sources ({card.sources.length})</span>
-                            <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition" />
-                          </>
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+                            <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] font-mono text-white/90">
+                              <span className="px-2.5 py-1 rounded-md bg-indigo-950/90 border border-indigo-500/40 text-indigo-200 font-bold flex items-center gap-1.5">
+                                <Sparkles className="w-3 h-3 text-indigo-400" />
+                                Deep Epistemic Memo
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
+                                {card.sources[0]?.name || "Verified Wire"}
+                              </span>
+                            </div>
+                          </div>
                         )}
-                      </button>
 
-                      {!isExpanded && (
-                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500">
-                          <span>
-                            {card.sources.map((s) => s.name).slice(0, 2).join(", ")}
-                            {card.sources.length > 2 ? ` +${card.sources.length - 2} more` : ""}
-                          </span>
+                        {/* Full Headline */}
+                        <h3 className="text-xl font-bold text-white tracking-tight leading-snug">
+                          {sanitizeDisplay(card.headline)}
+                        </h3>
+
+                        {/* Full Epistemic Synthesis Narrative */}
+                        <div className="space-y-3 font-sans">
+                          <p className="text-base text-slate-100 font-normal leading-relaxed">
+                            {card.summary
+                              .split(/(?<=[.!?])\s+/)
+                              .filter((s) => s.trim().length > 0)
+                              .map((sentence, sIdx) => (
+                                <span
+                                  key={sIdx}
+                                  onClick={() => {
+                                    const clean = sentence.toLowerCase();
+                                    const matchingSource =
+                                      card.sources.find((src) =>
+                                        (src.raw_text || "").toLowerCase().includes(clean.slice(0, 25))
+                                      ) || card.sources[0];
+                                    const enriched: EventSourceArticle = {
+                                      ...matchingSource,
+                                      highlighted_passages: [sentence, ...(matchingSource.highlighted_passages || [])],
+                                    };
+                                    setSelectedReadingSource({ source: enriched, card });
+                                  }}
+                                  className="hover:bg-cyan-500/20 hover:text-cyan-100 cursor-pointer transition rounded px-1 -mx-1 inline-block"
+                                  title="Click to view original source reporting and highlighted passage"
+                                >
+                                  {sanitizeDisplay(sentence)}{" "}
+                                </span>
+                              ))}
+                          </p>
+
+                          {card.expansion_text && card.expansion_text.trim().length > 20 && (
+                            <p className="text-sm text-slate-300 leading-relaxed border-l-2 border-indigo-500/40 pl-3">
+                              {sanitizeDisplay(card.expansion_text)}
+                            </p>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* Expandable Body Narrative & Sources Section */}
-                    {isExpanded && (
-                      <div className="space-y-4 pt-2 border-t border-white/10 animate-in fade-in duration-200">
-                        {/* Detailed Narrative Paragraphs */}
-                        {card.expansion_text && card.expansion_text.trim().length > 20 && (
-                          <p className="text-sm text-slate-300 leading-relaxed">
-                            {card.expansion_text
+                        {/* Verified Key Facts Matrix */}
+                        {card.fact_bullets && card.fact_bullets.length > 0 && (
+                          <div className="p-3 rounded-xl bg-slate-900/80 border border-white/10 space-y-2">
+                            <span className="text-[11px] font-mono text-emerald-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Verified Consensus Facts
+                            </span>
+                            <div className="space-y-1.5 text-xs text-slate-200 font-sans">
+                              {card.fact_bullets.map((bullet, bIdx) => (
+                                <div key={bIdx} className="flex items-start gap-2">
+                                  <span className="text-emerald-400 font-bold">•</span>
+                                  <span>{sanitizeDisplay(bullet.replace(/^[•\s-]+/, ""))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Disputed Claims / Divergence Analysis (if present) */}
+                        {card.disputed_claims && card.disputed_claims.length > 0 && (
+                          <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 space-y-2">
+                            <span className="text-[11px] font-mono text-amber-300 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                              Contested Assertions & Partisan Divergence
+                            </span>
+                            <div className="space-y-1.5 text-xs text-amber-100 font-sans">
+                              {card.disputed_claims.map((claim, cIdx) => (
+                                <div key={cIdx} className="flex items-start gap-2">
+                                  <span className="text-amber-400 font-bold">⚠</span>
+                                  <span>{sanitizeDisplay(typeof claim === "string" ? claim : (claim as any).claim || JSON.stringify(claim))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Comprehensive Sources Grid */}
+                        <div className="pt-3 border-t border-white/10 space-y-2">
+                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                            <BookOpen className="w-3 h-3 text-slate-400" />
+                            Corroborating Primary Sources ({card.sources.length}):
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {card.sources.map((src, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setSelectedReadingSource({ source: src, card })}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 font-mono group"
+                              >
+                                <span className="group-hover:underline font-semibold">{src.name}</span>
+                                <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:text-cyan-400">
+                                  {src.bias.replace("_", " ")}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Cognitive Load Mode: BALANCED (Standard Epistemic Flow) */
+                      <>
+                        {/* Cinematic News Image Banner */}
+                        {card.image_url && (
+                          <div
+                            className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden cursor-pointer group/img border border-white/10 bg-slate-900 mt-3"
+                            onClick={() => toggleCardExpansion(card.event_id)}
+                          >
+                            <img
+                              src={card.image_url}
+                              alt={card.headline}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-500"
+                              loading="lazy"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = "none";
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+                            <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] font-mono text-white/90">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTopicFilter(card.topic);
+                                  setSelectedCategoryFilter("all");
+                                  setAiFeedFilter(null);
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-slate-950/80 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-semibold cursor-pointer transition"
+                                title={`Filter feed by "${card.topic}"`}
+                              >
+                                {card.topic}
+                              </button>
+                              <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
+                                {card.sources[0]?.name || "Verified Wire"}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Headline */}
+                        <h3
+                          className="text-xl font-bold text-white tracking-tight leading-snug hover:text-cyan-300 transition cursor-pointer"
+                          onClick={() => toggleCardExpansion(card.event_id)}
+                        >
+                          {sanitizeDisplay(card.headline)}
+                        </h3>
+
+                        {/* Lead Paragraph Hook */}
+                        <div className="space-y-3 font-sans pt-1">
+                          <p className="text-base text-slate-100 font-normal leading-relaxed">
+                            {card.summary
                               .split(/(?<=[.!?])\s+/)
                               .filter((s) => s.trim().length > 0)
                               .map((sentence, sIdx) => (
@@ -1478,35 +1620,100 @@ export default function AletheiaHome() {
                                 </span>
                               ))}
                           </p>
-                        )}
-
-                        {/* Minimalist Sources Footer */}
-                        <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
-                              <BookOpen className="w-3 h-3 text-slate-400" />
-                              Sources:
-                            </span>
-                            {card.sources.map((src, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setSelectedReadingSource({ source: src, card })}
-                                className="px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 group font-mono"
-                                title="Click to read original article and see highlighted passages"
-                              >
-                                <span className="group-hover:underline">{src.name}</span>
-                                <span className="text-[9px] uppercase text-slate-500 group-hover:text-cyan-400">
-                                  [{src.bias.replace("_", " ")}]
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-
-                          <span className="text-[10px] font-mono text-slate-500 italic">
-                            Click any sentence above to inspect source passage
-                          </span>
                         </div>
-                      </div>
+
+                        {/* Expand / Collapse Action Bar */}
+                        <div className="pt-2 flex items-center justify-between border-t border-white/5">
+                          <button
+                            onClick={() => toggleCardExpansion(card.event_id)}
+                            className="text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition py-1 group"
+                          >
+                            {isExpanded ? (
+                              <>
+                                <span>Collapse Story</span>
+                                <ChevronUp className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition" />
+                              </>
+                            ) : (
+                              <>
+                                <span>Read Full Story & Sources ({card.sources.length})</span>
+                                <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition" />
+                              </>
+                            )}
+                          </button>
+
+                          {!isExpanded && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500">
+                              <span>
+                                {card.sources.map((s) => s.name).slice(0, 2).join(", ")}
+                                {card.sources.length > 2 ? ` +${card.sources.length - 2} more` : ""}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Expandable Body Narrative & Sources Section */}
+                        {isExpanded && (
+                          <div className="space-y-4 pt-2 border-t border-white/10 animate-in fade-in duration-200">
+                            {/* Detailed Narrative Paragraphs */}
+                            {card.expansion_text && card.expansion_text.trim().length > 20 && (
+                              <p className="text-sm text-slate-300 leading-relaxed">
+                                {card.expansion_text
+                                  .split(/(?<=[.!?])\s+/)
+                                  .filter((s) => s.trim().length > 0)
+                                  .map((sentence, sIdx) => (
+                                    <span
+                                      key={sIdx}
+                                      onClick={() => {
+                                        const clean = sentence.toLowerCase();
+                                        const matchingSource =
+                                          card.sources.find((src) =>
+                                            (src.raw_text || "").toLowerCase().includes(clean.slice(0, 25))
+                                          ) || card.sources[0];
+
+                                        const enriched: EventSourceArticle = {
+                                          ...matchingSource,
+                                          highlighted_passages: [sentence, ...(matchingSource.highlighted_passages || [])],
+                                        };
+                                        setSelectedReadingSource({ source: enriched, card });
+                                      }}
+                                      className="hover:bg-cyan-500/20 hover:text-cyan-100 cursor-pointer transition rounded px-1 -mx-1 inline-block"
+                                      title="Click to view original source reporting and highlighted passage"
+                                    >
+                                      {sanitizeDisplay(sentence)}{" "}
+                                    </span>
+                                  ))}
+                              </p>
+                            )}
+
+                            {/* Minimalist Sources Footer */}
+                            <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                                  <BookOpen className="w-3 h-3 text-slate-400" />
+                                  Sources:
+                                </span>
+                                {card.sources.map((src, i) => (
+                                  <button
+                                    key={i}
+                                    onClick={() => setSelectedReadingSource({ source: src, card })}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 group font-mono"
+                                    title="Click to read original article and see highlighted passages"
+                                  >
+                                    <span className="group-hover:underline">{src.name}</span>
+                                    <span className="text-[9px] uppercase text-slate-500 group-hover:text-cyan-400">
+                                      [{src.bias.replace("_", " ")}]
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+
+                              <span className="text-[10px] font-mono text-slate-500 italic">
+                                Click any sentence above to inspect source passage
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </article>
                 );
