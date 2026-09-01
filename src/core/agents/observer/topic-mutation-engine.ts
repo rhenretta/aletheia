@@ -75,16 +75,6 @@ export type TopicMutationToolCall =
   | { tool: "split_topic"; parameters: SplitTopicParams }
   | { tool: "delete_topic"; parameters: DeleteTopicParams };
 
-export function cleanLivingMotivation(text: string): string {
-  if (!text) return "";
-  let clean = text.trim();
-  clean = clean.replace(/^User (?:explicitly |directly |recently )?(?:mentioned|stated|expressed|asked about|discussed|brought up|noted)\s+(?:interest in\s+)?/i, "Focuses on ");
-  clean = clean.replace(/\s+in prior turns and this turn's summary highlights them as a key trend\.?/i, ".");
-  clean = clean.replace(/\s+in prior turns\.?/i, ".");
-  clean = clean.replace(/; relevant to [a-zA-Z\s]+ discussion\.?/i, ".");
-  return clean.trim();
-}
-
 export class TopicMutationEngine {
   /**
    * Creates a new topic node in the user's knowledge graph.
@@ -134,22 +124,22 @@ export class TopicMutationEngine {
       ? params.curiosity_vectors
       : [topicName];
 
-    const cleanedWhy = cleanLivingMotivation(params.why_they_care) || `Substantive intellectual focus on ${topicName}.`;
+    const substantiveWhy = params.why_they_care?.trim() || `Substantive intellectual focus on ${topicName}.`;
 
     const newMetadata: TopicMetadata = {
       weight: initialWeight,
       what_they_care_about: params.what_they_care_about || params.living_narrative || undefined,
-      why_they_care: cleanedWhy,
+      why_they_care: substantiveWhy,
       presentation_strategy: params.presentation_strategy || undefined,
       technical_depth: validDepth,
-      living_narrative: params.living_narrative || cleanedWhy,
+      living_narrative: params.living_narrative || substantiveWhy,
       likes_and_angles: params.likes_and_angles || [],
       dislikes_and_critiques: params.dislikes_and_critiques || [],
       curiosity_vectors: curiosityVectors,
       evolution_timeline: [
         {
           timestamp,
-          insight: params.evolution_insight || cleanedWhy,
+          insight: params.evolution_insight || substantiveWhy,
           trigger_source: triggerSource,
           evidence: params.evidence,
         },
@@ -237,12 +227,12 @@ export class TopicMutationEngine {
         ? params.technical_depth
         : prevDepth;
 
-    const newWhy = cleanLivingMotivation(params.why_they_care || prevWhy) || prevWhy;
+    const newWhy = params.why_they_care?.trim() || prevWhy;
 
     // Merge Living Narrative
     let updatedNarrative = existing.living_narrative || existing.why_they_care;
     if (params.living_narrative) {
-      updatedNarrative = cleanLivingMotivation(params.living_narrative);
+      updatedNarrative = params.living_narrative.trim();
     } else if (params.why_they_care && !updatedNarrative.includes(newWhy)) {
       updatedNarrative = `${updatedNarrative} ${newWhy}`.trim();
     }
