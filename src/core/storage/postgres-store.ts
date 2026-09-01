@@ -183,12 +183,13 @@ export class PostgresStore {
         this.schemaInitialized = true;
         console.log("PostgresStore: Unified Schema initialized successfully.");
 
-        // Automatically seed PostgreSQL from disk/memory state if records are missing
+        // Automatically seed PostgreSQL from disk/memory state if records are missing or empty
         for (const [userId, node] of this.memoryTopicNodes.entries()) {
           if (userId && node && Object.keys(node.topics || {}).length > 0) {
             try {
-              const check = await client.query("SELECT user_id FROM unified_topic_nodes WHERE user_id = $1", [userId]);
-              if (check.rows.length === 0) {
+              const check = await client.query("SELECT user_id, topics FROM unified_topic_nodes WHERE user_id = $1", [userId]);
+              const dbTopics = check.rows.length > 0 ? (typeof check.rows[0].topics === "string" ? JSON.parse(check.rows[0].topics) : check.rows[0].topics) : null;
+              if (!dbTopics || Object.keys(dbTopics).length === 0) {
                 console.log(`PostgresStore: Seeding topic node for ${userId} into PostgreSQL...`);
                 await this.saveUnifiedTopicNode(node);
               }
@@ -200,8 +201,9 @@ export class PostgresStore {
         for (const [userId, chat] of this.memoryChatSessions.entries()) {
           if (userId && chat && (chat.messages?.length > 0 || chat.extracted_topics?.length > 0)) {
             try {
-              const check = await client.query("SELECT user_id FROM chat_sessions WHERE user_id = $1", [userId]);
-              if (check.rows.length === 0) {
+              const check = await client.query("SELECT user_id, messages FROM chat_sessions WHERE user_id = $1", [userId]);
+              const dbMessages = check.rows.length > 0 ? (typeof check.rows[0].messages === "string" ? JSON.parse(check.rows[0].messages) : check.rows[0].messages) : null;
+              if (!dbMessages || dbMessages.length === 0) {
                 console.log(`PostgresStore: Seeding chat session for ${userId} into PostgreSQL...`);
                 await this.saveChatSession(userId, chat.messages, chat.extracted_topics || []);
               }
@@ -234,29 +236,34 @@ export class PostgresStore {
         );
         if (res.rows.length > 0) {
           const row = res.rows[0];
+          const dbTopics = typeof row.topics === "string" ? JSON.parse(row.topics) : row.topics || {};
+          const diskNode = this.memoryTopicNodes.get(userId);
+          const diskTopics = diskNode?.topics || {};
+          const mergedTopics = { ...diskTopics, ...dbTopics };
+
           const node: UnifiedTopicNode = {
             user_id: row.user_id,
-            topics: typeof row.topics === "string" ? JSON.parse(row.topics) : row.topics || {},
+            topics: mergedTopics,
             psychological_profile:
               typeof row.psychological_profile === "string"
                 ? JSON.parse(row.psychological_profile)
-                : row.psychological_profile || {},
+                : row.psychological_profile || (diskNode?.psychological_profile || {}),
             discovery_parameters:
               typeof row.discovery_parameters === "string"
                 ? JSON.parse(row.discovery_parameters)
-                : row.discovery_parameters || {},
+                : row.discovery_parameters || (diskNode?.discovery_parameters || {}),
             historical_anchors:
               typeof row.historical_anchors === "string"
                 ? JSON.parse(row.historical_anchors)
-                : row.historical_anchors || [],
+                : row.historical_anchors || (diskNode?.historical_anchors || []),
             interest_intersections:
               typeof row.interest_intersections === "string"
                 ? JSON.parse(row.interest_intersections)
-                : row.interest_intersections || [],
+                : row.interest_intersections || (diskNode?.interest_intersections || []),
             adjacent_curiosity_frontiers:
               typeof row.adjacent_curiosity_frontiers === "string"
                 ? JSON.parse(row.adjacent_curiosity_frontiers)
-                : row.adjacent_curiosity_frontiers || [],
+                : row.adjacent_curiosity_frontiers || (diskNode?.adjacent_curiosity_frontiers || []),
             recent_topic_diffs:
               typeof row.recent_topic_diffs === "string"
                 ? JSON.parse(row.recent_topic_diffs)
@@ -272,6 +279,9 @@ export class PostgresStore {
             last_updated: row.last_updated?.toISOString() || new Date().toISOString(),
           };
           this.memoryTopicNodes.set(userId, node);
+          if (Object.keys(mergedTopics).length > Object.keys(dbTopics).length) {
+            await this.saveUnifiedTopicNode(node);
+          }
           return node;
         }
       } catch (err) {
