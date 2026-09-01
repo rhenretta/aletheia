@@ -1,12 +1,15 @@
 stateDiagram-v2
-    [*] --> UnifiedTopicNode: Single Source of Truth (Psychological Profile + Discovery Filters)
+    [*] --> UnifiedTopicNode: Single Source of Truth (3 Pillars: What / Why / Presentation)
 
     state "The Mind-State Memory Architecture" as MindStateCore {
         UnifiedTopicNode --> ContextAgent: Inject Empath Framing, Sensitivities & Calibrated Depth
         UnifiedTopicNode --> DiscoveryAgent: Curate High-Signal Wire Queries & Strict Quality Filter
-        ContextAgent --> InteractiveDialogue: Calibrated Empath Dialogue Turns
+        ContextAgent --> InteractiveDialogue: Calibrated Empath Dialogue Turns & Inverted Flow
         InteractiveDialogue --> ObserverAgent: Active Listener (Sentiment, Reactions & Nuance)
-        ObserverAgent --> UnifiedTopicNode: Continuous Autonomous Learning Adaptation
+        ObserverAgent --> TopicMutationEngine: Pure Agentic Tool Calling (create_topic / update_topic)
+        TopicMutationEngine --> UnifiedTopicNode: Cumulative Living Topic Dossier Evolution
+        ObserverAgent --> InterestHarmonizer: Background Graph Saturation Reconciliation (>= 25 Topics)
+        InterestHarmonizer --> UnifiedTopicNode: Harmonized Topic Nodes
     }
 
     state "Node A: Epistemology Agent" as NodeA {

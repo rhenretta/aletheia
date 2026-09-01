@@ -37,14 +37,17 @@ export class DocWorker {
    */
   public generateMermaidGraph(): string {
     return `stateDiagram-v2
-    [*] --> UnifiedTopicNode: Single Source of Truth (Psychological Profile + Discovery Filters)
+    [*] --> UnifiedTopicNode: Single Source of Truth (3 Pillars: What / Why / Presentation)
 
     state "The Mind-State Memory Architecture" as MindStateCore {
         UnifiedTopicNode --> ContextAgent: Inject Empath Framing, Sensitivities & Calibrated Depth
         UnifiedTopicNode --> DiscoveryAgent: Curate High-Signal Wire Queries & Strict Quality Filter
-        ContextAgent --> InteractiveDialogue: Calibrated Empath Dialogue Turns
+        ContextAgent --> InteractiveDialogue: Calibrated Empath Dialogue Turns & Inverted Flow
         InteractiveDialogue --> ObserverAgent: Active Listener (Sentiment, Reactions & Nuance)
-        ObserverAgent --> UnifiedTopicNode: Continuous Autonomous Learning Adaptation
+        ObserverAgent --> TopicMutationEngine: Pure Agentic Tool Calling (create_topic / update_topic)
+        TopicMutationEngine --> UnifiedTopicNode: Cumulative Living Topic Dossier Evolution
+        ObserverAgent --> InterestHarmonizer: Background Graph Saturation Reconciliation (>= 25 Topics)
+        InterestHarmonizer --> UnifiedTopicNode: Harmonized Topic Nodes
     }
 
     state "Node A: Epistemology Agent" as NodeA {
@@ -98,12 +101,13 @@ export class DocWorker {
 
 ---
 
-## 1. System Philosophy & Objectives
-**Project Aletheia: The Mind-State Memory Architecture** transforms stateless conversational tools into a continuous, stateful, and empathy-driven intelligence platform:
-1. **Deep Continuity**: Maintains long-term psychological understanding across interactions, understanding *why* users care and their technical depth.
-2. **Psychological Awareness**: Injects emotional trajectory, sensitivities, and boundaries into prompts to ensure respectful, nuanced interaction.
-3. **Intentional Discovery**: Translates deep preferences into rigorous quality and anti-preference filters, rejecting low-signal fluff before ingestion.
-4. **Observability-Driven Adaptation**: Continuously adapts in the background via the Observer Agent with transparent trace logging.
+## 1. System Philosophy & Mind-State Continuity
+**Project Aletheia: The Mind-State Memory Architecture** transforms stateless news tools into a continuous, stateful, and empathy-driven intelligence platform:
+1. **Deep Continuity**: Maintains long-term psychological understanding across interactions, tracking *why* users care and their technical depth across domains.
+2. **Psychological Awareness**: Injects emotional trajectory, sensitivities, and boundaries into prompts to ensure respectful, nuanced interaction without formulaic conversational repetition.
+3. **Intentional Discovery**: Translates deep user preferences into multi-tiered search queries and rigorous quality/anti-preference filters, rejecting low-signal clickbait before ingestion.
+4. **Epistemic Deliberation**: Enforces a strict prefix-rationale architecture where agent cognition and fact-checking precede generation, grounded in real-time temporal and spatial realities.
+5. **Observability-Driven Adaptation**: Continuously evolves living topic dossiers in the background via the Observer Agent with transparent trace logging.
 
 ---
 
@@ -115,51 +119,119 @@ ${this.generateMermaidGraph()}
 
 ---
 
-## 3. Node Specifications & Contracts
+## 3. Living Topic Dossiers: The 3 Core Pillars & Cumulative Evolution
 
-### The Unified Topic Node (Single Source of Truth)
-- **Role:** Centralized repository for conversational metadata and discovery parameters.
-- **Components:** Topics, Motivations (\`why_they_care\`), \`technical_depth\`, \`psychological_profile\`, \`discovery_parameters\`, and \`historical_anchors\`.
+Aletheia models user knowledge not as isolated keywords or flat scores, but as rich, cumulative **Living Topic Dossiers** within the \`UnifiedTopicNode\`:
 
-### Context Agent (\`node_context\`) - The Empath
-- **Input:** \`UnifiedTopicNode\` + User Query + Active Story.
-- **Engine:** Evaluates emotional trajectory, active sensitivities, hard boundaries, and intellectual calibration.
-- **Output:** Structured context envelope guiding the conversational LLM.
+### The 3 Core Pillars
+1. **What They Care About (\`what_they_care_about\`)**:
+   - The cumulative scope of specific sub-domains, technologies, architectures, and empirical focus areas the user follows.
+   - Distinct from general curiosity; captures exact operational boundaries.
+2. **Why They Care (\`why_they_care\`)**:
+   - The user's underlying intellectual stakes, motivations, philosophical worldview, and core concerns.
+   - Deepens continuously across conversation turns without dropping prior context.
+3. **How Best to Present Stories (\`presentation_strategy\`)**:
+   - Editorial direction derived strictly from how the user responds to content, engages with topics, and expresses likes or critiques.
+   - Avoids generic templates in favor of tailored density and analytical framing.
 
-### Discovery Agent (\`node_discovery\`) - The Curator
-- **Input:** \`UnifiedTopicNode.discovery_parameters\` + Active Topic Vectors.
-- **Engine:** Synthesizes high-signal queries, evaluates candidate wire articles, and rejects sensationalist clickbait/anti-preferences.
-- **Output:** Curated \`RawArticle[]\` meeting empirical density thresholds.
-
-### Observer Agent (\`node_observer\`) - The Active Listener
-- **Input:** Recent conversational turns + Behavioral telemetry stream.
-- **Engine:** Background sentiment evaluation, motivation extraction, and boundary detection.
-- **Output:** Autonomous delta updates to the \`UnifiedTopicNode\` and transparent adaptation trace logs.
-
-### Node A: Epistemology Agent (\`node_a_epistemology\`)
-- **Input:** Curated \`RawArticle[]\` from Discovery Agent.
-- **Engine:** Bias stripper removing adjectives and emotional rhetoric.
-- **Output:** \`PureFactObject\` with \`verified_entities\`, \`agreed_facts\`, and \`disputed_claims\`.
-
-### Node C: Serendipity Agent (\`node_c_serendipity\`)
-- **Algorithm:** Epsilon-greedy Multi-Armed Bandit ($\\\\epsilon = 0.20$).
-- **Output:** High-affinity topic routing and pedagogical concept anchors.
-
-### Node D: Synthesis Agent (\`node_d_synthesis\`)
-- **Input:** \`PureFactObject\` + \`RoutingDecision\` + Reader intellectual profile.
-- **Output:** Generative UI event briefing cards with passage highlights and source verification.
+### Cumulative Synthesis & Non-Overwrite Guarantee
+- **Living Narrative (\`living_narrative\`)**: A multi-dimensional narrative synthesizing historical context with the newest discussion.
+- **Evolution Insight (\`evolution_insight\`)**: A discrete, single-sentence note capturing the exact incremental shift or nuance introduced in each interaction.
+- **Evolution Timeline (\`evolution_timeline\`)**: An append-only audit trail preserving timestamped insights, trigger sources, and verbatim user evidence.
+- **Preferences & Anti-Preferences**: Granular tracking of \`likes_and_angles\` vs \`dislikes_and_critiques\`.
 
 ---
 
-## 4. Active Observability Audit Trail (Latest Node Traces)
+## 4. Epistemic Deliberation & Inverted Execution Ordering
+
+The conversational intake pipeline in \`DialogueAgent\` operates under an **inverted execution order** designed to prevent hallucination and enforce factual grounding:
+
+\`\`\`text
+1. Semantic Topic Resolver & Feed Filter FIRST
+   └── Traverses user knowledge graph, identifies active discussion subject,
+       and immediately filters candidate feed stories by semantic affinity.
+
+2. Context Agent (The Empath) Grounding SECOND
+   └── Constructs context envelope with calibrated technical depth,
+       active sensitivities/boundaries, and scores candidate feed stories.
+
+3. Epistemic Sufficiency & Temporal Evaluation THIRD
+   └── DeepSeek evaluates whether local feed context contains verified facts
+       for the current calendar year. If insufficient or outdated,
+       autonomously executes "search_internet" via FreeNewsFetcher.
+
+4. Prefix-Rationale Dual-Intent Synthesis LAST
+   └── Deliberates first: outputs agent_internal_rationale before message text.
+       Streams response tokens using JsonMessageStreamExtractor.
+\`\`\`
+
+### Architectural Rules & Guardrails
+- **Prefix-Rationale Decision Ordering**: The LLM must construct its internal cognitive rationale (*emotional state, curiosity focus, pedagogical strategy, why this response*) before emitting the conversational message.
+- **Real-Time Temporal & Spatial Grounding**: Prompts inject real-world date/time, client timezone, user region, and article publication age to prevent chronological confusion.
+- **Absolute Ban on Regex Heuristics**: Epistemic routing and tool selection rely entirely on LLM-driven structured tool-calling protocols.
+- **Zero Test-Case Overfitting**: Universal domain-agnostic ontologies and prompts prevent hardcoded test heuristics.
+
+---
+
+## 5. Discrete Topic Mutation & Graph Harmonization
+
+### Topic Mutation Engine (\`TopicMutationEngine\`)
+The Observer Agent mutates topics exclusively through atomic, discrete tool calls:
+- \`create_topic\`: Establishes a new topic dossier with validated user evidence.
+- \`update_topic\`: Integrates new nuances, updates weights, and appends to the evolution timeline without overwriting prior history.
+
+### Interest Harmonizer (\`InterestHarmonizer\`)
+When the topic graph approaches saturation ($\ge 25$ topics) or when triggered via \`/api/interests/harmonize\`:
+- Evaluates semantic overlap across topic dossiers.
+- Merges redundant sub-themes, promotes cross-domain intersections, and purges stale nodes.
+- Records all actions in the audited \`harmonization_runs\` journal on the \`UnifiedTopicNode\`.
+
+---
+
+## 6. Feed Personalization, Deduplication & Narrative Citations
+
+- **Semantic Matcher**: Computes concept sphere intersections, accounting for knowledge graph weights, curiosity vectors, and domain ontologies.
+- **Topic Briefs Builder**: Aggregates stories into intelligence dossiers with velocity indicators (*breaking, active, recent, steady, dormant*).
+- **Syndication Deduplication**: Groups identical syndicated wire coverage across news agencies to maintain feed diversity.
+- **Sentence-Level Narrative Citations**: Generates synthesized narrative summaries where each sentence features interactive, clickable source citations linked to the \`SourceReaderModal\`.
+- **Decoupled Telemetry**: Passive dwell and scroll tracking is decoupled from feed rendering to eliminate reshuffling and UI jitter.
+
+---
+
+## 7. PostgreSQL Persistence & Seed Architecture
+
+- **PostgreSQL 16 + pgvector**: Secure persistence with tables for \`unified_topic_nodes\`, \`user_knowledge_graphs\`, \`pure_fact_objects\`, \`behavioral_telemetry\`, \`agent_trace_logs\`, and \`chat_sessions\`.
+- **JSONB DDL Support**: Schema includes \`recent_topic_diffs\` and \`harmonization_runs\` on \`unified_topic_nodes\`.
+- **Canonical Seed State (\`SEED_DATA_STATE\`)**: Embedded baseline data ensures consistent, resilient bootstrapping across local Docker and production AWS environments.
+- **Idempotent Migrations (\`npm run db:migrate\`)**: Safely applies schema updates with \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\`.
+
+---
+
+## 8. Reverse Proxy & Production Infrastructure
+
+- **AWS ECS Fargate**: Containerized Next.js standalone server deployed in \`us-east-1\`.
+- **AWS RDS PostgreSQL**: Dedicated \`db.t4g.micro\` PostgreSQL instance with SSL enforcement.
+- **Route 53 & CloudFront**: Edge CDN routing \`news.ciclops.io\` with shared wildcard cookie authentication (\`ciclops.io\`).
+- **Production Inspector (\`npm run prod:inspect\`)**: Interactive CLI tool for inspecting live production telemetry, user topics, and database connectivity.
+- **Local Development**: Supports local development with Docker Compose (\`docker-compose.dev.yml\`) and automated Caddy reverse proxy.
+
+---
+
+## 9. Micro-Agent Node Contracts & Execution Registry
+
+- **Context Agent (\`node_context\`)**: Injects empath framing, active sensitivities, boundaries, and calibrated technical depth into conversational prompts.
+- **Discovery Agent (\`node_discovery\`)**: Curates wire queries, applies anti-preference filters, and rejects sensationalist clickbait.
+- **Observer Agent (\`node_observer\`)**: Actively evaluates user dialogue and telemetry to emit atomic topic mutation tool calls.
+- **Epistemology Agent (\`node_a_epistemology\`)**: Strips emotive rhetoric and produces verifiable \`PureFactObject\` records with agreed facts and disputed claims.
+- **Telemetry Agent (\`node_b_telemetry\`)**: Tracks passive user dwell and scroll depth to adjust interest weights.
+- **Serendipity Agent (\`node_c_serendipity\`)**: Balances exploitation (80%) and exploration (20%) via an $\\\\epsilon$-greedy multi-armed bandit.
+- **Synthesis Agent (\`node_d_synthesis\`)**: Formats pure facts into digestible event cards, briefings, and generative UI widgets.
+
+---
+
+## 10. Active Observability Audit Trail (Latest Node Traces)
 
 ${traceSummary}
-
----
-
-## 5. Reverse Proxy & Container Infrastructure
-- **Caddy Reverse Proxy:** Local/Remote routing on port 80/443 with automated SSL and security headers.
-- **Next.js Fullstack Server:** Generative UI frontend and LangGraph agent execution API on port 3000.
 `;
   }
 
