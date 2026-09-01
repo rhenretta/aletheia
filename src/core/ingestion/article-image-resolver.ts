@@ -291,17 +291,17 @@ export class ArticleImageResolver {
     const combined = `${topic} ${headline}`.toLowerCase();
     let poolKey = "general_wire";
 
-    if (combined.includes("gadget") || combined.includes("pin") || combined.includes("glasses") || combined.includes("wearable") || combined.includes("hardware") || combined.includes("device")) {
+    if (combined.includes("hardware") || combined.includes("device") || combined.includes("gadget") || combined.includes("wearable") || combined.includes("sensor")) {
       poolKey = "ai_gadgets";
-    } else if (combined.includes("ai") || combined.includes("llm") || combined.includes("software") || combined.includes("model") || combined.includes("compute") || combined.includes("gpu")) {
+    } else if (combined.includes("software") || combined.includes("model") || combined.includes("algorithm") || combined.includes("compute") || combined.includes("chip") || combined.includes("data")) {
       poolKey = "ai_software";
-    } else if (combined.includes("naval") || combined.includes("strike") || combined.includes("drone") || combined.includes("hormuz") || combined.includes("military") || combined.includes("carrier") || combined.includes("missile")) {
+    } else if (combined.includes("defense") || combined.includes("security") || combined.includes("naval") || combined.includes("maritime") || combined.includes("aerospace")) {
       poolKey = "naval_military";
-    } else if (combined.includes("starship") || combined.includes("spacex") || combined.includes("rocket") || combined.includes("space") || combined.includes("nasa") || combined.includes("launch")) {
+    } else if (combined.includes("space") || combined.includes("orbital") || combined.includes("satellite") || combined.includes("launch") || combined.includes("astronomy")) {
       poolKey = "spaceflight";
-    } else if (combined.includes("game") || combined.includes("factorio") || combined.includes("simulation") || combined.includes("minecraft") || combined.includes("steam")) {
+    } else if (combined.includes("simulation") || combined.includes("entertainment") || combined.includes("graphics") || combined.includes("interactive")) {
       poolKey = "gaming_sim";
-    } else if (combined.includes("conflict") || combined.includes("iran") || combined.includes("syria") || combined.includes("diplomacy") || combined.includes("policy") || combined.includes("sanctions")) {
+    } else if (combined.includes("policy") || combined.includes("governance") || combined.includes("economy") || combined.includes("diplomacy") || combined.includes("trade")) {
       poolKey = "geopolitics";
     }
 
