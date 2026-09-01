@@ -697,14 +697,14 @@ export default function AletheiaHome() {
   const frontierCount = feedCards.filter((c) => c.discovery_category === "curiosity_frontier" || c.is_exploration).length;
 
   const filteredFeedCards = feedCards.filter((c) => {
-    // 1. AI conversational feed filter (if activated by Dialogue Agent and not overridden)
-    if (aiFeedFilter && aiFeedFilter.is_active !== false) {
+    // 1. AI conversational feed filter (if active and manual filter not explicitly set)
+    if (selectedTopicFilter === "all" && aiFeedFilter && aiFeedFilter.is_active !== false) {
       if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
         if (!aiFeedFilter.matched_event_ids.includes(c.event_id)) {
           return false;
         }
       } else if (aiFeedFilter.topic) {
-        const lowerCardTopic = c.topic.toLowerCase();
+        const lowerCardTopic = (c.topic || "").toLowerCase();
         const lowerFilterTopic = aiFeedFilter.topic.toLowerCase();
         if (!lowerCardTopic.includes(lowerFilterTopic) && !lowerFilterTopic.includes(lowerCardTopic)) {
           return false;
@@ -712,7 +712,14 @@ export default function AletheiaHome() {
       }
     }
 
-    const matchesTopic = selectedTopicFilter === "all" || c.topic.toLowerCase() === selectedTopicFilter.toLowerCase();
+    const lowerCardTopic = (c.topic || "").toLowerCase();
+    const lowerSelected = selectedTopicFilter.toLowerCase();
+    const matchesTopic =
+      selectedTopicFilter === "all" ||
+      lowerCardTopic === lowerSelected ||
+      lowerCardTopic.includes(lowerSelected) ||
+      lowerSelected.includes(lowerCardTopic);
+
     const matchesCategory =
       selectedCategoryFilter === "all" ||
       (selectedCategoryFilter === "curiosity_frontier" && (c.discovery_category === "curiosity_frontier" || c.is_exploration)) ||
@@ -1196,6 +1203,30 @@ export default function AletheiaHome() {
             </div>
           )}
 
+          {/* Active Manual Topic Filter Banner */}
+          {selectedTopicFilter !== "all" && (
+            <div className="p-3.5 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2.5 text-xs text-cyan-200">
+                <Filter className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                <span>
+                  <span className="text-slate-400">Filtering by Topic:</span>{" "}
+                  <strong className="text-cyan-300 font-bold text-sm font-mono">&quot;{selectedTopicFilter}&quot;</strong>
+                  <span className="text-cyan-400/90 text-xs ml-2 font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/30">
+                    {filteredFeedCards.length} {filteredFeedCards.length === 1 ? "story" : "stories"}
+                  </span>
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedTopicFilter("all")}
+                className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs border border-white/15 flex items-center gap-1.5 transition font-mono font-medium flex-shrink-0"
+                title="Clear topic filter"
+              >
+                <X className="w-3.5 h-3.5 text-slate-400" />
+                <span>Show All ({feedCards.length})</span>
+              </button>
+            </div>
+          )}
+
           {/* Stories Stream */}
           {filteredFeedCards.length === 0 ? (
             <div className="glass-panel rounded-2xl p-12 text-center border border-white/10 space-y-4">
@@ -1210,49 +1241,73 @@ export default function AletheiaHome() {
                 <>
                   <ShieldCheck className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
                   <div className="text-sm font-semibold text-slate-200">
-                    {feedCards.length === 0 ? "Feed Cleared" : "No stories match this filter."}
+                    {feedCards.length === 0 ? "Feed Cleared" : `No stories found for "${selectedTopicFilter}".`}
                   </div>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
                     {feedCards.length === 0
                       ? `Your news stream is empty. Your conversation history and ${totalInterestsCount} tracked interests are preserved.`
-                      : "Try selecting All Topics or switching Discovery Horizon tabs."}
+                      : "Try clearing your topic filter or selecting All Topics from the dropdown."}
                   </p>
-                  <button
-                    onClick={() => handleFindNewsClean()}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs inline-flex items-center gap-2 hover:opacity-90 transition shadow-lg shadow-cyan-500/20"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Refresh News</span>
-                  </button>
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    {selectedTopicFilter !== "all" && (
+                      <button
+                        onClick={() => setSelectedTopicFilter("all")}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-mono text-xs inline-flex items-center gap-1.5 transition border border-white/10"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Clear Topic Filter</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleFindNewsClean()}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs inline-flex items-center gap-2 hover:opacity-90 transition shadow-lg shadow-cyan-500/20"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Refresh News</span>
+                    </button>
+                  </div>
                 </>
               )}
             </div>
           ) : (
             <div className="space-y-6">
-              {filteredFeedCards.map((card, idx) => {
-                const isAttached = attachedStory?.event_id === card.event_id;
+              {filteredFeedCards.map((card) => {
                 const isExpanded = expandedCardIds.has(card.event_id);
+                const isAttached = attachedStory?.event_id === card.event_id;
 
                 return (
-                  <div
-                    key={card.event_id || idx}
-                    className={`glass-panel rounded-2xl p-6 border transition space-y-4 ${
+                  <article
+                    key={card.event_id}
+                    className={`glass-panel rounded-2xl p-4 sm:p-6 border transition-all duration-300 ${
                       isAttached
-                        ? "border-cyan-500/60 bg-cyan-950/10 shadow-lg shadow-cyan-500/10"
+                        ? "border-cyan-500/60 shadow-2xl shadow-cyan-950/40 ring-1 ring-cyan-500/30"
                         : "border-white/10 hover:border-white/20"
                     }`}
                   >
-                    {/* Minimalist Header: Time, Sources Count & Actions */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-3">
-                      <div className="flex items-center gap-2.5 text-xs font-mono">
-                        <span className="text-amber-300 font-semibold flex items-center gap-1">
+                    {/* Top Metadata Row: Topic Badge, Time Ago, Sources, & Action Buttons */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-white/5">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTopicFilter(card.topic);
+                            setSelectedCategoryFilter("all");
+                            setAiFeedFilter(null);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 text-[11px] font-mono font-semibold transition cursor-pointer flex items-center gap-1 shadow-sm"
+                          title={`Filter feed by "${card.topic}"`}
+                        >
+                          <Filter className="w-3 h-3 text-cyan-400" />
+                          <span>{card.topic}</span>
+                        </button>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          {card.recency_label || "Today"}
-                        </span>
-                        <span className="text-slate-500">•</span>
-                        <span className="text-slate-400">
-                          {card.sources.length} sources corroborating
-                        </span>
+                          <span>{card.recency_label || "Today"}</span>
+                          <span>•</span>
+                          <span className="text-slate-400">
+                            {card.sources.length} sources corroborating
+                          </span>
+                        </div>
                       </div>
 
                       {/* Card Action Controls */}
@@ -1289,7 +1344,7 @@ export default function AletheiaHome() {
                     {/* Cinematic News Image Banner */}
                     {card.image_url && (
                       <div
-                        className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden cursor-pointer group/img border border-white/10 bg-slate-900"
+                        className="relative w-full h-44 sm:h-52 rounded-xl overflow-hidden cursor-pointer group/img border border-white/10 bg-slate-900 mt-3"
                         onClick={() => toggleCardExpansion(card.event_id)}
                       >
                         <img
@@ -1304,9 +1359,18 @@ export default function AletheiaHome() {
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
                         <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] font-mono text-white/90">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-cyan-300 font-semibold">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTopicFilter(card.topic);
+                              setSelectedCategoryFilter("all");
+                              setAiFeedFilter(null);
+                            }}
+                            className="px-2 py-0.5 rounded-md bg-slate-950/80 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-semibold cursor-pointer transition"
+                            title={`Filter feed by "${card.topic}"`}
+                          >
                             {card.topic}
-                          </span>
+                          </button>
                           <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
                             {card.sources[0]?.name || "Verified Wire"}
                           </span>
@@ -1444,7 +1508,7 @@ export default function AletheiaHome() {
                         </div>
                       </div>
                     )}
-                  </div>
+                  </article>
                 );
               })}
             </div>
@@ -1815,9 +1879,11 @@ export default function AletheiaHome() {
                               <button
                                 onClick={() => {
                                   setSelectedTopicFilter(topic);
+                                  setSelectedCategoryFilter("all");
+                                  setAiFeedFilter(null);
                                   setCompanionTab("chat");
                                 }}
-                                className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1"
+                                className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
                               >
                                 Filter Feed →
                               </button>
@@ -1964,7 +2030,11 @@ export default function AletheiaHome() {
         extractedTopics={extractedTopics}
         totalInterestsCount={totalInterestsCount}
         handleInspectTopic={handleInspectTopic}
-        setSelectedTopicFilter={setSelectedTopicFilter}
+        setSelectedTopicFilter={(topic: string) => {
+          setSelectedTopicFilter(topic);
+          setSelectedCategoryFilter("all");
+          setAiFeedFilter(null);
+        }}
         handleHarmonizeInterests={handleHarmonizeInterests}
         isHarmonizing={isHarmonizing}
         handleResetProfileAndSession={handleResetProfileAndSession}
