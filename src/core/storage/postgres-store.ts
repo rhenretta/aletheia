@@ -276,6 +276,8 @@ export class PostgresStore {
 
   // --- User Knowledge Graphs ---
   public async getUserGraph(userId: string): Promise<UserKnowledgeGraph | undefined> {
+    let graph: UserKnowledgeGraph | undefined;
+
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -285,12 +287,12 @@ export class PostgresStore {
         );
         if (res.rows.length > 0) {
           const row = res.rows[0];
-          return {
+          graph = {
             user_id: row.user_id,
-            topic_weights: row.topic_weights,
+            topic_weights: row.topic_weights || {},
             cognitive_load_state: row.cognitive_load_state,
-            historical_anchors: row.historical_anchors,
-            dwell_history: row.dwell_history,
+            historical_anchors: row.historical_anchors || [],
+            dwell_history: row.dwell_history || [],
             last_updated: row.last_updated?.toISOString() || new Date().toISOString(),
           };
         }
@@ -298,7 +300,33 @@ export class PostgresStore {
         console.warn("PostgresStore: Error querying user graph:", err);
       }
     }
-    return this.memoryUserGraphs.get(userId);
+
+    if (!graph) {
+      graph = this.memoryUserGraphs.get(userId);
+    }
+
+    // Always merge in all active topics from the UnifiedTopicNode Single Source of Truth
+    const node = this.memoryTopicNodes.get(userId);
+    if (node && node.topics) {
+      if (!graph) {
+        graph = {
+          user_id: userId,
+          topic_weights: {},
+          cognitive_load_state: "balanced",
+          historical_anchors: node.historical_anchors || [],
+          dwell_history: node.dwell_history || [],
+          last_updated: node.last_updated || new Date().toISOString(),
+        };
+      }
+      graph.topic_weights = graph.topic_weights || {};
+      for (const [topic, meta] of Object.entries(node.topics)) {
+        if (graph.topic_weights[topic] === undefined) {
+          graph.topic_weights[topic] = meta.weight;
+        }
+      }
+    }
+
+    return graph;
   }
 
   public async saveUserGraph(graph: UserKnowledgeGraph): Promise<void> {

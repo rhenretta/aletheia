@@ -152,6 +152,7 @@ export default function AletheiaHome() {
         if (localCached) {
           const parsed = JSON.parse(localCached);
           if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
+          if (parsed.unifiedTopicNode) setUnifiedTopicNode(parsed.unifiedTopicNode);
           if (parsed.userGraph) setUserGraph(parsed.userGraph);
           if (parsed.extractedTopics && parsed.extractedTopics.length > 0) setExtractedTopics(parsed.extractedTopics);
           if (parsed.pipelineResult) setPipelineResult(parsed.pipelineResult);
@@ -189,12 +190,20 @@ export default function AletheiaHome() {
 
   // Save to browser localStorage whenever state changes (only for authenticated users)
   useEffect(() => {
-    if (effectiveUserId !== "usr_guest" && (messages.length > 1 || extractedTopics.length > 0 || userGraph || pipelineResult)) {
+    if (
+      effectiveUserId !== "usr_guest" &&
+      (messages.length > 1 ||
+        extractedTopics.length > 0 ||
+        unifiedTopicNode ||
+        userGraph ||
+        pipelineResult)
+    ) {
       try {
         localStorage.setItem(
           `aletheia_chat_session_${effectiveUserId}`,
           JSON.stringify({
             messages,
+            unifiedTopicNode,
             userGraph,
             extractedTopics,
             pipelineResult,
@@ -203,7 +212,7 @@ export default function AletheiaHome() {
         );
       } catch (e) {}
     }
-  }, [messages, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
+  }, [messages, unifiedTopicNode, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
 
   // Derived accurate count of all tracked interests across Unified Topic Node, User Graph, and extracted topics
   const totalInterestsCount = (() => {
@@ -566,8 +575,9 @@ export default function AletheiaHome() {
     try {
       const activeTopics = Array.from(
         new Set([
+          ...(unifiedTopicNode ? Object.keys(unifiedTopicNode.topics || {}) : []),
           ...extractedTopics.map((t) => t.topic),
-          ...(userGraph ? Object.keys(userGraph.topic_weights) : []),
+          ...(userGraph ? Object.keys(userGraph.topic_weights || {}) : []),
         ])
       );
 

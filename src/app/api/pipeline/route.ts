@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     let articlesToProcess: RawArticle[] = articles || [];
 
     const unifiedNode: UnifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
-    const storedGraph = userGraph || (await postgresStore.getUserGraph(effectiveUserId));
+    const storedGraph = await postgresStore.getUserGraph(effectiveUserId);
 
     // Multi-Tier Topic Assembly via Discovery Agent (The Curator)
     if (!articlesToProcess || articlesToProcess.length === 0) {
