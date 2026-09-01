@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import {
   AttachedStoryContext,
+  TopicMetadata,
+  TopicEvolutionEntry,
   UnifiedTopicNode,
   UserKnowledgeGraph,
 } from "@/core/types/contracts";
@@ -92,8 +94,21 @@ export default function MobileCompanionSheet({
 }: MobileCompanionSheetProps) {
   const [isStoryExpanded, setIsStoryExpanded] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [expandedTopicTimelines, setExpandedTopicTimelines] = useState<Set<string>>(new Set());
   const mobileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const toggleTopicTimeline = (topic: string) => {
+    setExpandedTopicTimelines((prev) => {
+      const next = new Set(prev);
+      if (next.has(topic)) {
+        next.delete(topic);
+      } else {
+        next.add(topic);
+      }
+      return next;
+    });
+  };
 
   // Auto-scroll to the end of conversation whenever sheet is opened or messages change
   useEffect(() => {
@@ -503,16 +518,12 @@ export default function MobileCompanionSheet({
                 </div>
 
                 {(() => {
-                  const topicMap = new Map<string, { weight: number; why_they_care: string; technical_depth?: string }>();
+                  const topicMap = new Map<string, TopicMetadata>();
 
                   // Unified Topic Node (Authoritative Single Source of Truth)
                   if (unifiedTopicNode?.topics) {
                     for (const [topic, meta] of Object.entries(unifiedTopicNode.topics)) {
-                      topicMap.set(topic, {
-                        weight: meta.weight,
-                        why_they_care: meta.why_they_care,
-                        technical_depth: meta.technical_depth,
-                      });
+                      topicMap.set(topic, meta);
                     }
                   }
 
@@ -530,19 +541,22 @@ export default function MobileCompanionSheet({
                   }
 
                   return (
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                       {entries.map(([topic, data], idx) => {
                         const pct = Math.round(data.weight * 100);
+                        const isTimelineOpen = expandedTopicTimelines.has(topic);
+                        const timeline = data.evolution_timeline || [];
+
                         return (
                           <div
                             key={idx}
-                            className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2"
+                            className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2.5"
                           >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-semibold text-slate-100 text-sm">{topic}</span>
                                 {data.technical_depth && (
-                                  <span className="px-1.5 py-0.2 rounded bg-cyan-950/60 text-cyan-300 font-mono text-[9px] border border-cyan-500/30 uppercase">
+                                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-300 font-mono text-[9px] border border-cyan-500/30 uppercase">
                                     {data.technical_depth}
                                   </span>
                                 )}
@@ -552,6 +566,7 @@ export default function MobileCompanionSheet({
                               </span>
                             </div>
 
+                            {/* Affinity Weight Bar */}
                             <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full"
@@ -559,20 +574,135 @@ export default function MobileCompanionSheet({
                               />
                             </div>
 
-                            <div className="space-y-1 pt-1">
-                              <span className="text-[10px] font-mono text-slate-400 font-semibold block">
-                                Rationale:
-                              </span>
-                              <p className="text-slate-300 text-xs leading-relaxed">{data.why_they_care}</p>
+                            <div className="space-y-1.5 pt-0.5">
+                              {/* Pillar 1: What the user is interested in */}
+                              <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded-lg border border-white/5 space-y-0.5">
+                                <span className="text-cyan-400 font-mono text-[9px] uppercase font-bold block">
+                                  1. What They Are Interested In (Focus & Scope):
+                                </span>
+                                <p className="text-slate-200">
+                                  {data.what_they_care_about || `Core focus on ${topic} developments, technical architecture, and real-world implications.`}
+                                </p>
+                              </div>
+
+                              {/* Pillar 2: Why they care */}
+                              <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded-lg border border-white/5 space-y-0.5">
+                                <span className="text-emerald-400 font-mono text-[9px] uppercase font-bold block">
+                                  2. Why They Care (Intellectual Stakes & Worldview):
+                                </span>
+                                <p className="text-slate-200">{data.why_they_care}</p>
+                              </div>
+
+                              {/* Living Dossier Synthesis & Narrative */}
+                              {data.living_narrative && data.living_narrative !== data.why_they_care && data.living_narrative !== data.what_they_care_about && (
+                                <div className="text-[11px] leading-relaxed bg-indigo-950/20 p-2 rounded-lg border border-indigo-500/20 space-y-0.5">
+                                  <span className="text-indigo-400 font-mono text-[9px] uppercase font-bold block">
+                                    Living Dossier (Cumulative Narrative Synthesis):
+                                  </span>
+                                  <p className="text-slate-200 text-[10.5px] leading-normal">{data.living_narrative}</p>
+                                </div>
+                              )}
+
+                              {/* Pillar 3: How best to present stories */}
+                              <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded-lg border border-white/5 space-y-1">
+                                <span className="text-amber-400 font-mono text-[9px] uppercase font-bold block">
+                                  3. How Best To Present Stories:
+                                </span>
+                                <p className="text-slate-300">
+                                  {data.presentation_strategy || `Curate with ${data.technical_depth || "practitioner"} depth, focusing on verified empirical milestones and substantive trade-offs.`}
+                                </p>
+
+                                {(data.likes_and_angles?.length || 0) > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                    <span className="text-[9px] font-mono text-slate-500">Preferred:</span>
+                                    {data.likes_and_angles?.map((like: string, lIdx: number) => (
+                                      <span
+                                        key={lIdx}
+                                        className="text-[9px] font-mono text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20"
+                                      >
+                                        ✓ {like}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {(data.dislikes_and_critiques?.length || 0) > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                    <span className="text-[9px] font-mono text-slate-500">Filter out:</span>
+                                    {data.dislikes_and_critiques?.map((dislike: string, dIdx: number) => (
+                                      <span
+                                        key={dIdx}
+                                        className="text-[9px] font-mono text-rose-300 bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-500/20"
+                                      >
+                                        ✕ {dislike}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
-                            <div className="pt-1 flex items-center justify-between">
+                            {/* Curiosity Vectors Tags */}
+                            {data.curiosity_vectors && data.curiosity_vectors.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {data.curiosity_vectors.map((vec: string, vIdx: number) => (
+                                  <span
+                                    key={vIdx}
+                                    className="px-1.5 py-0.5 rounded bg-slate-900 text-[9px] font-mono text-slate-400 border border-white/5"
+                                  >
+                                    #{vec}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Living Evolution Timeline */}
+                            {timeline.length > 0 && (
+                              <div className="pt-1.5 border-t border-white/5 space-y-1.5">
+                                <button
+                                  onClick={() => toggleTopicTimeline(topic)}
+                                  className="text-[10px] font-mono text-slate-400 hover:text-cyan-300 flex items-center justify-between w-full transition py-0.5"
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <RotateCcw className="w-3 h-3 text-cyan-400" />
+                                    <span>Evolution Timeline ({timeline.length})</span>
+                                  </span>
+                                  <ChevronDown
+                                    className={`w-3 h-3 transition transform ${isTimelineOpen ? "rotate-180" : ""}`}
+                                  />
+                                </button>
+
+                                {isTimelineOpen && (
+                                  <div className="space-y-1.5 pl-2 border-l border-cyan-500/30 text-[11px] font-mono text-slate-300 pt-1">
+                                    {timeline.map((entry: TopicEvolutionEntry, eIdx: number) => (
+                                      <div key={eIdx} className="space-y-0.5 pb-1">
+                                        <div className="flex items-center justify-between text-[9px] text-slate-500">
+                                          <span>
+                                            {new Date(entry.timestamp).toLocaleDateString(undefined, {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "numeric",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        </div>
+                                        <p className="text-slate-300 font-sans leading-tight text-xs">
+                                          {entry.insight}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="pt-1 flex items-center justify-between border-t border-white/5">
                               <button
                                 onClick={() => {
                                   handleInspectTopic({
                                     topic,
                                     weight: data.weight,
-                                    reasoning: data.why_they_care,
+                                    reasoning: data.living_narrative || data.why_they_care,
                                     technical_depth: data.technical_depth as any,
                                   });
                                   setIsDevToolsOpen(true);
@@ -580,7 +710,7 @@ export default function MobileCompanionSheet({
                                 className="text-[10px] font-mono text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1"
                               >
                                 <Sliders className="w-2.5 h-2.5 text-cyan-400" />
-                                <span>Topic Diff</span>
+                                <span>Inspect Node</span>
                               </button>
 
                               <button
@@ -588,7 +718,7 @@ export default function MobileCompanionSheet({
                                   setSelectedTopicFilter(topic);
                                   onClose();
                                 }}
-                                className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1"
+                                className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
                               >
                                 Filter Feed →
                               </button>

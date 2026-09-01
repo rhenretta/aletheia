@@ -133,41 +133,10 @@ export async function POST(req: NextRequest) {
               await postgresStore.saveUnifiedTopicNode(unifiedNode);
             }
 
-            // 4. Targeted Curator Signal & Dynamic Adaptive Feed Focus
-            let filter = finalResponse.active_feed_filter;
-            const contextGen = finalResponse.context_generated as any;
-            const primaryTopic =
-              filter?.topic ||
-              contextGen?.identified_topic ||
-              finalResponse.extracted_topics?.[0]?.topic;
-
-            if (primaryTopic && (!filter || !filter.is_active || !filter.topic)) {
-              const matchedIds = (contextGen?.relevant_stories || []).map((s: any) => s.event_id);
-              filter = {
-                is_active: true,
-                topic: primaryTopic,
-                matched_event_ids: matchedIds,
-                filter_reason: `Adapted to active discussion on "${primaryTopic}"`,
-                trigger_targeted_curation: matchedIds.length === 0,
-                curation_query: primaryTopic,
-              };
-              finalResponse.active_feed_filter = filter;
-            }
-
-            const needsCuration =
-              filter &&
-              filter.is_active &&
-              (filter.trigger_targeted_curation || !filter.matched_event_ids || filter.matched_event_ids.length === 0);
-
-            if (needsCuration && filter.topic) {
-              const queryTopic = filter.curation_query || filter.topic;
-              finalResponse.active_feed_filter = {
-                ...filter,
-                is_active: true,
-                trigger_targeted_curation: true,
-                curation_query: queryTopic,
-                filter_reason: `Curating live news stories for "${filter.topic}"...`,
-              };
+            // 4. Feed Filter Preservation
+            // Only preserve explicit active_feed_filter if specifically activated without forcing unsolicited curation runs
+            if (!finalResponse.active_feed_filter) {
+              finalResponse.active_feed_filter = { is_active: false };
             }
 
             // 5. Persist chat session history

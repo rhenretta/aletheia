@@ -211,7 +211,7 @@ export class DialogueAgent {
 
     let matchedIds: string[] = [];
 
-    // Filter available candidate stories by the identified topic FIRST
+    // Filter available candidate stories by the identified topic for local epistemic grounding
     if (currentStories && currentStories.length > 0 && identifiedTopic) {
       const semanticallyMatched = filterFeedBySemanticAffinity(
         currentStories as any,
@@ -222,71 +222,12 @@ export class DialogueAgent {
       matchedIds = semanticallyMatched.map((s) => s.event_id);
     }
 
-    // Instantly emit feed_filter event to the client so UI updates immediately!
-    if (identifiedTopic && identifiedTopic !== "all") {
-      yield {
-        type: "feed_filter",
-        data: {
-          is_active: true,
-          topic: identifiedTopic,
-          matched_event_ids: matchedIds,
-          filter_reason: `Focusing on "${identifiedTopic}"`,
-          trigger_targeted_curation: matchedIds.length === 0,
-          curation_query: identifiedTopic,
-        },
-      };
-    }
-
     const now = new Date();
     const currentDateStr = clientContext?.localFormatted || now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     const timeZoneStr = clientContext?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     const locationStr = clientContext?.location || timeZoneStr;
 
-    // If no matching stories exist in the feed, execute a live search to get current facts on this topic!
-    if (relevantStories.length === 0 && identifiedTopic && identifiedTopic !== "all") {
-      yield { type: "tool_start", tool_name: "search_internet", query: identifiedTopic };
-
-      try {
-        const liveArticles = await FreeNewsFetcher.searchNews(identifiedTopic, 5);
-        const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
-          name: a.source_name || "News Wire",
-          title: a.title,
-          url: a.source_url,
-          bias: a.author_bias_rating || "center",
-          raw_text: a.raw_text,
-          published_at: a.published_at,
-          highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
-        }));
-
-        executedTools.push({
-          tool_name: "search_internet",
-          query: identifiedTopic,
-          results_summary: `Retrieved ${liveArticles.length} live sources for "${identifiedTopic}".`,
-          items_retrieved: liveArticles.length,
-          sources: eventSources,
-        });
-
-        yield {
-          type: "tool_complete",
-          tool_name: "search_internet",
-          query: identifiedTopic,
-          summary: `Retrieved ${liveArticles.length} live sources for "${identifiedTopic}".`,
-          sources: eventSources,
-        };
-
-        relevantStories = liveArticles.map((a, i) => ({
-          event_id: `live_curated_${i}`,
-          headline: a.title,
-          topic: identifiedTopic,
-          summary: a.raw_text.slice(0, 300),
-          fact_bullets: [],
-        }));
-      } catch (err) {
-        console.warn("Auto-curation search error:", err);
-      }
-    }
-
-    // 3. Step 2: Context Agent Framing grounded in the newly filtered/fetched stories
+    // 3. Step 2: Context Agent Framing grounded in the local candidate stories
     const contextFraming = await ContextAgent.generateContextFraming(
       unifiedNode,
       history.map((m) => ({ role: m.role, content: m.content })),
@@ -315,13 +256,9 @@ CHRONOLOGICAL INTEGRITY & FACT-CHECKING RULES:
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING: Use known user interests and knowledge graph anchors to SUBTLY SHAPE the conversation. Never echo or narrate profile traits ("As someone who..."). Never end with formulaic questions.
 2. OBJECTIVE PEER TONE: Speak naturally, substantively, and concisely as an intellectual peer grounded in operational realities.
-3. DYNAMIC FEED ADAPTATION (CRITICAL):
-   - Whenever the conversation touches upon, explores, or discusses a topic, YOU MUST ALWAYS ACTIVATE active_feed_filter:
-     * "is_active": true
-     * "topic": The discussed topic/concept name
-     * "matched_event_ids": Array of relevant event IDs from the retrieved feed stories, or empty array if none match
-     * "trigger_targeted_curation": true (if no stories in the feed currently match this topic, so the pipeline can fetch fresh news)
-     * "curation_query": 2-4 word targeted search query
+3. FEED FILTER INTEGRITY:
+   - Only activate active_feed_filter ("is_active": true) if the user explicitly requests to filter or focus the feed for a specific topic.
+   - For regular inquiries and discussions, maintain "is_active": false to preserve the user's uninterrupted reading experience.
 4. OUTPUT STRICT JSON adhering to:
 {
   "agent_internal_rationale": {

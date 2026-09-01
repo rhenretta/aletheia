@@ -118,7 +118,7 @@ export default function AletheiaHome() {
   // Contextual DevTools State
   const [isDevToolsOpen, setIsDevToolsOpen] = useState(false);
   const [selectedContext, setSelectedContext] = useState<ContextualSelection | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [devToolsTrigger, setDevToolsTrigger] = useState(0);
 
   // Expandable Stories State (Accordion/Expansion per card)
   const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
@@ -254,7 +254,7 @@ export default function AletheiaHome() {
 
   const seenStateRef = React.useRef<SeenInteractionState>(rankingSeenSnapshot);
 
-  // Sync snapshot whenever pipelineResult, selectedTopicFilter, or refreshTrigger changes
+  // Sync snapshot whenever pipelineResult, selectedTopicFilter, or selectedCategoryFilter changes
   useEffect(() => {
     try {
       const cached = localStorage.getItem(`aletheia_seen_state_${effectiveUserId}`);
@@ -264,7 +264,7 @@ export default function AletheiaHome() {
         setRankingSeenSnapshot(parsed);
       }
     } catch (e) {}
-  }, [pipelineResult, selectedTopicFilter, selectedCategoryFilter, refreshTrigger, effectiveUserId]);
+  }, [pipelineResult, selectedTopicFilter, selectedCategoryFilter, effectiveUserId]);
 
   const markStoriesAsSeen = React.useCallback(
     (storyIds: string[], topicNames?: string[]) => {
@@ -408,7 +408,7 @@ export default function AletheiaHome() {
         if (json.unified_topic_node) setUnifiedTopicNode(json.unified_topic_node);
         if (json.user_graph) setUserGraph(json.user_graph);
         setExtractedTopics([]);
-        setRefreshTrigger((prev) => prev + 1);
+        setDevToolsTrigger((prev) => prev + 1);
       }
     } catch (err) {
       console.error("Harmonization error:", err);
@@ -499,7 +499,7 @@ export default function AletheiaHome() {
       setAttachedStory(null);
       setSelectedContext(null);
       setAiFeedFilter(null);
-      setRefreshTrigger((prev) => prev + 1);
+      setDevToolsTrigger((prev) => prev + 1);
     } catch (err) {
       console.error("Failed to reset profile:", err);
     } finally {
@@ -616,9 +616,6 @@ export default function AletheiaHome() {
           if (eventType === "feed_filter" && data) {
             if (data.is_active && (data.matched_event_ids?.length || data.topic)) {
               setAiFeedFilter(data);
-              if (data.trigger_targeted_curation && (data.curation_query || data.topic)) {
-                handleTargetedCuration(data.curation_query || data.topic, data.topic);
-              }
             } else {
               setAiFeedFilter(null);
             }
@@ -695,16 +692,6 @@ export default function AletheiaHome() {
               (metaData.active_feed_filter.matched_event_ids?.length || metaData.active_feed_filter.topic)
             ) {
               setAiFeedFilter(metaData.active_feed_filter);
-
-              if (
-                metaData.active_feed_filter.trigger_targeted_curation &&
-                (metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic)
-              ) {
-                handleTargetedCuration(
-                  metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic,
-                  metaData.active_feed_filter.topic
-                );
-              }
             } else {
               setAiFeedFilter(null);
             }
@@ -729,7 +716,7 @@ export default function AletheiaHome() {
         }
       }
 
-      setRefreshTrigger((prev) => prev + 1);
+      setDevToolsTrigger((prev) => prev + 1);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setChatError(errMsg);
@@ -779,7 +766,7 @@ export default function AletheiaHome() {
           setUserGraph(json.data.user_graph);
         }
       }
-      setRefreshTrigger((prev) => prev + 1);
+      setDevToolsTrigger((prev) => prev + 1);
     } catch (err) {
       console.error("Pipeline run failed:", err);
     } finally {
@@ -2550,64 +2537,81 @@ export default function AletheiaHome() {
                               />
                             </div>
 
-                            {/* Living Perspective / Narrative */}
-                            <div className="space-y-1">
-                              <span className="text-[10px] font-mono text-cyan-400 font-semibold flex items-center gap-1">
-                                <Sparkles className="w-3 h-3 text-cyan-400" />
-                                <span>Living Perspective:</span>
-                              </span>
-                              <p className="text-slate-300 text-xs leading-relaxed">
-                                {data.living_narrative || data.why_they_care}
-                              </p>
+                            <div className="space-y-1.5 pt-1">
+                              {/* Pillar 1: What the user is interested in */}
+                              <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-white/5 space-y-0.5">
+                                <span className="text-cyan-400 font-mono text-[9px] uppercase font-bold block">
+                                  1. What They Are Interested In (Focus & Scope):
+                                </span>
+                                <p className="text-slate-200">
+                                  {data.what_they_care_about || `Core focus on ${topic} developments, technical architecture, and real-world implications.`}
+                                </p>
+                              </div>
+
+                              {/* Pillar 2: Why they care (substantive intellectual motivation) */}
+                              <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-white/5 space-y-0.5">
+                                <span className="text-emerald-400 font-mono text-[9px] uppercase font-bold block">
+                                  2. Why They Care (Intellectual Stakes & Worldview):
+                                </span>
+                                <p className="text-slate-200">{data.why_they_care}</p>
+                              </div>
+
+                              {/* Living Dossier Synthesis & Narrative */}
+                              {data.living_narrative && data.living_narrative !== data.why_they_care && data.living_narrative !== data.what_they_care_about && (
+                                <div className="text-[11px] leading-relaxed bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-500/20 space-y-0.5">
+                                  <span className="text-indigo-400 font-mono text-[9px] uppercase font-bold block">
+                                    Living Dossier (Cumulative Narrative Synthesis):
+                                  </span>
+                                  <p className="text-slate-200 text-[10.5px] leading-normal">{data.living_narrative}</p>
+                                </div>
+                              )}
+
+                              {/* Pillar 3: How best to present stories to this user */}
+                              <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2.5 rounded-lg border border-white/5 space-y-1">
+                                <span className="text-amber-400 font-mono text-[9px] uppercase font-bold block">
+                                  3. How Best To Present Stories:
+                                </span>
+                                <p className="text-slate-300">
+                                  {data.presentation_strategy || `Curate with ${data.technical_depth || "practitioner"} depth, focusing on verified empirical milestones and substantive trade-offs.`}
+                                </p>
+
+                                {(data.likes_and_angles?.length || 0) > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                    <span className="text-[9px] font-mono text-slate-500">Preferred:</span>
+                                    {data.likes_and_angles?.map((like: string, lIdx: number) => (
+                                      <span
+                                        key={lIdx}
+                                        className="text-[9px] font-mono text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20"
+                                      >
+                                        ✓ {like}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {(data.dislikes_and_critiques?.length || 0) > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                    <span className="text-[9px] font-mono text-slate-500">Filter out:</span>
+                                    {data.dislikes_and_critiques?.map((dislike: string, dIdx: number) => (
+                                      <span
+                                        key={dIdx}
+                                        className="text-[9px] font-mono text-rose-300 bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-500/20"
+                                      >
+                                        ✕ {dislike}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-
-                            {/* What You Value (Likes & Angles) */}
-                            {data.likes_and_angles && data.likes_and_angles.length > 0 && (
-                              <div className="space-y-1 pt-0.5">
-                                <span className="text-[10px] font-mono text-emerald-400 font-semibold block">
-                                  What You Value:
-                                </span>
-                                <div className="flex flex-wrap gap-1">
-                                  {data.likes_and_angles.map((like: string, lIdx: number) => (
-                                    <span
-                                      key={lIdx}
-                                      className="px-2 py-0.5 rounded-md bg-emerald-950/50 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 flex items-center gap-1"
-                                    >
-                                      <span>✓</span>
-                                      <span>{like}</span>
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Critiques & Anti-Preferences (Dislikes) */}
-                            {data.dislikes_and_critiques && data.dislikes_and_critiques.length > 0 && (
-                              <div className="space-y-1 pt-0.5">
-                                <span className="text-[10px] font-mono text-rose-400 font-semibold block">
-                                  Critiques & Anti-Preferences:
-                                </span>
-                                <div className="flex flex-wrap gap-1">
-                                  {data.dislikes_and_critiques.map((dislike: string, dIdx: number) => (
-                                    <span
-                                      key={dIdx}
-                                      className="px-2 py-0.5 rounded-md bg-rose-950/50 border border-rose-500/30 text-[10px] font-mono text-rose-300 flex items-center gap-1"
-                                    >
-                                      <span>✕</span>
-                                      <span>{dislike}</span>
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
 
                             {/* Curiosity Vectors Tags */}
                             {data.curiosity_vectors && data.curiosity_vectors.length > 0 && (
-                              <div className="flex flex-wrap gap-1 pt-0.5">
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
                                 {data.curiosity_vectors.map((vec: string, vIdx: number) => (
                                   <span
                                     key={vIdx}
-                                    className="px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-slate-400 border border-white/5"
+                                    className="px-1.5 py-0.5 rounded bg-slate-900 text-[9px] font-mono text-slate-400 border border-white/5"
                                   >
                                     #{vec}
                                   </span>
@@ -2931,7 +2935,7 @@ export default function AletheiaHome() {
         onToggle={() => setIsDevToolsOpen(!isDevToolsOpen)}
         userGraph={userGraph}
         unifiedTopicNode={unifiedTopicNode}
-        refreshTrigger={refreshTrigger}
+        refreshTrigger={devToolsTrigger}
         selectedContext={selectedContext}
         onSelectContext={setSelectedContext}
         isCollectingNews={isCollectingNews}
