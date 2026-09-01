@@ -65,26 +65,22 @@ Analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation t
 4. "tool_calls": Discrete atomic tool calls to mutate individual user interests one by one ("create_topic" or "update_topic").
 
 LIVING TOPIC DOSSIER MANDATE:
-Each topic is a LIVING DOCUMENT capturing THREE essential pillars:
-1. WHAT THE USER IS INTERESTED IN ("what_they_care_about"): The specific technical focus, sub-domain, architectures, or problems (e.g., "End-to-end vision neural nets, real-world edge-case disengagements, and training compute scale").
-2. WHY THEY CARE ("why_they_care"): The user's underlying intellectual motivation, operational stakes, or worldview.
-   - ABSOLUTE PROHIBITION: NEVER narrate the conversation, conversational turns, or conversational mechanics (e.g. NEVER write "User mentioned X in prior turns", "User asked about X", "This turn highlights X"). Always write in the third-person active voice about their substantive intellectual stakes and technical perspectives!
-3. HOW BEST TO PRESENT STORIES ("presentation_strategy"): Exact editorial guidance on how to curate, filter, and format news for this user on this topic:
-   - "presentation_strategy": A 1-2 sentence editorial directive (e.g., "Present with technical rigor focusing on verified empirical milestones and disengagement data; avoid CEO quotes and sensational speculation.")
-   - "likes_and_angles": Specific dimensions, features, philosophies, or use cases the user appreciates/values.
-   - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed about this topic.
+Each topic is a LIVING DOCUMENT capturing THREE essential dimensions learned entirely from the individual user:
+1. WHAT THE USER IS INTERESTED IN ("what_they_care_about"): The specific areas, aspects, and dimensions the user focuses on based on what they actively discuss.
+2. WHY THEY CARE ("why_they_care"): The user's underlying motivations, concerns, or reasons for caring as revealed by their words (write substantively in active voice; never narrate conversation turns).
+3. HOW BEST TO PRESENT STORIES ("presentation_strategy"): Derived STRICTLY and EXCLUSIVELY from how the user responds to content, engages with topics, and expresses what they like, dislike, or want to see. Never use hardcoded assumptions or generic formulas. If the user has not articulated presentation preferences for this topic, leave presentation fields empty.
 
 DISCRETE MUTATION TOOLS:
 - "create_topic" & "update_topic":
   Parameters:
   - "topic": Canonical name of the topic.
   - "weight_delta": Numeric delta (+0.05 to +0.2).
-  - "what_they_care_about": 1-2 sentences on specific core sub-domains and technical focus areas.
-  - "why_they_care": 1-sentence bottom-line motivation summary (substantive intellectual stakes only; NO conversation meta-commentary).
-  - "presentation_strategy": 1-2 sentences on how best to curate and present stories for this user on this topic.
-  - "living_narrative": A rich, evolving 2-3 sentence living dossier synthesis of the user's specific perspective, context, and nuance on this topic.
-  - "likes_and_angles": Specific dimensions, features, philosophies, or use cases the user appreciates/values.
-  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed about this topic.
+  - "what_they_care_about": Specific areas and focus dimensions observed from the user.
+  - "why_they_care": Bottom-line motivation summary (substantive intellectual stakes only; NO conversation meta-commentary).
+  - "presentation_strategy": Presentation guidance derived strictly from how the user engages and responds to content (or empty if not expressed).
+  - "living_narrative": A rich, evolving living dossier synthesis of the user's specific perspective, context, and nuance on this topic.
+  - "likes_and_angles": Specific dimensions, features, or angles the user values based on their expressions.
+  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed.
   - "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical"
   - "curiosity_vectors": Sub-themes explored.
   - "evolution_insight": 1-sentence insight describing what was learned or how their perspective shifted in this conversation.

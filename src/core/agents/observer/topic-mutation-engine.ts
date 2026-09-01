@@ -138,9 +138,9 @@ export class TopicMutationEngine {
 
     const newMetadata: TopicMetadata = {
       weight: initialWeight,
-      what_they_care_about: params.what_they_care_about || params.living_narrative || topicName,
+      what_they_care_about: params.what_they_care_about || params.living_narrative || undefined,
       why_they_care: cleanedWhy,
-      presentation_strategy: params.presentation_strategy || `Present with practitioner depth focusing on substantive developments; avoid generic promotional press releases.`,
+      presentation_strategy: params.presentation_strategy || undefined,
       technical_depth: validDepth,
       living_narrative: params.living_narrative || cleanedWhy,
       likes_and_angles: params.likes_and_angles || [],
@@ -247,8 +247,8 @@ export class TopicMutationEngine {
       updatedNarrative = `${updatedNarrative} ${newWhy}`.trim();
     }
 
-    const newWhat = params.what_they_care_about || existing.what_they_care_about || updatedNarrative || topicName;
-    const newPresentation = params.presentation_strategy || existing.presentation_strategy || `Present with practitioner depth focusing on substantive engineering developments.`;
+    const newWhat = params.what_they_care_about || existing.what_they_care_about || updatedNarrative || undefined;
+    const newPresentation = params.presentation_strategy || existing.presentation_strategy || undefined;
 
     let newVectors = [...prevVectors];
     if (params.curiosity_vectors_to_add) {
