@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { traceLogger } from "@/core/observability/trace-logger";
 import { postgresStore } from "@/core/storage/postgres-store";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const queryUserId = req.nextUrl.searchParams.get("userId") || "usr_rhenretta_gmail_com";
+
   const traces = traceLogger.getRecentTraces(100);
   const memoryTraces = await postgresStore.getTraces(100);
 
@@ -24,8 +26,11 @@ export async function GET() {
     metadata: t.metadata || {},
   }));
 
-  const unifiedTopicNode = await postgresStore.getUnifiedTopicNode("usr_default");
-  const userGraph = await postgresStore.getUserGraph("usr_default");
+  const allNodes = await postgresStore.getAllUnifiedTopicNodes();
+  const targetNode =
+    allNodes.find((n) => n.user_id === queryUserId) ||
+    (await postgresStore.getUnifiedTopicNode(queryUserId));
+  const userGraph = await postgresStore.getUserGraph(queryUserId);
   const facts = await postgresStore.getAllFacts();
 
   return NextResponse.json({
@@ -33,11 +38,17 @@ export async function GET() {
     total_traces: combinedTraces.length,
     ai_calls: aiCalls,
     traces: combinedTraces,
+    target_user_id: queryUserId,
+    all_users: allNodes.map((n) => ({
+      user_id: n.user_id,
+      topics_count: Object.keys(n.topics || {}).length,
+      topics: n.topics,
+      last_updated: n.last_updated,
+    })),
     database_state: {
-      unified_topic_node: unifiedTopicNode,
+      unified_topic_node: targetNode,
       user_graph: userGraph,
       facts_cached: facts.length,
     },
   });
 }
-

@@ -274,6 +274,63 @@ export class PostgresStore {
     }
   }
 
+  public async getAllUnifiedTopicNodes(): Promise<UnifiedTopicNode[]> {
+    await this.initializeSchema();
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          "SELECT user_id, topics, psychological_profile, discovery_parameters, historical_anchors, interest_intersections, adjacent_curiosity_frontiers, recent_topic_diffs, harmonization_runs, dwell_history, last_updated FROM unified_topic_nodes"
+        );
+        if (res.rows.length > 0) {
+          const nodes: UnifiedTopicNode[] = [];
+          for (const row of res.rows) {
+            nodes.push({
+              user_id: row.user_id,
+              topics: typeof row.topics === "string" ? JSON.parse(row.topics) : row.topics || {},
+              psychological_profile:
+                typeof row.psychological_profile === "string"
+                  ? JSON.parse(row.psychological_profile)
+                  : row.psychological_profile,
+              discovery_parameters:
+                typeof row.discovery_parameters === "string"
+                  ? JSON.parse(row.discovery_parameters)
+                  : row.discovery_parameters,
+              historical_anchors:
+                typeof row.historical_anchors === "string"
+                  ? JSON.parse(row.historical_anchors)
+                  : row.historical_anchors || [],
+              interest_intersections:
+                typeof row.interest_intersections === "string"
+                  ? JSON.parse(row.interest_intersections)
+                  : row.interest_intersections || [],
+              adjacent_curiosity_frontiers:
+                typeof row.adjacent_curiosity_frontiers === "string"
+                  ? JSON.parse(row.adjacent_curiosity_frontiers)
+                  : row.adjacent_curiosity_frontiers || [],
+              recent_topic_diffs:
+                typeof row.recent_topic_diffs === "string"
+                  ? JSON.parse(row.recent_topic_diffs)
+                  : row.recent_topic_diffs || [],
+              harmonization_runs:
+                typeof row.harmonization_runs === "string"
+                  ? JSON.parse(row.harmonization_runs)
+                  : row.harmonization_runs || [],
+              dwell_history:
+                typeof row.dwell_history === "string"
+                  ? JSON.parse(row.dwell_history)
+                  : row.dwell_history || [],
+              last_updated: row.last_updated,
+            });
+          }
+          return nodes;
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying all unified topic nodes:", err);
+      }
+    }
+    return Array.from(this.memoryTopicNodes.values());
+  }
+
   // --- User Knowledge Graphs ---
   public async getUserGraph(userId: string): Promise<UserKnowledgeGraph | undefined> {
     let graph: UserKnowledgeGraph | undefined;
