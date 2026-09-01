@@ -45,6 +45,7 @@ import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import DevToolsPanel from "@/components/DevToolsPanel";
 import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
+import { filterFeedBySemanticAffinity } from "@/core/matching/semantic-matcher";
 import { useSession, signIn, signOut } from "next-auth/react";
 
 function sanitizeDisplay(input?: string): string {
@@ -696,37 +697,21 @@ export default function AletheiaHome() {
   const bridgeCount = feedCards.filter((c) => c.discovery_category === "thematic_intersection").length;
   const frontierCount = feedCards.filter((c) => c.discovery_category === "curiosity_frontier" || c.is_exploration).length;
 
-  const filteredFeedCards = feedCards.filter((c) => {
+  const filteredFeedCards = React.useMemo(() => {
+    let pool = feedCards;
+
     // 1. AI conversational feed filter (if active and manual filter not explicitly set)
     if (selectedTopicFilter === "all" && aiFeedFilter && aiFeedFilter.is_active !== false) {
       if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
-        if (!aiFeedFilter.matched_event_ids.includes(c.event_id)) {
-          return false;
-        }
+        pool = pool.filter((c) => aiFeedFilter.matched_event_ids!.includes(c.event_id));
       } else if (aiFeedFilter.topic) {
-        const lowerCardTopic = (c.topic || "").toLowerCase();
-        const lowerFilterTopic = aiFeedFilter.topic.toLowerCase();
-        if (!lowerCardTopic.includes(lowerFilterTopic) && !lowerFilterTopic.includes(lowerCardTopic)) {
-          return false;
-        }
+        return filterFeedBySemanticAffinity(pool, aiFeedFilter.topic, unifiedTopicNode, selectedCategoryFilter);
       }
     }
 
-    const lowerCardTopic = (c.topic || "").toLowerCase();
-    const lowerSelected = selectedTopicFilter.toLowerCase();
-    const matchesTopic =
-      selectedTopicFilter === "all" ||
-      lowerCardTopic === lowerSelected ||
-      lowerCardTopic.includes(lowerSelected) ||
-      lowerSelected.includes(lowerCardTopic);
-
-    const matchesCategory =
-      selectedCategoryFilter === "all" ||
-      (selectedCategoryFilter === "curiosity_frontier" && (c.discovery_category === "curiosity_frontier" || c.is_exploration)) ||
-      (selectedCategoryFilter === "thematic_intersection" && c.discovery_category === "thematic_intersection") ||
-      (selectedCategoryFilter === "revealed_preference" && (c.discovery_category === "revealed_preference" || !c.discovery_category));
-    return matchesTopic && matchesCategory;
-  });
+    // 2. Multi-Vector Semantic Affinity Filtering & Neural Graph Ranking
+    return filterFeedBySemanticAffinity(pool, selectedTopicFilter, unifiedTopicNode, selectedCategoryFilter);
+  }, [feedCards, selectedTopicFilter, selectedCategoryFilter, aiFeedFilter, unifiedTopicNode]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
@@ -1340,6 +1325,16 @@ export default function AletheiaHome() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Semantic Match Reason Callout (when filtering by topic) */}
+                    {selectedTopicFilter !== "all" && (card as any).semantic_match_reason && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-950/40 border border-cyan-500/25 text-[11px] font-mono text-cyan-200 mt-2.5">
+                        <Sparkles className="w-3 h-3 text-cyan-400 flex-shrink-0 animate-pulse" />
+                        <span className="truncate">
+                          <strong className="text-cyan-300 font-semibold">Semantic Context:</strong> {(card as any).semantic_match_reason}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Cinematic News Image Banner */}
                     {card.image_url && (
