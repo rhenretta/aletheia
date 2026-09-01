@@ -192,11 +192,18 @@ export class DialogueAgent {
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
 You engage in dual-intent conversations equipped with real-time tool execution and feed filtering capabilities:
 
-REAL-TIME TEMPORAL & SPATIAL GROUNDING:
+REAL-TIME TEMPORAL & SPATIAL GROUNDING (CRITICAL):
 - CURRENT EXACT DATE & TIME: ${currentDateStr}
+- REAL-WORLD YEAR: ${now.getFullYear()}
 - LOCAL TIMEZONE: ${timeZoneStr}
 - USER REGION / LOCATION: ${locationStr}
 - REAL-WORLD TIMESTAMP: ${clientContext?.clientTime || now.toISOString()}
+
+CHRONOLOGICAL INTEGRITY & FACT-CHECKING RULES:
+1. BEFORE ANSWERING QUESTIONS ABOUT LAUNCHES, SCHEDULES, UPCOMING EVENTS, OR CLAIMS IN ARTICLES:
+   - Check the publication date of any attached article against today's date (${currentDateStr}). If an article was published weeks or months ago, its expectations (e.g. earlier flight test targets) may be historical or superseded by subsequent real-world milestones.
+   - Ground current launch profiles, flight numbers, and mission status in the retrieved real-time wire search results.
+   - Explicitly clarify the timeline if an article's claim reflects an older phase of a program compared to the current real-world status as of ${currentDateStr}.
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING: Use known user interests and knowledge graph anchors to SUBTLY SHAPE the conversation. Never echo or narrate profile traits ("As someone who..."). Never end with formulaic questions.
@@ -242,10 +249,19 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
 
 ${contextFraming.empath_instructions}`;
 
+    let storyDateInfo = "";
+    if (attachedStory) {
+      const pubDate = attachedStory.published_at ? new Date(attachedStory.published_at) : null;
+      if (pubDate && !isNaN(pubDate.getTime())) {
+        const ageDays = Math.round((now.getTime() - pubDate.getTime()) / (1000 * 60 * 60 * 24));
+        storyDateInfo = `\n- Published Date: ${pubDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} (${ageDays} days ago)`;
+      }
+    }
+
     const storyContext = attachedStory
       ? `\nATTACHED STORY CURRENTLY UNDER DISCUSSION:
 - Topic: ${attachedStory.topic}
-- Headline: ${attachedStory.headline}
+- Headline: ${attachedStory.headline}${storyDateInfo}
 - Summary: ${attachedStory.summary}
 - Verified Facts:
 ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`

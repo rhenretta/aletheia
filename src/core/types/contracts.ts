@@ -589,6 +589,7 @@ export interface AttachedStoryContext {
   topic: string;
   headline: string;
   summary: string;
+  published_at?: string;
   fact_bullets?: string[];
   disputed_claims?: DisputedClaim[];
   sources?: Array<{ name: string; url: string; bias: string }>;
@@ -599,6 +600,7 @@ export const AttachedStoryContextSchema = z.object({
   topic: z.string(),
   headline: z.string(),
   summary: z.string(),
+  published_at: z.string().optional(),
   fact_bullets: z.array(z.string()).optional(),
   disputed_claims: z.array(DisputedClaimSchema).optional(),
   sources: z

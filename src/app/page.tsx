@@ -683,6 +683,7 @@ export default function AletheiaHome() {
       topic: card.topic,
       headline: card.headline,
       summary: card.summary,
+      published_at: card.published_at,
       fact_bullets: card.fact_bullets,
       disputed_claims: card.disputed_claims,
       sources: card.sources,

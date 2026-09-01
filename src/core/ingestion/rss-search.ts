@@ -82,26 +82,38 @@ export class FreeNewsFetcher {
 
   private static async fetchRssForQuery(query: string): Promise<RawArticle[]> {
     if (!query || query.trim().length === 0) return [];
-    try {
-      const encoded = encodeURIComponent(query.trim());
-      const feedUrl = `https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`;
 
-      const response = await fetch(feedUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "application/rss+xml, application/xml, text/xml, */*",
-        },
-      });
+    // Try fresh news (last 7 days) first, then fallback to last 30 days, then unrestricted
+    const tryQueries = query.includes("when:")
+      ? [query]
+      : [`${query} when:7d`, `${query} when:30d`, query];
 
-      if (!response.ok) return [];
+    for (const q of tryQueries) {
+      try {
+        const encoded = encodeURIComponent(q.trim());
+        const feedUrl = `https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`;
 
-      const xmlText = await response.text();
-      return this.parseRssXml(xmlText, query);
-    } catch (err) {
-      console.warn(`FreeNewsFetcher: Failed to fetch RSS for "${query}":`, err);
-      return [];
+        const response = await fetch(feedUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "application/rss+xml, application/xml, text/xml, */*",
+          },
+        });
+
+        if (response.ok) {
+          const xmlText = await response.text();
+          const articles = this.parseRssXml(xmlText, query);
+          if (articles.length > 0) {
+            return articles;
+          }
+        }
+      } catch (err) {
+        console.warn(`FreeNewsFetcher: Failed to fetch RSS for "${q}":`, err);
+      }
     }
+
+    return [];
   }
 
   /**
@@ -124,7 +136,14 @@ export class FreeNewsFetcher {
       let title = titleMatch ? this.cleanHtml(titleMatch[1]) : "";
       let sourceName = sourceMatch ? this.cleanHtml(sourceMatch[1]) : "";
       const sourceUrl = linkMatch ? linkMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, "$1").trim() : "";
-      const publishedAt = pubDateMatch ? pubDateMatch[1].trim() : new Date().toISOString();
+      
+      let publishedAtIso = new Date().toISOString();
+      if (pubDateMatch) {
+        const d = new Date(pubDateMatch[1].trim());
+        if (!isNaN(d.getTime())) {
+          publishedAtIso = d.toISOString();
+        }
+      }
 
       // Clean HTML entities and tags from description
       let rawText = descMatch ? this.cleanHtml(descMatch[1]) : "";
@@ -169,11 +188,18 @@ export class FreeNewsFetcher {
         title,
         raw_text: `${title}. ${rawText}`,
         author_bias_rating: authorBiasRating,
-        published_at: publishedAt,
+        published_at: publishedAtIso,
         topic_category: topic,
         image_url: imageUrl,
       });
     }
+
+    // Sort strictly by newest published date first
+    articles.sort((a, b) => {
+      const timeA = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const timeB = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return timeB - timeA;
+    });
 
     return articles;
   }
