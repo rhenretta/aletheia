@@ -16,6 +16,7 @@ import { runSerendipityNode } from "../agents/serendipity";
 import { runSynthesisNode } from "../agents/synthesis";
 import { docWorker } from "../observability/doc-worker";
 import { dataStore } from "../storage/persistence";
+import { postgresStore } from "../storage/postgres-store";
 
 /**
  * State Graph Annotation for LangGraph
@@ -111,11 +112,11 @@ export async function executeAletheiaPipeline(initialState: {
 
   // Load existing persistent unified topic node & user graph
   const unifiedNode =
-    initialState.unifiedTopicNode || dataStore.getUnifiedTopicNode(userId);
+    initialState.unifiedTopicNode || (await postgresStore.getUnifiedTopicNode(userId));
 
   const initialUserGraph =
     initialState.userGraph ||
-    dataStore.getUserGraph(userId) ||
+    (await postgresStore.getUserGraph(userId)) ||
     TelemetryGraphEngine.createDefaultGraph(userId);
 
   const result = await graph.invoke({
@@ -133,14 +134,15 @@ export async function executeAletheiaPipeline(initialState: {
 
   // Persist updated Unified Topic Node, User Knowledge Graph & Pure Facts
   if (finalContext.unified_topic_node) {
-    dataStore.saveUnifiedTopicNode(finalContext.unified_topic_node);
+    await postgresStore.saveUnifiedTopicNode(finalContext.unified_topic_node);
   }
   if (finalContext.user_graph) {
-    dataStore.saveUserGraph(finalContext.user_graph);
+    await postgresStore.saveUserGraph(finalContext.user_graph);
   }
   if (finalContext.current_facts) {
     for (const fact of finalContext.current_facts) {
       dataStore.saveFact(fact);
+      await postgresStore.saveFact(fact);
     }
   }
 

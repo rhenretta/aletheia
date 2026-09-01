@@ -308,8 +308,8 @@ Output strict JSON:
       }
     }
 
-    // Step 3: Background knowledge graph harmonization with full audit log & rationale
-    if (Object.keys(adaptedNode.topics || {}).length >= 5) {
+    // Step 3: Background knowledge graph harmonization (only triggers on extreme graph saturation >= 25 topics)
+    if (Object.keys(adaptedNode.topics || {}).length >= 25) {
       try {
         const harmResult = await InterestHarmonizer.harmonize(adaptedNode, "background_observer");
         if (harmResult.changed) {

@@ -643,7 +643,7 @@ export default function AletheiaHome() {
   };
 
   // Inspect topic in contextual DevTools
-  const handleInspectTopic = (topic: { topic: string; weight: number; reasoning?: string }) => {
+  const handleInspectTopic = (topic: { topic: string; weight: number; reasoning?: string; technical_depth?: any }) => {
     const topicMeta = unifiedTopicNode?.topics?.[topic.topic];
     const recentDiff = (unifiedTopicNode?.recent_topic_diffs || []).find(
       (d) => d.topic_name.toLowerCase() === topic.topic.toLowerCase()
@@ -1682,82 +1682,127 @@ export default function AletheiaHome() {
                   )}
                 </div>
 
-                {Object.entries(userGraph?.topic_weights || {}).length === 0 && extractedTopics.length === 0 ? (
-                  <div className="p-6 rounded-xl bg-slate-900/50 border border-white/5 text-center text-slate-400 space-y-2">
-                    <p>No explicit interests revealed yet.</p>
-                    <p className="text-[11px] text-slate-500">
-                      Chat with Aletheia about topics you care about to map your interests here.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {/* Render from userGraph or extractedTopics */}
-                    {Object.entries(userGraph?.topic_weights || {}).map(([topic, weight], idx) => {
-                      const extracted = extractedTopics.find((t) => t.topic.toLowerCase() === topic.toLowerCase());
-                      const pct = Math.round(weight * 100);
+                {(() => {
+                  const topicMap = new Map<string, { weight: number; why_they_care: string; technical_depth?: string }>();
 
-                      return (
-                        <div
-                          key={idx}
-                          className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 hover:border-cyan-500/40 transition"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-slate-100 text-sm">{topic}</span>
-                            <span className="font-mono text-xs font-bold text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-500/30">
-                              {pct}%
-                            </span>
+                  // 1. Unified Topic Node (Primary Source of Truth)
+                  if (unifiedTopicNode?.topics) {
+                    for (const [topic, meta] of Object.entries(unifiedTopicNode.topics)) {
+                      topicMap.set(topic, {
+                        weight: meta.weight,
+                        why_they_care: meta.why_they_care,
+                        technical_depth: meta.technical_depth,
+                      });
+                    }
+                  }
+
+                  // 2. User Graph (Legacy fallback)
+                  if (userGraph?.topic_weights) {
+                    for (const [topic, weight] of Object.entries(userGraph.topic_weights)) {
+                      if (!topicMap.has(topic)) {
+                        topicMap.set(topic, {
+                          weight,
+                          why_they_care: `Explicit dialogue interest in ${topic}.`,
+                        });
+                      }
+                    }
+                  }
+
+                  // 3. Extracted Topics
+                  for (const et of extractedTopics) {
+                    if (et.topic && !topicMap.has(et.topic)) {
+                      topicMap.set(et.topic, {
+                        weight: et.weight || 0.6,
+                        why_they_care: et.reasoning || `Identified from conversational focus on ${et.topic}.`,
+                      });
+                    }
+                  }
+
+                  const entries = Array.from(topicMap.entries()).sort((a, b) => b[1].weight - a[1].weight);
+
+                  if (entries.length === 0) {
+                    return (
+                      <div className="p-6 rounded-xl bg-slate-900/50 border border-white/5 text-center text-slate-400 space-y-2">
+                        <p>No explicit interests revealed yet.</p>
+                        <p className="text-[11px] text-slate-500">
+                          Chat with Aletheia about topics you care about to map your interests here.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2.5">
+                      {entries.map(([topic, data], idx) => {
+                        const pct = Math.round(data.weight * 100);
+                        return (
+                          <div
+                            key={idx}
+                            className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 hover:border-cyan-500/40 transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-slate-100 text-sm">{topic}</span>
+                                {data.technical_depth && (
+                                  <span className="px-1.5 py-0.2 rounded bg-cyan-950/60 text-cyan-300 font-mono text-[9px] border border-cyan-500/30 uppercase">
+                                    {data.technical_depth}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono text-xs font-bold text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-500/30">
+                                {pct}%
+                              </span>
+                            </div>
+
+                            {/* Affinity Weight Bar */}
+                            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+
+                            {/* Rationale */}
+                            <div className="space-y-1 pt-1">
+                              <span className="text-[10px] font-mono text-slate-400 font-semibold block">
+                                Rationale:
+                              </span>
+                              <p className="text-slate-300 text-xs leading-relaxed">{data.why_they_care}</p>
+                            </div>
+
+                            {/* Topic Actions */}
+                            <div className="pt-1 flex items-center justify-between">
+                              <button
+                                onClick={() =>
+                                  handleInspectTopic({
+                                    topic,
+                                    weight: data.weight,
+                                    reasoning: data.why_they_care,
+                                    technical_depth: data.technical_depth as any,
+                                  })
+                                }
+                                className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900/90 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1 transition"
+                              >
+                                <Sliders className="w-2.5 h-2.5 text-cyan-400" />
+                                <span>View Topic Diff</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setSelectedTopicFilter(topic);
+                                  setCompanionTab("chat");
+                                }}
+                                className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1"
+                              >
+                                Filter Feed →
+                              </button>
+                            </div>
                           </div>
-
-                          {/* Affinity Weight Bar */}
-                          <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-
-                          {/* Rationale */}
-                          <div className="space-y-1 pt-1">
-                            <span className="text-[10px] font-mono text-slate-400 font-semibold block">
-                              Rationale:
-                            </span>
-                            <p className="text-slate-300 text-xs leading-relaxed">
-                              {extracted?.reasoning ||
-                                `Derived from your explicit dialogue and interest in ${topic}.`}
-                            </p>
-                          </div>
-
-                          {/* Topic Actions */}
-                          <div className="pt-1 flex items-center justify-between">
-                            <button
-                              onClick={() =>
-                                handleInspectTopic({
-                                  topic,
-                                  weight,
-                                  reasoning: extracted?.reasoning,
-                                })
-                              }
-                              className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900/90 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1 transition"
-                            >
-                              <Sliders className="w-2.5 h-2.5 text-cyan-400" />
-                              <span>View Topic Diff</span>
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setSelectedTopicFilter(topic);
-                                setCompanionTab("chat");
-                              }}
-                              className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1"
-                            >
-                              Filter Feed →
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {/* Thematic Bridges */}
                 {(userGraph?.interest_intersections || []).length > 0 && (

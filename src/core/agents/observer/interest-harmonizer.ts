@@ -60,13 +60,15 @@ export class InterestHarmonizer {
 
         const systemPrompt = `You are the Knowledge Graph Harmonizer for Aletheia's Mind-State Memory Architecture.
 Your role is to evaluate a user's active interest graph, and clean it up by:
-1. MERGING near-duplicate, overlapping, or fragmented sub-topics that represent the same core epistemic interest (e.g. "AI Taxation" + "UBI Policy" -> "AI & Economic Policy").
+1. MERGING ONLY near-duplicate, overlapping, or fragmented sub-topics that represent the exact same core entity (e.g. "SpaceX Starship" + "Starship Rocket Launch" -> "SpaceX Starship").
 2. SPLITTING compound, overloaded, or multi-domain amalgamations into distinct focused nodes.
-3. PRUNING obsolete or strictly duplicated fragments while keeping their motivations and curiosity vectors.
-4. PRESERVING standalone, distinct, and specialized topics untouched.
+3. PRESERVING ALL standalone, distinct, and specialized topics untouched.
 
-CRITICAL RULES:
-- Provide explicit, clear "rationale" explaining why topics were combined, split, or modified.
+CRITICAL PRESERVATION RULES:
+- NEVER DROP, OMIT, OR SUMMARIZE AWAY DISTINCT USER INTERESTS.
+- If the user has 10, 20, or 50 distinct topics, you MUST return all 10, 20, or 50 topics in "harmonized_topics".
+- Different or orthogonal domains (e.g. "AI and Economic Policy", "Commercial Spaceflight", "Geopolitics of Iran", "Quantum Computing") MUST REMAIN SEPARATE. NEVER merge distinct fields into a generic bucket.
+- Provide explicit, clear "rationale" explaining why any topics were combined, split, or modified.
 - Maintain accurate technical depth ("introductory", "practitioner", "expert", "deep_technical").
 - Output strict JSON:
 {
@@ -261,8 +263,8 @@ CRITICAL RULES:
         const [nameB, metaB] = entries[j];
         if (visited.has(nameB)) continue;
 
-        const lowerA = nameA.toLowerCase();
-        const lowerB = nameB.toLowerCase();
+        const cleanLowerA = nameA.toLowerCase().trim();
+        const cleanLowerB = nameB.toLowerCase().trim();
 
         const stopWords = new Set(["and", "the", "or", "of", "in", "for", "with", "on", "to", "by", "about"]);
         const getSubstantiveTokens = (str: string) =>
@@ -274,11 +276,15 @@ CRITICAL RULES:
         const intersection = new Set([...tokensA].filter((x) => tokensB.has(x)));
         const union = new Set([...tokensA, ...tokensB]);
         const jaccard = union.size > 0 ? intersection.size / union.size : 0;
-        const isSubset =
-          (tokensA.size > 0 && [...tokensA].every((t) => tokensB.has(t))) ||
-          (tokensB.size > 0 && [...tokensB].every((t) => tokensA.has(t)));
 
-        if (lowerA.includes(lowerB) || lowerB.includes(lowerA) || jaccard >= 0.35 || isSubset) {
+        // Equivalence: identical string, multi-word subset (e.g. "AI Policy" in "AI and Economic Policy"), or >= 65% token Jaccard
+        const isExactMatch = cleanLowerA === cleanLowerB;
+        const isNearExactMatch = jaccard >= 0.65 && tokensA.size >= 2 && tokensB.size >= 2;
+        const isMultiWordSubset =
+          (tokensA.size >= 2 && [...tokensA].every((t) => tokensB.has(t))) ||
+          (tokensB.size >= 2 && [...tokensB].every((t) => tokensA.has(t)));
+
+        if (isExactMatch || isNearExactMatch || isMultiWordSubset) {
           cluster.push([nameB, metaB]);
           visited.add(nameB);
         }
