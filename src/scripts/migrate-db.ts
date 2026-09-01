@@ -112,15 +112,14 @@ async function runMigration() {
         }
       }
       console.log("✅ Persistent user data successfully restored in RDS PostgreSQL!");
-    }
 
-    client.release();
-  } catch (err) {
-    console.error("❌ Database migration failed:", err);
-    process.exit(1);
-  } finally {
-    await pool.end();
+      client.release();
+    } catch (err) {
+      console.error("❌ Database migration failed:", err);
+      process.exit(1);
+    } finally {
+      await pool.end();
+    }
   }
-}
 
 runMigration();
