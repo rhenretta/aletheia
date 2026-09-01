@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
                 tool_name: chunk.tool_name,
                 query: chunk.query,
                 summary: chunk.summary,
+                sources: chunk.sources,
               });
             } else if (chunk.type === "meta") {
               finalResponse = chunk.data;

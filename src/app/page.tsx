@@ -540,7 +540,8 @@ export default function AletheiaHome() {
                           tool_name: data.tool_name,
                           query: data.query,
                           results_summary: data.summary || "Retrieved live sources",
-                          items_retrieved: 5,
+                          items_retrieved: data.sources?.length || 5,
+                          sources: data.sources || [],
                         },
                       ],
                     }
@@ -2140,22 +2141,59 @@ export default function AletheiaHome() {
                       )}
                       {msg.role === "assistant" ? (
                         <div className="flex flex-col gap-1.5 max-w-[88%]">
-                          {/* Live Tool Execution Badges */}
+                          {/* Live Tool Execution Badges & Clickable Sources */}
                           {msg.tool_executions && msg.tool_executions.length > 0 && (
-                            <div className="space-y-1 mb-1">
+                            <div className="space-y-1.5 mb-1.5">
                               {msg.tool_executions.map((tool, tIdx) => (
                                 <div
                                   key={tIdx}
-                                  className="px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 flex items-center gap-1.5 shadow-sm"
+                                  className="p-2.5 rounded-xl bg-cyan-950/70 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 space-y-2 shadow-md shadow-black/20"
                                 >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${tool.items_retrieved > 0 ? "bg-emerald-400" : "bg-cyan-400 animate-ping"}`} />
-                                  <span className="font-bold">
-                                    {tool.tool_name === "search_internet" ? "🌐 Live Web Wire Search:" : "🧠 Local Knowledge Lookup:"}
-                                  </span>
-                                  <span className="text-slate-300 truncate max-w-[200px]" title={tool.query}>"{tool.query}"</span>
-                                  <span className={`font-bold ml-auto ${tool.items_retrieved > 0 ? "text-emerald-400" : "text-cyan-400 animate-pulse"}`}>
-                                    {tool.items_retrieved > 0 ? `(${tool.items_retrieved} sources)` : "Searching live..."}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${tool.items_retrieved > 0 ? "bg-emerald-400" : "bg-cyan-400 animate-ping"}`} />
+                                    <span className="font-bold">
+                                      {tool.tool_name === "search_internet" ? "🌐 Live Web Wire Search:" : "🧠 Local Knowledge Lookup:"}
+                                    </span>
+                                    <span className="text-slate-300 truncate max-w-[200px]" title={tool.query}>"{tool.query}"</span>
+                                    <span className={`font-bold ml-auto ${tool.items_retrieved > 0 ? "text-emerald-400" : "text-cyan-400 animate-pulse"}`}>
+                                      {tool.items_retrieved > 0 ? `(${tool.items_retrieved} sources)` : "Searching live..."}
+                                    </span>
+                                  </div>
+
+                                  {/* Clickable Retrieved Sources Tray */}
+                                  {tool.sources && tool.sources.length > 0 && (
+                                    <div className="pt-1.5 border-t border-cyan-500/20 flex flex-wrap items-center gap-1.5">
+                                      <span className="text-[9px] text-slate-400 uppercase tracking-wider font-semibold">Sources:</span>
+                                      {tool.sources.map((src, sIdx) => (
+                                        <button
+                                          key={sIdx}
+                                          onClick={() =>
+                                            setSelectedReadingSource({
+                                              source: src,
+                                              card: {
+                                                event_id: `live_${sIdx}`,
+                                                topic: tool.query,
+                                                headline: src.title || src.name,
+                                                personalized_framing: "Live wire search source reporting.",
+                                                summary: src.raw_text || src.title || "Live reporting ingested from search wire.",
+                                                fact_bullets: src.highlighted_passages || [src.raw_text?.slice(0, 150) || src.title || ""],
+                                                disputed_claims: [],
+                                                verified_entities: [],
+                                                sources: [src],
+                                                format: "bulleted_distillation",
+                                                published_at: src.published_at || new Date().toISOString(),
+                                              },
+                                            })
+                                          }
+                                          className="px-2 py-0.5 rounded-md bg-slate-900/90 hover:bg-cyan-900/80 text-slate-200 hover:text-cyan-200 border border-white/10 hover:border-cyan-400/50 flex items-center gap-1 text-[10px] transition group"
+                                          title={`Click to read original reporting from ${src.name}: "${src.title || src.name}"`}
+                                        >
+                                          <span className="truncate max-w-[130px] font-sans font-medium">{src.name || "Wire"}</span>
+                                          <ExternalLink className="w-2.5 h-2.5 text-cyan-400 group-hover:text-cyan-200 flex-shrink-0" />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>

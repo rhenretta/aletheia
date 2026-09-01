@@ -7,6 +7,7 @@ import {
   AttachedStoryContext,
   AgenticContextFlowStep,
   GeneratedMessageContext,
+  EventSourceArticle,
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
@@ -19,6 +20,7 @@ export interface ToolExecution {
   query: string;
   results_summary: string;
   items_retrieved: number;
+  sources?: EventSourceArticle[];
 }
 
 export interface ChatMessage {
@@ -77,7 +79,7 @@ export interface DialogueResponse {
 export type DialogueStreamEvent =
   | { type: "token"; token: string }
   | { type: "tool_start"; tool_name: string; query: string }
-  | { type: "tool_complete"; tool_name: string; query: string; summary: string }
+  | { type: "tool_complete"; tool_name: string; query: string; summary: string; sources?: EventSourceArticle[] }
   | { type: "meta"; data: DialogueResponse };
 
 export class JsonMessageStreamExtractor {
@@ -328,11 +330,22 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
 
       try {
         const liveArticles = await FreeNewsFetcher.searchNews(targetedQuery, 5);
+        const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
+          name: a.source_name || "News Wire",
+          title: a.title,
+          url: a.source_url,
+          bias: a.author_bias_rating || "center",
+          raw_text: a.raw_text,
+          published_at: a.published_at,
+          highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
+        }));
+
         executedTools.push({
           tool_name: "search_internet",
           query: targetedQuery,
           results_summary: `Retrieved ${liveArticles.length} live sources.`,
           items_retrieved: liveArticles.length,
+          sources: eventSources,
         });
 
         yield {
@@ -340,6 +353,7 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
           tool_name: "search_internet",
           query: targetedQuery,
           summary: `Retrieved ${liveArticles.length} live sources.`,
+          sources: eventSources,
         };
 
         if (liveArticles.length > 0) {
