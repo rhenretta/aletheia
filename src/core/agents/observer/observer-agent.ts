@@ -308,25 +308,7 @@ Output strict JSON:
       }
     }
 
-    // Step 3: Background knowledge graph harmonization (merging near-duplicates and splitting compound topics)
-    if (Object.keys(adaptedNode.topics || {}).length >= 4) {
-      try {
-        const harmResult = await InterestHarmonizer.harmonize(adaptedNode);
-        if (harmResult.changed) {
-          adaptedNode.topics = harmResult.harmonized_node.topics;
-          for (const act of harmResult.actions_taken) {
-            adaptationsMade.push({
-              category: "why_they_care",
-              description: `Harmonized interest graph (${act.type}): ${act.rationale}`,
-              evidence: act.source_topics.join(", "),
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("ObserverAgent: Background interest harmonization error:", err);
-      }
-    }
-
+    // Harmonization is explicitly user-triggered via /api/interests/harmonize button, never performed silently in background
     adaptedNode.last_updated = new Date().toISOString();
 
     // Persist updated Unified Topic Node to database and disk cache

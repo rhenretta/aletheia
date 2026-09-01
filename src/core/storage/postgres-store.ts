@@ -348,7 +348,10 @@ export class PostgresStore {
 
   public async saveChatSession(userId: string, messages: any[], extractedTopics: any[]): Promise<void> {
     // Accumulate extracted topics across conversational history
-    const existing = this.memoryChatSessions.get(userId);
+    let existing = this.memoryChatSessions.get(userId);
+    if (!existing && this.pool && this.isConnected) {
+      existing = await this.getChatSession(userId);
+    }
     const topicMap = new Map<string, any>();
     (existing?.extracted_topics || []).forEach((t: any) => {
       if (t.topic) topicMap.set(t.topic.toLowerCase(), t);
