@@ -255,7 +255,7 @@ export default function AletheiaHome() {
   // -------------------------------------------------------------
   // Freshness & Seen Story / Topic Recency Tracking
   // -------------------------------------------------------------
-  const [seenState, setSeenState] = useState<SeenInteractionState>(() => {
+  const [rankingSeenSnapshot, setRankingSeenSnapshot] = useState<SeenInteractionState>(() => {
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem(`aletheia_seen_state_${effectiveUserId}`);
@@ -265,45 +265,57 @@ export default function AletheiaHome() {
     return { seen_story_ids: {}, seen_topics: {} };
   });
 
+  const seenStateRef = React.useRef<SeenInteractionState>(rankingSeenSnapshot);
+
+  // Sync snapshot whenever pipelineResult, selectedTopicFilter, or refreshTrigger changes
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(`aletheia_seen_state_${effectiveUserId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        seenStateRef.current = parsed;
+        setRankingSeenSnapshot(parsed);
+      }
+    } catch (e) {}
+  }, [pipelineResult, selectedTopicFilter, selectedCategoryFilter, refreshTrigger, effectiveUserId]);
+
   const markStoriesAsSeen = React.useCallback(
     (storyIds: string[], topicNames?: string[]) => {
       if (!storyIds || storyIds.length === 0) return;
       const nowIso = new Date().toISOString();
 
-      setSeenState((prev) => {
-        const nextSeenStories = { ...(prev.seen_story_ids || {}) };
-        const nextSeenTopics = { ...(prev.seen_topics || {}) };
+      const current = seenStateRef.current;
+      const nextSeenStories = { ...(current.seen_story_ids || {}) };
+      const nextSeenTopics = { ...(current.seen_topics || {}) };
 
-        storyIds.forEach((id) => {
-          const current = nextSeenStories[id];
-          nextSeenStories[id] = {
+      storyIds.forEach((id) => {
+        const item = nextSeenStories[id];
+        nextSeenStories[id] = {
+          last_seen_at: nowIso,
+          impressions: (item?.impressions || 0) + 1,
+        };
+      });
+
+      if (topicNames) {
+        topicNames.forEach((t) => {
+          const lower = t.toLowerCase();
+          const currentT = nextSeenTopics[lower];
+          nextSeenTopics[lower] = {
             last_seen_at: nowIso,
-            impressions: (current?.impressions || 0) + 1,
+            impressions: (currentT?.impressions || 0) + 1,
           };
         });
+      }
 
-        if (topicNames) {
-          topicNames.forEach((t) => {
-            const lower = t.toLowerCase();
-            const currentT = nextSeenTopics[lower];
-            nextSeenTopics[lower] = {
-              last_seen_at: nowIso,
-              impressions: (currentT?.impressions || 0) + 1,
-            };
-          });
-        }
+      const nextState = {
+        seen_story_ids: nextSeenStories,
+        seen_topics: nextSeenTopics,
+      };
 
-        const nextState = {
-          seen_story_ids: nextSeenStories,
-          seen_topics: nextSeenTopics,
-        };
-
-        try {
-          localStorage.setItem(`aletheia_seen_state_${effectiveUserId}`, JSON.stringify(nextState));
-        } catch (e) {}
-
-        return nextState;
-      });
+      seenStateRef.current = nextState;
+      try {
+        localStorage.setItem(`aletheia_seen_state_${effectiveUserId}`, JSON.stringify(nextState));
+      } catch (e) {}
     },
     [effectiveUserId]
   );
@@ -323,10 +335,10 @@ export default function AletheiaHome() {
           if (!storyId) return;
 
           if (entry.isIntersecting) {
-            // If card remains visible in viewport for > 1000ms, mark as seen
+            // If card remains visible in viewport for > 1500ms, quietly mark as seen in telemetry
             const timer = setTimeout(() => {
               markStoriesAsSeen([storyId], topicName ? [topicName] : undefined);
-            }, 1000);
+            }, 1500);
             timerMap.set(storyId, timer);
           } else {
             const existingTimer = timerMap.get(storyId);
@@ -904,7 +916,7 @@ export default function AletheiaHome() {
     if (selectedTopicFilter === "all" && aiFeedFilter && aiFeedFilter.is_active !== false) {
       const topicToFilter = aiFeedFilter.topic;
       if (topicToFilter && topicToFilter !== "all") {
-        const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter, seenState);
+        const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter, rankingSeenSnapshot);
         if (semanticallyFiltered.length > 0) {
           return semanticallyFiltered;
         }
@@ -915,12 +927,12 @@ export default function AletheiaHome() {
     }
 
     // 2. Multi-Vector Semantic Affinity Filtering, Neural Graph Ranking & Freshness Recency Decay
-    return filterFeedBySemanticAffinity(pool, selectedTopicFilter, unifiedTopicNode, selectedCategoryFilter, seenState);
-  }, [feedCards, selectedTopicFilter, selectedCategoryFilter, aiFeedFilter, unifiedTopicNode, seenState]);
+    return filterFeedBySemanticAffinity(pool, selectedTopicFilter, unifiedTopicNode, selectedCategoryFilter, rankingSeenSnapshot);
+  }, [feedCards, selectedTopicFilter, selectedCategoryFilter, aiFeedFilter, unifiedTopicNode, rankingSeenSnapshot]);
 
   const topicBriefs = React.useMemo(() => {
-    return buildTopicBriefs(feedCards, unifiedTopicNode, seenState);
-  }, [feedCards, unifiedTopicNode, seenState]);
+    return buildTopicBriefs(feedCards, unifiedTopicNode, rankingSeenSnapshot);
+  }, [feedCards, unifiedTopicNode, rankingSeenSnapshot]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
