@@ -93,6 +93,17 @@ export default function MobileCompanionSheet({
   const [isStoryExpanded, setIsStoryExpanded] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const mobileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to the end of conversation whenever sheet is opened or messages change
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, messages]);
 
   // Focus input when opened
   useEffect(() => {
@@ -105,7 +116,7 @@ export default function MobileCompanionSheet({
     <>
       {/* 1. PERSISTENT FLOATING AMBIENT COMPANION QUICK BAR (When sheet is closed on mobile) */}
       {!isOpen && (
-        <div className="fixed bottom-14 left-0 right-0 z-30 px-3 py-2 pointer-events-none lg:hidden">
+        <div className="fixed bottom-16 left-0 right-0 z-30 px-3 py-2 pointer-events-none lg:hidden">
           <div className="max-w-xl mx-auto pointer-events-auto">
             <div className="bg-slate-900/90 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl p-2 shadow-2xl shadow-cyan-950/40 space-y-1.5 transition transform hover:scale-[1.01]">
               {/* Attached Story Pill if active */}
@@ -167,14 +178,14 @@ export default function MobileCompanionSheet({
 
       {/* 2. EXPANDABLE CONVERSATIONAL BOTTOM SHEET / DRAWER */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex flex-col justify-end bg-slate-950/70 backdrop-blur-md transition-opacity animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] lg:hidden flex flex-col justify-end bg-slate-950/80 backdrop-blur-md transition-opacity animate-in fade-in duration-200">
           {/* Backdrop Tap to Dismiss / Peek Feed */}
           <div className="flex-1" onClick={onClose} />
 
           {/* Drawer Container */}
           <div
-            className={`w-full bg-slate-900/95 backdrop-blur-3xl border-t border-cyan-500/30 rounded-t-3xl shadow-2xl flex flex-col transition-all duration-300 ${
-              isFullScreen ? "h-[94dvh]" : "h-[82dvh]"
+            className={`w-full bg-slate-900/98 backdrop-blur-3xl border-t border-cyan-500/40 rounded-t-3xl shadow-2xl flex flex-col transition-all duration-300 ${
+              isFullScreen ? "h-[94dvh]" : "h-[85dvh]"
             }`}
           >
             {/* Top Sheet Header & Drag Handle */}
@@ -425,6 +436,9 @@ export default function MobileCompanionSheet({
                         </button>
                       </div>
                     )}
+
+                    {/* Auto-scroll bottom anchor */}
+                    <div ref={messagesEndRef} className="h-4 flex-shrink-0" />
                   </div>
 
                   {/* Input Form at bottom of sheet */}
@@ -433,7 +447,7 @@ export default function MobileCompanionSheet({
                       e.preventDefault();
                       handleSendMessage();
                     }}
-                    className="p-3 bg-slate-950/95 border-t border-white/10 flex items-center gap-2 flex-shrink-0"
+                    className="p-3.5 pb-safe pb-5 bg-slate-950/98 border-t border-cyan-500/30 flex items-center gap-2 flex-shrink-0 shadow-2xl"
                   >
                     <input
                       ref={mobileInputRef}
@@ -443,14 +457,14 @@ export default function MobileCompanionSheet({
                       placeholder={
                         attachedStory ? `Ask about "${attachedStory.topic}"...` : "Discuss stories, ask questions..."
                       }
-                      className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+                      className="flex-1 bg-slate-900 border border-white/15 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition shadow-inner"
                       disabled={isSendingChat}
                     />
 
                     <button
                       type="submit"
                       disabled={isSendingChat || !chatInput.trim()}
-                      className="p-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 text-slate-950 font-bold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-cyan-500/20 flex-shrink-0"
+                      className="p-3 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/25 flex-shrink-0"
                       title="Send message"
                     >
                       <Send className="w-4 h-4" />
