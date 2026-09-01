@@ -10,6 +10,7 @@ import {
   UnifiedTopicNode,
 } from "../types/contracts";
 import { DataPersistenceStore } from "./persistence";
+import { SEED_DATA_STATE } from "./seed-state";
 
 const { Pool } = pg;
 
@@ -79,20 +80,35 @@ export class PostgresStore {
 
   private loadFromDisk(): void {
     try {
+      // Seed default baseline from SEED_DATA_STATE
+      const seed = SEED_DATA_STATE as any;
+      if (seed.userGraphs) {
+        this.memoryUserGraphs = new Map(Object.entries(seed.userGraphs));
+      }
+      if (seed.topicNodes) {
+        this.memoryTopicNodes = new Map(Object.entries(seed.topicNodes));
+      }
+      if (seed.chatSessions) {
+        this.memoryChatSessions = new Map(Object.entries(seed.chatSessions));
+      }
+      if (seed.factCache) {
+        this.memoryFactCache = new Map(Object.entries(seed.factCache));
+      }
+
       if (fs.existsSync(this.diskFilePath)) {
         const raw = fs.readFileSync(this.diskFilePath, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed.userGraphs) {
-          this.memoryUserGraphs = new Map(Object.entries(parsed.userGraphs));
+          for (const [k, v] of Object.entries(parsed.userGraphs)) this.memoryUserGraphs.set(k, v as any);
         }
         if (parsed.topicNodes) {
-          this.memoryTopicNodes = new Map(Object.entries(parsed.topicNodes));
+          for (const [k, v] of Object.entries(parsed.topicNodes)) this.memoryTopicNodes.set(k, v as any);
         }
         if (parsed.chatSessions) {
-          this.memoryChatSessions = new Map(Object.entries(parsed.chatSessions));
+          for (const [k, v] of Object.entries(parsed.chatSessions)) this.memoryChatSessions.set(k, v as any);
         }
         if (parsed.factCache) {
-          this.memoryFactCache = new Map(Object.entries(parsed.factCache));
+          for (const [k, v] of Object.entries(parsed.factCache)) this.memoryFactCache.set(k, v as any);
         }
       }
     } catch (err) {

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import pg from "pg";
+import { SEED_DATA_STATE } from "../core/storage/seed-state";
 
 const { Pool } = pg;
 
@@ -26,13 +27,10 @@ async function runMigration() {
     await client.query(sql);
     console.log("✅ Database schema migration successfully applied!");
 
-    // Seed and restore all persistent state from data/storage_state.json into RDS PostgreSQL
-    const diskPath = path.resolve(process.cwd(), "data", "storage_state.json");
-    if (fs.existsSync(diskPath)) {
-      console.log("📥 Seeding persistent user topics and history into RDS PostgreSQL...");
-      const raw = fs.readFileSync(diskPath, "utf8");
-      const data = JSON.parse(raw);
-      if (data.topicNodes) {
+    // Seed and restore all persistent state into RDS PostgreSQL
+    console.log("📥 Seeding persistent user topics and history into RDS PostgreSQL...");
+    const data = SEED_DATA_STATE as any;
+    if (data.topicNodes) {
         for (const [userId, node] of Object.entries(data.topicNodes) as [string, any][]) {
           if (userId && node && Object.keys(node.topics || {}).length > 0) {
             console.log(`   Seeding unified topic node for ${userId} (${Object.keys(node.topics).length} topics)...`);
