@@ -1,10 +1,19 @@
 import { NextRequest } from "next/server";
 import { traceLogger } from "@/core/observability/trace-logger";
 import { AgentTraceLog } from "@/core/types/contracts";
+import { verifyAdminAuth } from "@/core/auth/admin-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAdminAuth(req);
+  if (!auth.isAuthorized) {
+    return new Response(JSON.stringify({ error: auth.error || "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({

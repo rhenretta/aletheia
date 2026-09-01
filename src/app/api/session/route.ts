@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/core/auth/auth-options";
 import { postgresStore } from "@/core/storage/postgres-store";
 import { DataPersistenceStore } from "@/core/storage/persistence";
+import { verifyAdminAuth } from "@/core/auth/admin-guard";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -10,14 +11,21 @@ export async function GET(req: NextRequest) {
 
   // Determine user ID:
   // 1. Authenticated session user
-  // 2. Query param if explicitly provided for an authenticated user
-  // 3. Guest / anonymous user (does NOT leak previous usr_default conversation)
-  const isAuthenticated = !!session?.user?.email;
-  const effectiveUserId = isAuthenticated
-    ? `usr_${session!.user!.email!.replace(/[^a-zA-Z0-9]/g, "_")}`
-    : queryUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_guest"
-    ? queryUserId
-    : null;
+  // 2. Query param ONLY IF authorized as Admin
+  // 3. Guest / anonymous user (does NOT leak other users' conversations)
+  let effectiveUserId: string | null = null;
+
+  if (session?.user?.email) {
+    effectiveUserId = `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  }
+
+  // Allow admin inspection override with valid credentials
+  if (queryUserId && queryUserId !== effectiveUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_guest") {
+    const adminCheck = await verifyAdminAuth(req);
+    if (adminCheck.isAuthorized) {
+      effectiveUserId = queryUserId;
+    }
+  }
 
   if (!effectiveUserId) {
     // Unauthenticated Guest: Return clean baseline topic node and empty conversation

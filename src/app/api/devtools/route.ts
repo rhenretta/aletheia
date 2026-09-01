@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { traceLogger } from "@/core/observability/trace-logger";
 import { postgresStore } from "@/core/storage/postgres-store";
+import { verifyAdminAuth } from "@/core/auth/admin-guard";
 
 export async function GET(req: NextRequest) {
+  const auth = await verifyAdminAuth(req);
+  if (!auth.isAuthorized) {
+    return NextResponse.json({ success: false, error: auth.error || "Unauthorized" }, { status: 401 });
+  }
+
   const queryUserId = req.nextUrl.searchParams.get("userId") || "usr_rhenretta_gmail_com";
 
   const traces = traceLogger.getRecentTraces(100);
