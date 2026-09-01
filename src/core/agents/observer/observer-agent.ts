@@ -64,15 +64,27 @@ Analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation t
 3. "new_boundaries": Hard boundaries or topics the user explicitly or implicitly wants to avoid.
 4. "tool_calls": Discrete atomic tool calls to mutate individual user interests one by one ("create_topic" or "update_topic").
 
+LIVING TOPIC DOSSIER MANDATE:
+Each topic is a LIVING DOCUMENT capturing THREE essential pillars:
+1. WHAT THE USER IS INTERESTED IN ("what_they_care_about"): The specific technical focus, sub-domain, architectures, or problems (e.g., "End-to-end vision neural nets, real-world edge-case disengagements, and training compute scale").
+2. WHY THEY CARE ("why_they_care"): The user's underlying intellectual motivation, operational stakes, or worldview.
+   - ABSOLUTE PROHIBITION: NEVER narrate the conversation, conversational turns, or conversational mechanics (e.g. NEVER write "User mentioned X in prior turns", "User asked about X", "This turn highlights X"). Always write in the third-person active voice about their substantive intellectual stakes and technical perspectives!
+3. HOW BEST TO PRESENT STORIES ("presentation_strategy"): Exact editorial guidance on how to curate, filter, and format news for this user on this topic:
+   - "presentation_strategy": A 1-2 sentence editorial directive (e.g., "Present with technical rigor focusing on verified empirical milestones and disengagement data; avoid CEO quotes and sensational speculation.")
+   - "likes_and_angles": Specific dimensions, features, philosophies, or use cases the user appreciates/values.
+   - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed about this topic.
+
 DISCRETE MUTATION TOOLS:
 - "create_topic" & "update_topic":
   Parameters:
   - "topic": Canonical name of the topic.
   - "weight_delta": Numeric delta (+0.05 to +0.2).
-  - "why_they_care": 1-sentence bottom-line motivation summary.
+  - "what_they_care_about": 1-2 sentences on specific core sub-domains and technical focus areas.
+  - "why_they_care": 1-sentence bottom-line motivation summary (substantive intellectual stakes only; NO conversation meta-commentary).
+  - "presentation_strategy": 1-2 sentences on how best to curate and present stories for this user on this topic.
   - "living_narrative": A rich, evolving 2-3 sentence living dossier synthesis of the user's specific perspective, context, and nuance on this topic.
-  - "likes_and_angles": Specific dimensions, features, philosophies, or use cases the user appreciates/values (e.g. ["hardware ergonomics", "on-device SLM inference", "open weights"]).
-  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed about this topic (e.g. ["cloud latency dependencies", "gimmicky form factors without screens like Rabbit R1 / Humane"]).
+  - "likes_and_angles": Specific dimensions, features, philosophies, or use cases the user appreciates/values.
+  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed about this topic.
   - "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical"
   - "curiosity_vectors": Sub-themes explored.
   - "evolution_insight": 1-sentence insight describing what was learned or how their perspective shifted in this conversation.
@@ -81,6 +93,7 @@ DISCRETE MUTATION TOOLS:
 IRONCLAD GUARDRAILS & NEGATIVE CONSTRAINTS:
 - NEVER extract topics, interests, or sensitivities from statements, greetings, suggestions, or analogies made by the ASSISTANT / ALETHEIA.
 - NEVER infer user interests from the existence or framing of the application.
+- NEVER narrate conversation turns in "why_they_care" or "living_narrative".
 - If the user has only asked an open-ended conversational prompt (e.g. "What should we talk about", "Hello", "Tell me the news"), "tool_calls" MUST BE EMPTY ([]).
 - ONLY add a topic if the user actively introduced it or articulated substantive curiosity/opinions about it.
 - The "evidence" field MUST contain the exact verbatim substring from the USER showing their explicit statement.
@@ -99,7 +112,9 @@ Output strict JSON:
       "parameters": {
         "topic": string,
         "weight_delta": number,
+        "what_they_care_about": string,
         "why_they_care": string,
+        "presentation_strategy": string,
         "living_narrative": string,
         "likes_and_angles": string[],
         "dislikes_and_critiques": string[],

@@ -171,11 +171,13 @@ export const TopicEvolutionEntrySchema = z.object({
  */
 export interface TopicMetadata {
   weight: number; // 0.0 - 1.0
-  why_they_care: string; // Core psychological and intellectual motivation
+  what_they_care_about?: string; // Core focus, sub-domains, and technical dimensions (What the user is interested in)
+  why_they_care: string; // Underlying intellectual motivation, stakes, and worldview (Why they care)
+  presentation_strategy?: string; // Editorial directive on how to curate, filter, and present stories (How best to present)
   technical_depth: TechnicalDepth;
   living_narrative?: string; // Rich evolving synthesis of user's perspective on this topic
-  likes_and_angles?: string[]; // Specific dimensions, features, or philosophies the user values
-  dislikes_and_critiques?: string[]; // What the user dislikes, critiques, finds gimmicky, or rejects
+  likes_and_angles?: string[]; // Preferred angles, dimensions, and features
+  dislikes_and_critiques?: string[]; // Anti-preferences, hype to filter out, critiques
   curiosity_vectors?: string[];
   evolution_timeline?: TopicEvolutionEntry[]; // Chronological timeline of how the perspective evolved
   last_discussed_at?: string;
@@ -183,7 +185,9 @@ export interface TopicMetadata {
 
 export const TopicMetadataSchema = z.object({
   weight: z.number().min(0).max(1),
+  what_they_care_about: z.string().optional(),
   why_they_care: z.string(),
+  presentation_strategy: z.string().optional(),
   technical_depth: z.enum(["introductory", "practitioner", "expert", "deep_technical"]),
   living_narrative: z.string().optional(),
   likes_and_angles: z.array(z.string()).optional(),

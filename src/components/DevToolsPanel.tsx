@@ -477,13 +477,66 @@ export default function DevToolsPanel({
                             />
                           </div>
 
-                          <p className="text-[11px] text-slate-300 leading-relaxed">
-                            <strong className="text-cyan-400/90 font-mono text-[10px]">Why They Care: </strong>
-                            {meta.why_they_care}
-                          </p>
+                          <div className="space-y-1.5 pt-1">
+                            {/* Pillar 1: What the user is interested in */}
+                            <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded border border-white/5 space-y-0.5">
+                              <span className="text-cyan-400 font-mono text-[9px] uppercase font-bold block">
+                                1. What They Are Interested In:
+                              </span>
+                              <p className="text-slate-200">
+                                {meta.what_they_care_about || meta.living_narrative || meta.why_they_care}
+                              </p>
+                            </div>
+
+                            {/* Pillar 2: Why they care (substantive intellectual motivation) */}
+                            <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded border border-white/5 space-y-0.5">
+                              <span className="text-emerald-400 font-mono text-[9px] uppercase font-bold block">
+                                2. Why They Care (Intellectual Stakes):
+                              </span>
+                              <p className="text-slate-200">{meta.why_they_care}</p>
+                            </div>
+
+                            {/* Pillar 3: How best to present stories to this user */}
+                            <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded border border-white/5 space-y-1">
+                              <span className="text-amber-400 font-mono text-[9px] uppercase font-bold block">
+                                3. How Best To Present Stories:
+                              </span>
+                              <p className="text-slate-300">
+                                {meta.presentation_strategy || `Curate with ${meta.technical_depth} depth, focusing on verified empirical milestones and substantive trade-offs.`}
+                              </p>
+
+                              {(meta.likes_and_angles?.length || 0) > 0 && (
+                                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                  <span className="text-[9px] font-mono text-slate-500">Preferred:</span>
+                                  {meta.likes_and_angles?.map((like, lIdx) => (
+                                    <span
+                                      key={lIdx}
+                                      className="text-[9px] font-mono text-emerald-300 bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-500/20"
+                                    >
+                                      ✓ {like}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {(meta.dislikes_and_critiques?.length || 0) > 0 && (
+                                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                  <span className="text-[9px] font-mono text-slate-500">Filter out:</span>
+                                  {meta.dislikes_and_critiques?.map((dislike, dIdx) => (
+                                    <span
+                                      key={dIdx}
+                                      className="text-[9px] font-mono text-rose-300 bg-rose-950/60 px-1.5 py-0.2 rounded border border-rose-500/20"
+                                    >
+                                      ✕ {dislike}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
 
                           {meta.curiosity_vectors && meta.curiosity_vectors.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 pt-1">
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
                               {meta.curiosity_vectors.map((vec, vIdx) => (
                                 <span
                                   key={vIdx}

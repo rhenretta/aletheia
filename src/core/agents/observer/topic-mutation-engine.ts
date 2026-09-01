@@ -9,7 +9,9 @@ import {
 export interface CreateTopicParams {
   topic: string;
   weight?: number;
+  what_they_care_about?: string;
   why_they_care: string;
+  presentation_strategy?: string;
   technical_depth?: TechnicalDepth;
   living_narrative?: string;
   likes_and_angles?: string[];
@@ -22,7 +24,9 @@ export interface CreateTopicParams {
 export interface UpdateTopicParams {
   topic: string;
   weight_delta?: number;
+  what_they_care_about?: string;
   why_they_care?: string;
+  presentation_strategy?: string;
   technical_depth?: TechnicalDepth;
   living_narrative?: string;
   likes_and_angles?: string[];
@@ -37,7 +41,9 @@ export interface MergeTopicsParams {
   source_topics: string[];
   resulting_topic: string;
   weight?: number;
+  what_they_care_about?: string;
   why_they_care?: string;
+  presentation_strategy?: string;
   technical_depth?: TechnicalDepth;
   curiosity_vectors?: string[];
   rationale: string;
@@ -48,7 +54,9 @@ export interface SplitTopicParams {
   resulting_topics: Array<{
     topic: string;
     weight: number;
+    what_they_care_about?: string;
     why_they_care: string;
+    presentation_strategy?: string;
     technical_depth?: TechnicalDepth;
     curiosity_vectors?: string[];
   }>;
@@ -66,6 +74,16 @@ export type TopicMutationToolCall =
   | { tool: "merge_topics"; parameters: MergeTopicsParams }
   | { tool: "split_topic"; parameters: SplitTopicParams }
   | { tool: "delete_topic"; parameters: DeleteTopicParams };
+
+export function cleanLivingMotivation(text: string): string {
+  if (!text) return "";
+  let clean = text.trim();
+  clean = clean.replace(/^User (?:explicitly |directly |recently )?(?:mentioned|stated|expressed|asked about|discussed|brought up|noted)\s+(?:interest in\s+)?/i, "Focuses on ");
+  clean = clean.replace(/\s+in prior turns and this turn's summary highlights them as a key trend\.?/i, ".");
+  clean = clean.replace(/\s+in prior turns\.?/i, ".");
+  clean = clean.replace(/; relevant to [a-zA-Z\s]+ discussion\.?/i, ".");
+  return clean.trim();
+}
 
 export class TopicMutationEngine {
   /**
@@ -94,7 +112,9 @@ export class TopicMutationEngine {
         {
           topic: topicName,
           weight_delta: 0.1,
+          what_they_care_about: params.what_they_care_about,
           why_they_care: params.why_they_care,
+          presentation_strategy: params.presentation_strategy,
           technical_depth: params.technical_depth,
           curiosity_vectors_to_add: params.curiosity_vectors,
           evidence: params.evidence,
@@ -114,18 +134,22 @@ export class TopicMutationEngine {
       ? params.curiosity_vectors
       : [topicName];
 
+    const cleanedWhy = cleanLivingMotivation(params.why_they_care) || `Substantive intellectual focus on ${topicName}.`;
+
     const newMetadata: TopicMetadata = {
       weight: initialWeight,
-      why_they_care: params.why_they_care || `Substantive interest in ${topicName}.`,
+      what_they_care_about: params.what_they_care_about || params.living_narrative || topicName,
+      why_they_care: cleanedWhy,
+      presentation_strategy: params.presentation_strategy || `Present with practitioner depth focusing on substantive developments; avoid generic promotional press releases.`,
       technical_depth: validDepth,
-      living_narrative: params.living_narrative || params.why_they_care || `Developing ongoing perspective on ${topicName}.`,
+      living_narrative: params.living_narrative || cleanedWhy,
       likes_and_angles: params.likes_and_angles || [],
       dislikes_and_critiques: params.dislikes_and_critiques || [],
       curiosity_vectors: curiosityVectors,
       evolution_timeline: [
         {
           timestamp,
-          insight: params.evolution_insight || params.why_they_care || `Initial interest established in ${topicName}.`,
+          insight: params.evolution_insight || cleanedWhy,
           trigger_source: triggerSource,
           evidence: params.evidence,
         },
@@ -213,7 +237,18 @@ export class TopicMutationEngine {
         ? params.technical_depth
         : prevDepth;
 
-    const newWhy = params.why_they_care ? params.why_they_care.trim() : prevWhy;
+    const newWhy = cleanLivingMotivation(params.why_they_care || prevWhy) || prevWhy;
+
+    // Merge Living Narrative
+    let updatedNarrative = existing.living_narrative || existing.why_they_care;
+    if (params.living_narrative) {
+      updatedNarrative = cleanLivingMotivation(params.living_narrative);
+    } else if (params.why_they_care && !updatedNarrative.includes(newWhy)) {
+      updatedNarrative = `${updatedNarrative} ${newWhy}`.trim();
+    }
+
+    const newWhat = params.what_they_care_about || existing.what_they_care_about || updatedNarrative || topicName;
+    const newPresentation = params.presentation_strategy || existing.presentation_strategy || `Present with practitioner depth focusing on substantive engineering developments.`;
 
     let newVectors = [...prevVectors];
     if (params.curiosity_vectors_to_add) {
@@ -223,14 +258,6 @@ export class TopicMutationEngine {
     }
     if (params.curiosity_vectors_to_remove) {
       newVectors = newVectors.filter((v) => !params.curiosity_vectors_to_remove?.includes(v));
-    }
-
-    // Merge Living Narrative
-    let updatedNarrative = existing.living_narrative || existing.why_they_care;
-    if (params.living_narrative) {
-      updatedNarrative = params.living_narrative;
-    } else if (params.why_they_care && !updatedNarrative.includes(params.why_they_care)) {
-      updatedNarrative = `${updatedNarrative} ${params.why_they_care}`.trim();
     }
 
     // Merge Likes & Angles
@@ -247,7 +274,7 @@ export class TopicMutationEngine {
 
     // Append to Evolution Timeline
     const timeline = [...(existing.evolution_timeline || [])];
-    const newInsight = params.evolution_insight || (params.why_they_care && params.why_they_care !== prevWhy ? params.why_they_care : undefined) || (params.evidence ? `Expressed: "${params.evidence.slice(0, 80)}"` : undefined);
+    const newInsight = params.evolution_insight || (params.why_they_care && params.why_they_care !== prevWhy ? newWhy : undefined) || (params.evidence ? `Expressed: "${params.evidence.slice(0, 80)}"` : undefined);
     if (newInsight && !timeline.some((t) => t.insight === newInsight)) {
       timeline.push({
         timestamp,
@@ -259,7 +286,9 @@ export class TopicMutationEngine {
 
     node.topics[topicName] = {
       weight: newWeight,
+      what_they_care_about: newWhat,
       why_they_care: newWhy,
+      presentation_strategy: newPresentation,
       technical_depth: validDepth,
       living_narrative: updatedNarrative,
       likes_and_angles: Array.from(mergedLikes),
