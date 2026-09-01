@@ -88,10 +88,10 @@ CRITICAL EDITORIAL PRINCIPLES:
 
 Output strict JSON:
 {
+  "personalized_framing": "A 1-2 sentence internal editorial rationale explaining why this event is significant from the reader's perspective",
   "headline": string,
   "summary": string,
-  "expansion_text": string,
-  "personalized_framing": string
+  "expansion_text": string
 }`;
 
             const articlesContext = effectiveArticles

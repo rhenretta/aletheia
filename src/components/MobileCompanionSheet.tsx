@@ -336,7 +336,7 @@ export default function MobileCompanionSheet({
                     </p>
                   </div>
                   <button
-                    onClick={() => signIn("google")}
+                    onClick={() => signIn("google", { callbackUrl: "/" })}
                     className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
                   >
                     <span>Sign In with Google</span>

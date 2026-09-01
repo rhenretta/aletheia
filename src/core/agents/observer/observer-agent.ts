@@ -99,11 +99,13 @@ Current Emotional Trajectory: "${adaptedNode.psychological_profile?.emotional_tr
 
 Output strict JSON:
 {
+  "reasoning_summary": "In-depth cognitive evaluation of the user's explicit interests, emotional tone, communication boundaries, and worldview...",
   "updated_emotional_trajectory": string,
   "new_sensitivities": string[],
   "new_boundaries": string[],
   "tool_calls": [
     {
+      "rationale": "Clear rationale explaining what the user stated and why this specific knowledge graph topic mutation is required",
       "tool": "create_topic" | "update_topic",
       "parameters": {
         "topic": string,
@@ -120,8 +122,7 @@ Output strict JSON:
         "evidence": string
       }
     }
-  ],
-  "reasoning_summary": string
+  ]
 }`;
 
         const userOnlyDialogue = chatHistory

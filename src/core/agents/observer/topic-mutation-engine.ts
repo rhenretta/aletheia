@@ -69,11 +69,11 @@ export interface DeleteTopicParams {
 }
 
 export type TopicMutationToolCall =
-  | { tool: "create_topic"; parameters: CreateTopicParams }
-  | { tool: "update_topic"; parameters: UpdateTopicParams }
-  | { tool: "merge_topics"; parameters: MergeTopicsParams }
-  | { tool: "split_topic"; parameters: SplitTopicParams }
-  | { tool: "delete_topic"; parameters: DeleteTopicParams };
+  | { rationale?: string; tool: "create_topic"; parameters: CreateTopicParams }
+  | { rationale?: string; tool: "update_topic"; parameters: UpdateTopicParams }
+  | { rationale?: string; tool: "merge_topics"; parameters: MergeTopicsParams }
+  | { rationale?: string; tool: "split_topic"; parameters: SplitTopicParams }
+  | { rationale?: string; tool: "delete_topic"; parameters: DeleteTopicParams };
 
 export class TopicMutationEngine {
   /**

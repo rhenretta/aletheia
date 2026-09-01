@@ -324,7 +324,6 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
      * "curation_query": 2-4 word targeted search query
 4. OUTPUT STRICT JSON adhering to:
 {
-  "message": "Direct, natural, grounded conversational response addressing the user as an intellectual peer",
   "agent_internal_rationale": {
     "user_emotional_state_detected": "User mindset",
     "curiosity_focus_identified": "Core intellectual interest",
@@ -332,19 +331,20 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
     "pedagogical_strategy": "Conversational goal",
     "why_this_response": "Why this framing was chosen"
   },
+  "message": "Direct, natural, grounded conversational response addressing the user as an intellectual peer",
   "active_feed_filter": {
+    "filter_reason": "Explanation for filter",
     "is_active": boolean,
     "topic": string,
     "matched_event_ids": ["evt_123"],
-    "filter_reason": "Explanation for filter",
     "trigger_targeted_curation": boolean,
     "curation_query": "2-4 word search query"
   },
   "extracted_topics": [
     {
+      "reasoning": "Summary of user interest",
       "topic": "Canonical Topic Name",
       "weight": 0.85,
-      "reasoning": "Summary of user interest",
       "confidence_score": 0.95,
       "evidence_quote": "Exact user quote"
     }
@@ -408,6 +408,7 @@ Output strict JSON:
 }
 - To respond directly (only when local articles provide verified current facts):
 {
+  "agent_internal_rationale": { ... },
   "message": "Direct response",
   "active_feed_filter": { ... },
   "extracted_topics": [ ... ]

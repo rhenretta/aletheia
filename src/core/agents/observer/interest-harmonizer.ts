@@ -61,18 +61,22 @@ export class InterestHarmonizer {
 Your role is to evaluate a user's active interest graph and emit DISCRETE MUTATION TOOL CALLS to clean it up.
 You NEVER recreate or return the full graph. You ONLY emit specific tool calls for nodes that need merging, splitting, updating, or deletion.
 
+CRITICAL ARCHITECTURAL REQUIREMENT: PREFIX RATIONALE
+- You MUST output your analytical rationale BEFORE generating any decision tokens or tool calls.
+- In each tool call, the "rationale" property MUST be the FIRST property in the object, explaining why the action is needed before specifying the "tool" name and parameters.
+
 AVAILABLE MUTATION TOOLS:
 1. "merge_topics": Merge two or more near-duplicate/overlapping entities into one canonical entity.
-   parameters: { "source_topics": string[], "resulting_topic": string, "why_they_care": string, "technical_depth": string, "curiosity_vectors": string[], "rationale": string }
+   parameters: { "source_topics": string[], "resulting_topic": string, "why_they_care": string, "technical_depth": string, "curiosity_vectors": string[] }
 
 2. "split_topic": Split a compound/multi-domain topic into distinct focused nodes.
-   parameters: { "source_topic": string, "resulting_topics": [{ "topic": string, "weight": number, "why_they_care": string, "technical_depth": string, "curiosity_vectors": string[] }], "rationale": string }
+   parameters: { "source_topic": string, "resulting_topics": [{ "topic": string, "weight": number, "why_they_care": string, "technical_depth": string, "curiosity_vectors": string[] }] }
 
 3. "delete_topic": Prune an obsolete or invalid topic.
-   parameters: { "topic": string, "rationale": string }
+   parameters: { "topic": string }
 
 4. "update_topic": Update metadata or technical depth on an existing topic.
-   parameters: { "topic": string, "weight_delta": number, "why_they_care": string, "technical_depth": string, "curiosity_vectors_to_add": string[], "rationale": string }
+   parameters: { "topic": string, "weight_delta": number, "why_they_care": string, "technical_depth": string, "curiosity_vectors_to_add": string[] }
 
 CRITICAL RULES:
 - ONLY emit tool calls for topics that genuinely require merging or splitting.
@@ -81,8 +85,10 @@ CRITICAL RULES:
 
 Output strict JSON:
 {
+  "structural_rationale": "Comprehensive evaluation of topic granularity, overlaps, and distinctness across all active topics...",
   "tool_calls": [
     {
+      "rationale": "Detailed explanation of why this specific mutation is necessary and how it improves future knowledge discovery",
       "tool": "merge_topics" | "split_topic" | "delete_topic" | "update_topic",
       "parameters": { ... }
     }
@@ -102,7 +108,10 @@ Output strict JSON:
 
         if (Array.isArray(parsed.tool_calls) && parsed.tool_calls.length > 0) {
           for (const tc of parsed.tool_calls) {
-            const p = tc.parameters || tc;
+            const p = { ...(tc.parameters || tc) };
+            if (tc.rationale && !p.rationale) {
+              p.rationale = tc.rationale;
+            }
 
             if (tc.tool === "merge_topics") {
               const res = TopicMutationEngine.executeMergeTopics(adaptedNode, p);
@@ -134,6 +143,7 @@ Output strict JSON:
 
           const runSummary =
             parsed.summary ||
+            parsed.structural_rationale ||
             (actionsTaken.length > 0
               ? `Executed ${actionsTaken.length} discrete graph mutation tool actions on ${topicKeys.length} topics.`
               : `Evaluated ${topicKeys.length} active topics. All topics are distinct and well-formed; no merges or splits required.`);

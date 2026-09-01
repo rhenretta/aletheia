@@ -1053,7 +1053,7 @@ export default function AletheiaHome() {
             </div>
           ) : (
             <button
-              onClick={() => signIn("google")}
+              onClick={() => signIn("google", { callbackUrl: "/" })}
               className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
               title="Sign in with your ciclops.io Google Account"
             >
@@ -1170,7 +1170,7 @@ export default function AletheiaHome() {
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
-                      signIn("google");
+                      signIn("google", { callbackUrl: "/" });
                     }}
                     className="w-full py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
                   >
@@ -2284,7 +2284,7 @@ export default function AletheiaHome() {
                   </p>
                 </div>
                 <button
-                  onClick={() => signIn("google")}
+                  onClick={() => signIn("google", { callbackUrl: "/" })}
                   className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
                   title="Sign in with your Google account"
                 >

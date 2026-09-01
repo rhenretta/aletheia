@@ -101,28 +101,28 @@ ${JSON.stringify(frontierSummaries, null, 2)}
 
 Output strict JSON in this format:
 {
-  "identified_discussion_subject": string,
   "semantic_reasoning_summary": string,
+  "identified_discussion_subject": string,
   "calibrated_overall_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
   "selected_topics": [
     {
+      "relevance_rationale": string,
       "topic_name": string,
       "relevance_score": number (0.0 to 1.0),
-      "relevance_rationale": string,
       "graph_connection_type": "direct_match" | "interest_intersection" | "curiosity_frontier" | "thematic_expansion",
       "connecting_node": string or null
     }
   ],
   "active_intersections": [
     {
-      "theme": string,
-      "rationale": string
+      "rationale": string,
+      "theme": string
     }
   ],
   "new_topic_candidates": [
     {
-      "topic_name": string,
       "why_they_care": string,
+      "topic_name": string,
       "suggested_initial_weight": number (0.1 to 1.0),
       "suggested_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
       "curiosity_vectors": string[]
