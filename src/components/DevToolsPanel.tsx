@@ -27,6 +27,9 @@ import {
   Sliders,
   Network,
   Newspaper,
+  Copy,
+  FileText,
+  Code,
 } from "lucide-react";
 import {
   AgentTraceLog,
@@ -1230,6 +1233,62 @@ export default function DevToolsPanel({
                               </pre>
                             </div>
                           )}
+
+                          {/* SECTION: FULL RAW PROMPTS & REAL-TIME GROUNDING SENT TO LLM */}
+                          <div className="p-4 rounded-xl bg-slate-900/90 border border-cyan-500/40 space-y-3">
+                            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                              <span className="font-mono text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                                <FileText className="w-4 h-4 text-cyan-400" />
+                                RAW LLM PROMPT & COMPLETE GROUNDING CONTEXT
+                              </span>
+                              <span className="text-[10px] font-mono text-cyan-400">
+                                {contextGen.raw_prompt_sent_to_llm ? `${contextGen.raw_prompt_sent_to_llm.length} chars` : "Direct Payload"}
+                              </span>
+                            </div>
+
+                            {/* Raw User & Live Search Grounding Prompt */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-mono text-teal-400 uppercase font-bold block">
+                                  Full Prompt Sent to Model (Includes Injected Live Searches & Articles):
+                                </span>
+                                {contextGen.raw_prompt_sent_to_llm && (
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(contextGen.raw_prompt_sent_to_llm)}
+                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-mono flex items-center gap-1 transition"
+                                    title="Copy raw prompt to clipboard"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    <span>Copy Raw Prompt</span>
+                                  </button>
+                                )}
+                              </div>
+                              <pre className="text-[11px] text-slate-200 font-mono whitespace-pre-wrap leading-relaxed max-h-[260px] overflow-y-auto bg-slate-950 p-3 rounded-lg border border-teal-500/30 shadow-inner">
+                                {contextGen.raw_prompt_sent_to_llm || "Raw prompt payload logged in trace session."}
+                              </pre>
+                            </div>
+
+                            {/* Raw System Prompt & Temporal Directives */}
+                            {contextGen.raw_system_prompt && (
+                              <div className="space-y-1.5 pt-2 border-t border-white/5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold block">
+                                    System Prompt & Temporal Directives:
+                                  </span>
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(contextGen.raw_system_prompt)}
+                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-mono flex items-center gap-1 transition"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    <span>Copy System Prompt</span>
+                                  </button>
+                                </div>
+                                <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap leading-relaxed max-h-[160px] overflow-y-auto bg-slate-950 p-3 rounded-lg border border-cyan-500/20">
+                                  {contextGen.raw_system_prompt}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
 
                           {/* OBSERVABILITY: HOW THIS CONTEXT WAS GENERATED (EXACT AGENT RUN TRACES & I/O) */}
                           <div className="pt-2 border-t border-white/10 space-y-2">

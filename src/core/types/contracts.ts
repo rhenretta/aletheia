@@ -655,6 +655,8 @@ export interface GeneratedMessageContext {
     results_summary: string;
     items_retrieved: number;
   }>;
+  raw_prompt_sent_to_llm?: string;
+  raw_system_prompt?: string;
   agent_internal_rationale?: Record<string, unknown>;
   agentic_flow?: AgenticContextFlowStep[];
 }

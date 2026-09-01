@@ -31,6 +31,7 @@ import {
   Menu,
   Newspaper,
   Zap,
+  FileText,
 } from "lucide-react";
 import {
   NewsStateContext,
@@ -2200,7 +2201,12 @@ export default function AletheiaHome() {
                             </div>
                           )}
                           <div className="p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed bg-slate-900/90 text-slate-200 border border-white/10 rounded-tl-none whitespace-pre-wrap">
-                            {msg.content}
+                            {msg.content || (
+                              <span className="text-cyan-300 font-mono text-xs flex items-center gap-2 animate-pulse py-1">
+                                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                                <span>Searching wire & synthesizing response...</span>
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-wrap items-center gap-2 pl-1 pt-0.5">
                             <button
@@ -2215,6 +2221,15 @@ export default function AletheiaHome() {
                                   {msg.context_generated.calibrated_depth}
                                 </span>
                               )}
+                            </button>
+
+                            <button
+                              onClick={() => handleInspectChatTurn(msg)}
+                              className="text-[10px] font-mono text-teal-300 hover:text-teal-100 bg-teal-950/60 hover:bg-teal-900/80 px-2.5 py-1 rounded-lg border border-teal-500/40 flex items-center gap-1.5 transition font-semibold shadow-sm"
+                              title="View exact raw prompt, system prompt, and live search context sent to LLM"
+                            >
+                              <FileText className="w-3 h-3 text-teal-400" />
+                              <span>View Raw Prompt</span>
                             </button>
                           </div>
                         </div>

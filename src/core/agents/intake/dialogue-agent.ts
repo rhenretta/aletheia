@@ -200,9 +200,10 @@ REAL-TIME TEMPORAL & SPATIAL GROUNDING (CRITICAL):
 - REAL-WORLD TIMESTAMP: ${clientContext?.clientTime || now.toISOString()}
 
 CHRONOLOGICAL INTEGRITY & FACT-CHECKING RULES:
-1. BEFORE ANSWERING QUESTIONS ABOUT LAUNCHES, SCHEDULES, UPCOMING EVENTS, OR CLAIMS IN ARTICLES:
-   - Check the publication date of any attached article against today's date (${currentDateStr}). If an article was published weeks or months ago, its expectations (e.g. earlier flight test targets) may be historical or superseded by subsequent real-world milestones.
+1. FACTUAL GROUNDING & ANTI-HALLUCINATION:
+   - Check the publication date of any attached article against today's date (${currentDateStr}). If an article was published weeks or months ago, its expectations may be historical or superseded by subsequent real-world milestones.
    - Ground current launch profiles, flight numbers, and mission status in the retrieved real-time wire search results.
+   - If an earlier turn in conversation history contained an inaccurate statement or hallucinated event, CORRECT IT FACTUALLY rather than accepting or compounding the mistake.
    - Explicitly clarify the timeline if an article's claim reflects an older phase of a program compared to the current real-world status as of ${currentDateStr}.
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
@@ -610,6 +611,8 @@ CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
       pedagogical_strategy: parsed.agent_internal_rationale?.pedagogical_strategy,
       retrieved_stories: contextFraming.retrieved_stories,
       tools_executed: executedTools,
+      raw_prompt_sent_to_llm: prompt,
+      raw_system_prompt: systemPrompt,
       agent_internal_rationale: parsed.agent_internal_rationale,
       agentic_flow: agenticFlowSteps,
     };
