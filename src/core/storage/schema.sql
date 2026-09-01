@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS unified_topic_nodes (
     historical_anchors JSONB NOT NULL DEFAULT '[]'::jsonb,
     interest_intersections JSONB NOT NULL DEFAULT '[]'::jsonb,
     adjacent_curiosity_frontiers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    recent_topic_diffs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    harmonization_runs JSONB NOT NULL DEFAULT '[]'::jsonb,
     dwell_history JSONB NOT NULL DEFAULT '[]'::jsonb,
     last_updated TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     embedding vector(384)
@@ -102,4 +104,8 @@ CREATE TABLE IF NOT EXISTS unified_topic_nodes (
 
 CREATE INDEX IF NOT EXISTS idx_unified_topic_nodes_topics ON unified_topic_nodes USING GIN(topics);
 CREATE INDEX IF NOT EXISTS idx_unified_topic_nodes_psych ON unified_topic_nodes USING GIN(psychological_profile);
+
+-- Safe Alterations for backwards-compatible schema upgrades
+ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS recent_topic_diffs JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS harmonization_runs JSONB DEFAULT '[]'::jsonb;
 

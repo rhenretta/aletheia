@@ -25,6 +25,8 @@ async function runMigration() {
 
     console.log("📦 Applying schema.sql DDL...");
     await client.query(sql);
+    await client.query("ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS recent_topic_diffs JSONB DEFAULT '[]'::jsonb;");
+    await client.query("ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS harmonization_runs JSONB DEFAULT '[]'::jsonb;");
     console.log("✅ Database schema migration successfully applied!");
 
     // Seed and restore all persistent state into RDS PostgreSQL
