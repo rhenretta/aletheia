@@ -80,6 +80,17 @@ export class TraceLogger {
       console.warn("TraceLogger: Could not write trace to disk:", err);
     }
 
+    // Persist asynchronously to PostgreSQL store
+    try {
+      import("../storage/postgres-store").then(({ postgresStore }) => {
+        postgresStore.logTrace(validated).catch((err) => {
+          console.warn("TraceLogger: Could not persist trace to postgres:", err);
+        });
+      });
+    } catch (err) {
+      // Ignore in isolated environments
+    }
+
     // Notify all real-time stream subscribers
     this.listeners.forEach((listener) => {
       try {

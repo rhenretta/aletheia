@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "doc-sync": "tsx src/scripts/sync-docs.ts",
-    "db:migrate": "tsx src/scripts/migrate-db.ts"
+    "db:migrate": "tsx src/scripts/migrate-db.ts",
+    "prod:inspect": "tsx src/scripts/prod-inspector.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
