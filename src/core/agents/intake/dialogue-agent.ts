@@ -285,15 +285,29 @@ ${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.joi
     // First, let DeepSeek evaluate whether local context is sufficient or if a live search tool is required
     const toolEvaluationPrompt = `${prompt}
 
-INSTRUCTION: Evaluate if you have sufficient verified local context (from the attached article or local feed above) to answer the user's latest inquiry accurately.
-- If YES: Output the final conversational JSON response directly.
-- If NO (e.g. user asks for real-time status, newer updates beyond the article, or facts needing live wire verification): Output ONLY a tool_call JSON:
+EPISTEMIC SUFFICIENCY & TEMPORAL INTEGRITY EVALUATION:
+- CURRENT REAL-WORLD DATE: ${currentDateStr} (Year: ${now.getFullYear()})
+- LOCAL CONTEXT: Check the attached story and current feed stories above.
+
+EVALUATION MANDATE:
+1. If the inquiry is a general reflection or is 100% answered with complete accuracy by the verified local articles above, output the final conversational JSON directly.
+2. If the user's inquiry touches upon real-world developments, current status, roadmap, upcoming milestones, recent news, or future expectations, AND the local context above lacks verified reporting from ${now.getFullYear()} covering this exact point, your pre-training knowledge is OUTDATED. You MUST execute a "search_internet" tool call to ground yourself in the live wire before generating a response.
+3. NEVER answer questions about the current state of ongoing real-world technologies, companies, or events from static memory without live wire verification.
+
+Output strict JSON:
+- To call search tool:
 {
-  "thought_process": "Why local context is insufficient and what verification is needed",
+  "thought_process": "Why local context is insufficient for current real-world status as of ${now.getFullYear()}",
   "tool_call": {
     "tool_name": "search_internet",
-    "query": "concise targeted search query"
+    "query": "targeted search query for current status"
   }
+}
+- To respond directly (only when local articles provide verified current facts):
+{
+  "message": "Direct response",
+  "active_feed_filter": { ... },
+  "extracted_topics": [ ... ]
 }`;
 
     let toolDecision: any = null;
