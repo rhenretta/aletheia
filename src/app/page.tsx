@@ -205,6 +205,21 @@ export default function AletheiaHome() {
     }
   }, [messages, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
 
+  // Derived accurate count of all tracked interests across Unified Topic Node, User Graph, and extracted topics
+  const totalInterestsCount = (() => {
+    const set = new Set<string>();
+    if (unifiedTopicNode?.topics) {
+      Object.keys(unifiedTopicNode.topics).forEach((t) => set.add(t));
+    }
+    if (userGraph?.topic_weights) {
+      Object.keys(userGraph.topic_weights).forEach((t) => set.add(t));
+    }
+    extractedTopics.forEach((et) => {
+      if (et.topic) set.add(et.topic);
+    });
+    return set.size;
+  })();
+
   // Deletes only generated news content from state and storage (keeps chat & interests intact)
   const handleClearFeedContent = () => {
     setIsCollectingNews(false);
@@ -1187,7 +1202,7 @@ export default function AletheiaHome() {
                   </div>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
                     {feedCards.length === 0
-                      ? `Your news stream is empty. Your conversation history and ${Object.keys(userGraph?.topic_weights || {}).length || extractedTopics.length} tracked interests are preserved.`
+                      ? `Your news stream is empty. Your conversation history and ${totalInterestsCount} tracked interests are preserved.`
                       : "Try selecting All Topics or switching Discovery Horizon tabs."}
                   </p>
                   <button
@@ -1463,7 +1478,7 @@ export default function AletheiaHome() {
                 >
                   <Brain className="w-3.5 h-3.5" />
                   <span>
-                    Interests ({Object.keys(userGraph?.topic_weights || {}).length || extractedTopics.length})
+                    Interests ({totalInterestsCount})
                   </span>
                 </button>
               </div>
@@ -1658,7 +1673,7 @@ export default function AletheiaHome() {
                     <Brain className="w-3.5 h-3.5 text-cyan-400" />
                     Active Interests:
                   </div>
-                  {(Object.entries(userGraph?.topic_weights || {}).length > 0 || extractedTopics.length > 0) && (
+                  {totalInterestsCount > 0 && (
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleHarmonizeInterests()}
@@ -1963,9 +1978,9 @@ export default function AletheiaHome() {
         >
           <div className="relative">
             <Brain className="w-5 h-5" />
-            {(Object.keys(userGraph?.topic_weights || {}).length > 0 || extractedTopics.length > 0) && (
+            {totalInterestsCount > 0 && (
               <span className="absolute -top-1.5 -right-3 px-1.5 py-0.2 bg-violet-500 text-white text-[9px] font-mono font-bold rounded-full">
-                {Object.keys(userGraph?.topic_weights || {}).length || extractedTopics.length}
+                {totalInterestsCount}
               </span>
             )}
           </div>
