@@ -190,118 +190,15 @@ Output strict JSON:
           };
         }
       } catch (err) {
-        console.warn("InterestHarmonizer: LLM tool harmonization error, falling back to heuristic cleanup:", err);
+        console.warn("InterestHarmonizer: LLM tool harmonization error:", err);
       }
-    }
-
-    // Step 2: Fallback heuristic clustering (only merges strict duplicate subphrases)
-    return this.heuristicHarmonize(adaptedNode, triggerSource);
-  }
-
-  /**
-   * Fast, deterministic heuristic clustering when LLM is offline
-   */
-  private static heuristicHarmonize(
-    node: UnifiedTopicNode,
-    triggerSource: "background_observer" | "manual_user"
-  ): HarmonizationResult {
-    const topics = node.topics || {};
-    const entries = Object.entries(topics);
-    const initialCount = entries.length;
-    const merged: Record<string, TopicMetadata> = {};
-    const actions: HarmonizationAction[] = [];
-    const visited = new Set<string>();
-    const timestamp = new Date().toISOString();
-    const runId = `run_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const traceId = `trace_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-
-    for (let i = 0; i < entries.length; i++) {
-      const [nameA, metaA] = entries[i];
-      if (visited.has(nameA)) continue;
-
-      const cluster: Array<[string, TopicMetadata]> = [[nameA, metaA]];
-      visited.add(nameA);
-
-      for (let j = i + 1; j < entries.length; j++) {
-        const [nameB, metaB] = entries[j];
-        if (visited.has(nameB)) continue;
-
-        const cleanLowerA = nameA.toLowerCase().trim();
-        const cleanLowerB = nameB.toLowerCase().trim();
-
-        const stopWords = new Set(["and", "the", "or", "of", "in", "for", "with", "on", "to", "by", "about"]);
-        const getSubstantiveTokens = (str: string) =>
-          new Set(str.toLowerCase().split(/\W+/).filter((t) => t.length >= 2 && !stopWords.has(t)));
-
-        const tokensA = getSubstantiveTokens(nameA);
-        const tokensB = getSubstantiveTokens(nameB);
-
-        const intersection = new Set([...tokensA].filter((x) => tokensB.has(x)));
-        const union = new Set([...tokensA, ...tokensB]);
-        const jaccard = union.size > 0 ? intersection.size / union.size : 0;
-
-        // Equivalence: identical string, multi-word subset (e.g. "AI Policy" in "AI and Economic Policy"), or >= 65% token Jaccard
-        const isExactMatch = cleanLowerA === cleanLowerB;
-        const isNearExactMatch = jaccard >= 0.65 && tokensA.size >= 2 && tokensB.size >= 2;
-        const isMultiWordSubset =
-          (tokensA.size >= 2 && [...tokensA].every((t) => tokensB.has(t))) ||
-          (tokensB.size >= 2 && [...tokensB].every((t) => tokensA.has(t)));
-
-        if (isExactMatch || isNearExactMatch || isMultiWordSubset) {
-          cluster.push([nameB, metaB]);
-          visited.add(nameB);
-        }
-      }
-
-      if (cluster.length > 1) {
-        const canonicalName = cluster.reduce((best, cur) => (cur[0].length > best.length ? cur[0] : best), cluster[0][0]);
-        const combinedWeight = Number(Math.min(1.0, Math.max(...cluster.map((c) => c[1].weight)) + 0.05).toFixed(2));
-        const allVectors = Array.from(new Set(cluster.flatMap((c) => c[1].curiosity_vectors || [])));
-        const bestWhy = cluster.map((c) => c[1].why_they_care).filter(Boolean).join(" ");
-
-        merged[canonicalName] = {
-          weight: combinedWeight,
-          why_they_care: bestWhy || metaA.why_they_care,
-          technical_depth: metaA.technical_depth || "practitioner",
-          curiosity_vectors: allVectors.length > 0 ? allVectors : [canonicalName],
-          last_discussed_at: timestamp,
-        };
-
-        actions.push({
-          type: "merge",
-          source_topics: cluster.map((c) => c[0]),
-          resulting_topics: [canonicalName],
-          rationale: `Merged ${cluster.length} overlapping topic phrases into canonical node "${canonicalName}".`,
-        });
-      } else {
-        merged[nameA] = metaA;
-      }
-    }
-
-    const changed = actions.length > 0;
-    node.topics = merged;
-    node.last_updated = timestamp;
-
-    let harmonizationRun: HarmonizationRun | undefined;
-    if (changed) {
-      harmonizationRun = {
-        run_id: runId,
-        timestamp,
-        trigger_source: triggerSource,
-        summary: `Heuristic clustering consolidated ${initialCount} topics into ${Object.keys(merged).length} nodes.`,
-        actions,
-        trace_id: traceId,
-        topics_before_count: initialCount,
-        topics_after_count: Object.keys(merged).length,
-      };
-      node.harmonization_runs = [harmonizationRun, ...(node.harmonization_runs || []).slice(0, 20)];
     }
 
     return {
-      harmonized_node: node,
-      actions_taken: actions,
-      harmonization_run: harmonizationRun,
-      changed,
+      harmonized_node: adaptedNode,
+      actions_taken: [],
+      changed: false,
     };
   }
 }
+

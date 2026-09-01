@@ -505,32 +505,13 @@ export default function MobileCompanionSheet({
                 {(() => {
                   const topicMap = new Map<string, { weight: number; why_they_care: string; technical_depth?: string }>();
 
+                  // Unified Topic Node (Authoritative Single Source of Truth)
                   if (unifiedTopicNode?.topics) {
                     for (const [topic, meta] of Object.entries(unifiedTopicNode.topics)) {
                       topicMap.set(topic, {
                         weight: meta.weight,
                         why_they_care: meta.why_they_care,
                         technical_depth: meta.technical_depth,
-                      });
-                    }
-                  }
-
-                  if (userGraph?.topic_weights) {
-                    for (const [topic, weight] of Object.entries(userGraph.topic_weights)) {
-                      if (!topicMap.has(topic)) {
-                        topicMap.set(topic, {
-                          weight,
-                          why_they_care: `Explicit dialogue interest in ${topic}.`,
-                        });
-                      }
-                    }
-                  }
-
-                  for (const et of extractedTopics) {
-                    if (et.topic && !topicMap.has(et.topic)) {
-                      topicMap.set(et.topic, {
-                        weight: et.weight || 0.6,
-                        why_they_care: et.reasoning || `Identified from conversational focus on ${et.topic}.`,
                       });
                     }
                   }

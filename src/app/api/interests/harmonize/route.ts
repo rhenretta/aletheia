@@ -30,6 +30,14 @@ export async function POST(req: NextRequest) {
     // Always persist updated node to preserve the HarmonizationRun audit log
     await postgresStore.saveUnifiedTopicNode(result.harmonized_node);
 
+    // Prune stale transient extracted topics from chat session upon harmonization
+    if (result.changed) {
+      const chatSession = await postgresStore.getChatSession(effectiveUserId);
+      if (chatSession) {
+        await postgresStore.setChatSession(effectiveUserId, chatSession.messages || [], []);
+      }
+    }
+
     const userGraph = await postgresStore.getUserGraph(effectiveUserId);
 
     return NextResponse.json({

@@ -236,21 +236,8 @@ export default function AletheiaHome() {
     }
   }, [messages, unifiedTopicNode, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
 
-  // Derived accurate count of all tracked interests across Unified Topic Node, User Graph, and extracted topics
-  // Derived accurate count of all tracked interests across Unified Topic Node, User Graph, and extracted topics
-  const totalInterestsCount = (() => {
-    const set = new Set<string>();
-    if (unifiedTopicNode?.topics) {
-      Object.keys(unifiedTopicNode.topics).forEach((t) => set.add(t));
-    }
-    if (userGraph?.topic_weights) {
-      Object.keys(userGraph.topic_weights).forEach((t) => set.add(t));
-    }
-    extractedTopics.forEach((et) => {
-      if (et.topic) set.add(et.topic);
-    });
-    return set.size;
-  })();
+  // Derived accurate count of all tracked interests from Unified Topic Node (authoritative source)
+  const totalInterestsCount = Object.keys(unifiedTopicNode?.topics || {}).length;
 
   // -------------------------------------------------------------
   // Freshness & Seen Story / Topic Recency Tracking
@@ -420,6 +407,7 @@ export default function AletheiaHome() {
       if (json.success) {
         if (json.unified_topic_node) setUnifiedTopicNode(json.unified_topic_node);
         if (json.user_graph) setUserGraph(json.user_graph);
+        setExtractedTopics([]);
         setRefreshTrigger((prev) => prev + 1);
       }
     } catch (err) {
@@ -2508,36 +2496,10 @@ export default function AletheiaHome() {
                 {(() => {
                   const topicMap = new Map<string, TopicMetadata>();
 
-                  // 1. Unified Topic Node (Primary Source of Truth)
+                  // Unified Topic Node (Authoritative Single Source of Truth)
                   if (unifiedTopicNode?.topics) {
                     for (const [topic, meta] of Object.entries(unifiedTopicNode.topics)) {
                       topicMap.set(topic, meta);
-                    }
-                  }
-
-                  // 2. User Graph (Legacy fallback)
-                  if (userGraph?.topic_weights) {
-                    for (const [topic, weight] of Object.entries(userGraph.topic_weights)) {
-                      if (!topicMap.has(topic)) {
-                        topicMap.set(topic, {
-                          weight,
-                          why_they_care: `Explicit dialogue interest in ${topic}.`,
-                          technical_depth: "practitioner",
-                          living_narrative: `Explicit dialogue interest in ${topic}.`,
-                        });
-                      }
-                    }
-                  }
-
-                  // 3. Extracted Topics
-                  for (const et of extractedTopics) {
-                    if (et.topic && !topicMap.has(et.topic)) {
-                      topicMap.set(et.topic, {
-                        weight: et.weight || 0.6,
-                        why_they_care: et.reasoning || `Identified from conversational focus on ${et.topic}.`,
-                        technical_depth: "practitioner",
-                        living_narrative: et.reasoning || `Identified from conversational focus on ${et.topic}.`,
-                      });
                     }
                   }
 

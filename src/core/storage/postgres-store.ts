@@ -522,6 +522,28 @@ export class PostgresStore {
     }
   }
 
+  public async setChatSession(userId: string, messages: any[], extractedTopics: any[]): Promise<void> {
+    await this.ensureInitialized();
+    this.memoryChatSessions.set(userId, { messages, extracted_topics: extractedTopics });
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `INSERT INTO chat_sessions (user_id, messages, extracted_topics, last_updated)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (user_id) DO UPDATE SET
+             messages = EXCLUDED.messages,
+             extracted_topics = EXCLUDED.extracted_topics,
+             last_updated = NOW()`,
+          [userId, JSON.stringify(messages), JSON.stringify(extractedTopics)]
+        );
+      } catch (err) {
+        console.warn("PostgresStore: Error setting chat session:", err);
+      }
+    }
+  }
+
   public async clearSession(userId: string): Promise<void> {
     await this.ensureInitialized();
     this.memoryChatSessions.delete(userId);

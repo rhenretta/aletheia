@@ -1,9 +1,36 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InterestHarmonizer } from "../core/agents/observer/interest-harmonizer";
 import { UnifiedTopicNode } from "../core/types/contracts";
+import { deepseekProvider } from "../core/llm/deepseek-provider";
 
 describe("InterestHarmonizer: Semantic Topic Merging and Splitting", () => {
-  it("merges near-duplicate and substring topics cleanly with merged curiosity vectors", async () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("executes discrete merge_topics tool calls cleanly with merged curiosity vectors", async () => {
+    vi.spyOn(deepseekProvider, "isConfigured").mockReturnValue(true);
+    vi.spyOn(deepseekProvider, "generateCompletion").mockResolvedValue({
+      tokensUsed: 120,
+      text: JSON.stringify({
+        structural_rationale: "AI Policy and AI and Economic Policy overlap extensively; merging into canonical AI and Economic Policy node.",
+        tool_calls: [
+          {
+            rationale: "Consolidate overlapping AI policy nodes into a unified knowledge structure.",
+            tool: "merge_topics",
+            parameters: {
+              source_topics: ["AI and Economic Policy", "AI Policy"],
+              resulting_topic: "AI and Economic Policy",
+              why_they_care: "Concerns about automation, revenue stability, and general governance.",
+              technical_depth: "practitioner",
+              curiosity_vectors: ["taxation", "automation", "policy", "regulations"],
+            },
+          },
+        ],
+        summary: "Merged 2 overlapping AI policy topics into canonical node.",
+      }),
+    });
+
     const node: UnifiedTopicNode = {
       user_id: "usr_test",
       topics: {
@@ -50,8 +77,9 @@ describe("InterestHarmonizer: Semantic Topic Merging and Splitting", () => {
     expect(result.changed).toBe(true);
 
     const harmonizedTopicNames = Object.keys(result.harmonized_node.topics);
-    expect(harmonizedTopicNames.length).toBeLessThan(3);
+    expect(harmonizedTopicNames.length).toBe(2);
     expect(harmonizedTopicNames.some((t) => t.includes("Space"))).toBe(true);
-    expect(harmonizedTopicNames.some((t) => t.includes("AI"))).toBe(true);
+    expect(harmonizedTopicNames.some((t) => t === "AI and Economic Policy")).toBe(true);
+    expect(harmonizedTopicNames.includes("AI Policy")).toBe(false);
   });
 });
