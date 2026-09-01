@@ -182,6 +182,35 @@ export class PostgresStore {
         this.isConnected = true;
         this.schemaInitialized = true;
         console.log("PostgresStore: Unified Schema initialized successfully.");
+
+        // Automatically seed PostgreSQL from disk/memory state if records are missing
+        for (const [userId, node] of this.memoryTopicNodes.entries()) {
+          if (userId && node && Object.keys(node.topics || {}).length > 0) {
+            try {
+              const check = await client.query("SELECT user_id FROM unified_topic_nodes WHERE user_id = $1", [userId]);
+              if (check.rows.length === 0) {
+                console.log(`PostgresStore: Seeding topic node for ${userId} into PostgreSQL...`);
+                await this.saveUnifiedTopicNode(node);
+              }
+            } catch (seedErr) {
+              console.warn("PostgresStore: Seeding error for topic node:", seedErr);
+            }
+          }
+        }
+        for (const [userId, chat] of this.memoryChatSessions.entries()) {
+          if (userId && chat && (chat.messages?.length > 0 || chat.extracted_topics?.length > 0)) {
+            try {
+              const check = await client.query("SELECT user_id FROM chat_sessions WHERE user_id = $1", [userId]);
+              if (check.rows.length === 0) {
+                console.log(`PostgresStore: Seeding chat session for ${userId} into PostgreSQL...`);
+                await this.saveChatSession(userId, chat.messages, chat.extracted_topics || []);
+              }
+            } catch (seedErr) {
+              console.warn("PostgresStore: Seeding error for chat session:", seedErr);
+            }
+          }
+        }
+
         return true;
       } finally {
         client.release();
@@ -255,6 +284,9 @@ export class PostgresStore {
       node = DataPersistenceStore.createDefaultUnifiedTopicNode(userId);
       this.memoryTopicNodes.set(userId, node);
       this.saveToDisk();
+    } else if (this.pool && this.isConnected) {
+      // Seed PostgreSQL from memory / disk if missing in Postgres
+      await this.saveUnifiedTopicNode(node);
     }
     return node;
   }
