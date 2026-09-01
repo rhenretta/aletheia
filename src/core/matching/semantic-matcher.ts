@@ -22,7 +22,7 @@ const STOPWORDS = new Set([
 
 // Domain Knowledge Ontologies for common high-signal epistemic domains
 const DOMAIN_ONTOLOGIES: Record<string, string[]> = {
-  "starship": ["spacex", "super heavy", "booster", "raptor", "starbase", "boca chica", "orbital", "flight 7", "flight 6", "launch", "heat shield", "catch tower", "faa"],
+  "starship": ["spacex", "super heavy", "booster", "raptor", "starbase", "boca chica", "orbital", "launch", "heat shield", "catch tower", "faa"],
   "spacex": ["starship", "falcon 9", "falcon heavy", "dragon", "starlink", "super heavy", "elon musk", "hawthorne", "starbase", "cape canaveral", "vandenberg"],
   "spaceflight regulation": ["faa", "licensing", "environmental review", "fcc", "orbital debris", "compliance", "policy", "regulator", "airspace", "safety", "approval", "launch license", "national airspace"],
   "regulation": ["policy", "compliance", "antitrust", "ftc", "sec", "faa", "eu", "directive", "court", "ruling", "statute", "enforcement", "oversight"],

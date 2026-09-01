@@ -202,20 +202,20 @@ REAL-TIME TEMPORAL & SPATIAL GROUNDING (CRITICAL):
 CHRONOLOGICAL INTEGRITY & FACT-CHECKING RULES:
 1. FACTUAL GROUNDING & ANTI-HALLUCINATION:
    - Check the publication date of any attached article against today's date (${currentDateStr}). If an article was published weeks or months ago, its expectations may be historical or superseded by subsequent real-world milestones.
-   - Ground current launch profiles, flight numbers, and mission status in the retrieved real-time wire search results.
+   - Ground current project/mission status, metrics, and timelines in the retrieved real-time wire search results.
    - If an earlier turn in conversation history contained an inaccurate statement or hallucinated event, CORRECT IT FACTUALLY rather than accepting or compounding the mistake.
-   - Explicitly clarify the timeline if an article's claim reflects an older phase of a program compared to the current real-world status as of ${currentDateStr}.
+   - Explicitly clarify the timeline if an article's claim reflects an older phase compared to the current real-world status as of ${currentDateStr}.
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING: Use known user interests and knowledge graph anchors to SUBTLY SHAPE the conversation. Never echo or narrate profile traits ("As someone who..."). Never end with formulaic questions.
 2. OBJECTIVE PEER TONE: Speak naturally, substantively, and concisely as an intellectual peer grounded in operational realities.
 3. DYNAMIC FEED ADAPTATION (CRITICAL):
-   - Whenever the conversation touches upon, explores, or discusses a topic (e.g. AI technologies, SpaceX, Tesla FSD, geopolitics), YOU MUST ALWAYS ACTIVATE active_feed_filter:
+   - Whenever the conversation touches upon, explores, or discusses a topic, YOU MUST ALWAYS ACTIVATE active_feed_filter:
      * "is_active": true
-     * "topic": The discussed topic/concept name (e.g., "Artificial Intelligence", "SpaceX Starship")
+     * "topic": The discussed topic/concept name
      * "matched_event_ids": Array of relevant event IDs from the retrieved feed stories, or empty array if none match
      * "trigger_targeted_curation": true (if no stories in the feed currently match this topic, so the pipeline can fetch fresh news)
-     * "curation_query": 2-4 word targeted search query (e.g., "AI agentic systems multimodal models")
+     * "curation_query": 2-4 word targeted search query
 4. OUTPUT STRICT JSON adhering to:
 {
   "message": "Direct, natural, grounded conversational response addressing the user as an intellectual peer",
@@ -279,159 +279,45 @@ ${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.joi
     const formattedHistory = history.map((m) => `${m.role === "assistant" ? "ALETHEIA" : "USER"}: ${m.content}`).join("\n\n");
     let prompt = `${knownContext}${storyContext}${currentFeedContext}\n\nConversation History:\n${formattedHistory}`;
 
-    const extractContextualSubject = (
-      userMsg: string,
-      chatHistory: ChatMessage[],
-      topicsNode?: UnifiedTopicNode,
-      story?: AttachedStoryContext
-    ): string => {
-      if (story?.topic) return story.topic;
-      if (story?.headline) return story.headline;
+    // LLM-Driven Epistemic Tool Execution (Zero Hardcoded Regexes or Keywords)
+    let finalPrompt = prompt;
 
-      // Check if user message directly mentions known topics
-      if (topicsNode?.topics) {
-        for (const topicName of Object.keys(topicsNode.topics)) {
-          if (userMsg.toLowerCase().includes(topicName.toLowerCase())) {
-            return topicName;
-          }
-        }
-      }
+    // First, let DeepSeek evaluate whether local context is sufficient or if a live search tool is required
+    const toolEvaluationPrompt = `${prompt}
 
-      // Check if user message mentions prominent keywords
-      const directMatch = userMsg.match(/\b(Starship|SpaceX|Falcon 9|Falcon Heavy|Super Heavy|FAA|Claude|Anthropic|OpenAI|ChatGPT|GPT-4|Gemini|Nvidia|Tesla|FSD|Waymo|Apple Vision|XReal|Ray-Ban Meta|Iran|Israel|Ukraine|Taiwan|Boeing|NASA)\b/i);
-      if (directMatch) {
-        return directMatch[0];
-      }
+INSTRUCTION: Evaluate if you have sufficient verified local context (from the attached article or local feed above) to answer the user's latest inquiry accurately.
+- If YES: Output the final conversational JSON response directly.
+- If NO (e.g. user asks for real-time status, newer updates beyond the article, or facts needing live wire verification): Output ONLY a tool_call JSON:
+{
+  "thought_process": "Why local context is insufficient and what verification is needed",
+  "tool_call": {
+    "tool_name": "search_internet",
+    "query": "concise targeted search query"
+  }
+}`;
 
-      // Look back through previous turns in the conversation for topic entities
-      for (let i = chatHistory.length - 1; i >= 0; i--) {
-        const msg = chatHistory[i];
-        if (!msg || !msg.content) continue;
-        const content = msg.content;
-
-        if (topicsNode?.topics) {
-          for (const topicName of Object.keys(topicsNode.topics)) {
-            if (content.toLowerCase().includes(topicName.toLowerCase())) {
-              return topicName;
-            }
-          }
-        }
-
-        const entityMatch = content.match(/\b(Starship|SpaceX|Falcon 9|Falcon Heavy|Super Heavy|FAA|Claude|Anthropic|OpenAI|ChatGPT|GPT-4|Gemini|Nvidia|Tesla FSD|Apple Vision|XReal|Ray-Ban Meta|Iran|Israel|Ukraine|Taiwan|Boeing|NASA)\b/i);
-        if (entityMatch) {
-          return entityMatch[0];
-        }
-      }
-
-      // If user has tracked topics, pick the top active interest
-      if (topicsNode?.topics) {
-        const topTopic = Object.entries(topicsNode.topics).sort((a, b) => b[1].weight - a[1].weight)[0];
-        if (topTopic) return topTopic[0];
-      }
-
-      return "";
-    };
-
-    // Two-Stage Evaluation: First check local filtered articles, then search if insufficient
-    const evaluateNeedsLiveSearch = (): { needsLiveSearch: boolean; searchReason?: string } => {
-      const cleanMsg = lastUserMessage.toLowerCase().trim();
-
-      // Check if inquiry asks for current/future/real-time updates
-      const isTemporalOrRealTimeInquiry =
-        /\b(when|latest|status|next|upcoming|schedule|today|recent|progress|has there been any update|what happened since|what is new|breaking|timeline|date)\b/i.test(cleanMsg);
-
-      // Check if user is asking to verify or fact-check a claim against reality
-      const isFactCheckInquiry =
-        /\b(is that true|is this true|is it true|claim|claims|accurate|really|verify|fact check|orbital|catch|true or false)\b/i.test(cleanMsg);
-
-      // 1. If an attached story is present:
-      if (attachedStory) {
-        let storyAgeDays = 0;
-        if (attachedStory.published_at) {
-          const pub = new Date(attachedStory.published_at);
-          if (!isNaN(pub.getTime())) {
-            storyAgeDays = Math.round((now.getTime() - pub.getTime()) / (1000 * 60 * 60 * 24));
-          }
-        }
-
-        // If the user is asking about the article's own written contents and doesn't ask for latest real-time status:
-        const isPurelyAboutArticleText =
-          /\b(summarize|summary|what does the article say|explain this article|who wrote|what does it mean|explain the headline|takeaway|takeaways|author)\b/i.test(cleanMsg) &&
-          !isTemporalOrRealTimeInquiry;
-
-        if (isPurelyAboutArticleText) {
-          return { needsLiveSearch: false, searchReason: "Question can be answered directly from the attached story text." };
-        }
-
-        // If the article is historical (>7 days old) AND the user asks for real-time status, next launch, or veracity:
-        if (storyAgeDays > 7 && (isTemporalOrRealTimeInquiry || isFactCheckInquiry)) {
-          return {
-            needsLiveSearch: true,
-            searchReason: `Attached article was published ${storyAgeDays} days ago and user asks about current status/veracity.`,
-          };
-        }
-
-        // If user asks for real-time status or fact checking beyond article text:
-        if (isTemporalOrRealTimeInquiry || isFactCheckInquiry) {
-          return {
-            needsLiveSearch: true,
-            searchReason: "Inquiry requires verifying real-time status or validating claims beyond the article.",
-          };
-        }
-
-        // Otherwise, answer directly from attached story
-        return { needsLiveSearch: false, searchReason: "Answerable from attached story." };
-      }
-
-      // 2. If no attached story, check if local filtered feed stories answer the inquiry:
-      if (currentStories && currentStories.length > 0) {
-        const matchingFeedStory = currentStories.find((s) => {
-          const text = `${s.headline} ${s.summary} ${s.topic}`.toLowerCase();
-          const words = cleanMsg.split(/\s+/).filter((w) => w.length > 3);
-          const matchCount = words.filter((w) => text.includes(w)).length;
-          return matchCount >= 2;
+    let toolDecision: any = null;
+    if (deepseekProvider.isConfigured()) {
+      try {
+        const evaluationResult = await deepseekProvider.generateCompletion(toolEvaluationPrompt, {
+          systemPrompt,
+          temperature: 0.1,
+          maxTokens: 500,
         });
 
-        if (matchingFeedStory && !isTemporalOrRealTimeInquiry) {
-          return {
-            needsLiveSearch: false,
-            searchReason: `Answerable from local filtered feed article: "${matchingFeedStory.headline}"`,
-          };
-        }
+        toolDecision = JSON.parse(evaluationResult.text.replace(/```json\n?|\n?```/g, "").trim());
+      } catch (err) {
+        console.warn("Tool evaluation parse error:", err);
       }
+    }
 
-      // 3. If temporal/status inquiry and local context is not sufficient, trigger live search:
-      if (isTemporalOrRealTimeInquiry || isFactCheckInquiry || cleanMsg.length > 15) {
-        return {
-          needsLiveSearch: true,
-          searchReason: "Requires real-time wire verification or exceeds local feed coverage.",
-        };
-      }
-
-      return { needsLiveSearch: false, searchReason: "General conversation / concept discussion." };
-    };
-
-    const { needsLiveSearch, searchReason } = evaluateNeedsLiveSearch();
-
-    // Step 2: Handle Proactive Live Grounding (Only when local context is insufficient)
-    if (needsLiveSearch) {
-      const activeSubject = extractContextualSubject(lastUserMessage, history, unifiedNode, attachedStory);
-      const cleanTerms = lastUserMessage
-        .replace(/[?.,!;:"()]/g, " ")
-        .replace(/\b(when|can|we|expect|the|next|and|what|will|it|look|like|is|there|any|update|on|status|of|happening|with|tell|me|about|re:)\b/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const year = now.getFullYear();
-      let targetedQuery = [activeSubject, cleanTerms, String(year)].filter(Boolean).join(" ").trim();
-      if (!targetedQuery || targetedQuery.length < 5) {
-        targetedQuery = activeSubject ? `${activeSubject} latest news updates ${year}` : `${lastUserMessage} ${year}`;
-      }
-
-      yield { type: "tool_start", tool_name: "search_internet", query: targetedQuery };
+    // If the model autonomously decided it needs external live wire data:
+    if (toolDecision?.tool_call?.tool_name === "search_internet" && toolDecision.tool_call.query) {
+      const toolQuery = String(toolDecision.tool_call.query).trim();
+      yield { type: "tool_start", tool_name: "search_internet", query: toolQuery };
 
       try {
-        const liveArticles = await FreeNewsFetcher.searchNews(targetedQuery, 5);
+        const liveArticles = await FreeNewsFetcher.searchNews(toolQuery, 5);
         const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
           name: a.source_name || "News Wire",
           title: a.title,
@@ -444,8 +330,8 @@ ${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.joi
 
         executedTools.push({
           tool_name: "search_internet",
-          query: targetedQuery,
-          results_summary: `Retrieved ${liveArticles.length} live sources (${searchReason}).`,
+          query: toolQuery,
+          results_summary: `Retrieved ${liveArticles.length} live sources.`,
           items_retrieved: liveArticles.length,
           sources: eventSources,
         });
@@ -453,31 +339,31 @@ ${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.joi
         yield {
           type: "tool_complete",
           tool_name: "search_internet",
-          query: targetedQuery,
+          query: toolQuery,
           summary: `Retrieved ${liveArticles.length} live sources.`,
           sources: eventSources,
         };
 
         if (liveArticles.length > 0) {
-          prompt += `\n\n[REAL-TIME LIVE WIRE SEARCH RESULTS FOR "${targetedQuery}" (FETCHED AT ${now.toISOString()})]:
+          finalPrompt += `\n\n[REAL-TIME LIVE WIRE SEARCH RESULTS FOR "${toolQuery}" (FETCHED AT ${now.toISOString()})]:
 ${liveArticles.map((a, i) => `${i + 1}. "${a.title}" (${a.source_name}, Published: ${a.published_at || 'Recent'})
 Summary: ${a.raw_text.slice(0, 300)}
 URL: ${a.source_url}`).join("\n\n")}
 
 CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
-- Current real-world date: ${currentDateStr} (Year: ${year}).
+- Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
 - Ground your response EXCLUSIVELY and FACTUALLY in the live search results above.
 - If the user is asking about an attached article's claim, explicitly compare that claim with the live search results above and clarify whether it reflects historical plans or the latest current status.`;
         }
       } catch (err) {
-        console.warn("Live search error:", err);
+        console.warn("Live search execution error:", err);
       }
     }
 
-    // Step 3: Stream tokens
+    // Step 3: Stream tokens to client
     const extractor = new JsonMessageStreamExtractor();
     let accumulatedJson = "";
-    const streamGen = deepseekProvider.generateStream(prompt, { systemPrompt, temperature: 0.5 });
+    const streamGen = deepseekProvider.generateStream(finalPrompt, { systemPrompt, temperature: 0.5 });
 
     for await (const chunk of streamGen) {
       accumulatedJson += chunk;
@@ -492,12 +378,7 @@ CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
       parsed = { message: accumulatedJson };
     }
 
-    // Step 4: Handle tool call if requested by model
-    if (parsed.tool_call && !needsLiveSearch) {
-       // logic for second-stage tool execution omitted for brevity, similar to Step 2
-    }
-
-    // Step 5: Finalization and Validation
+    // Step 4: Finalization and Validation
     const validatedExtractedTopics = (parsed.extracted_topics || []).filter((et: any) => et.topic);
     
     // Save updated graph
@@ -611,7 +492,7 @@ CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
       pedagogical_strategy: parsed.agent_internal_rationale?.pedagogical_strategy,
       retrieved_stories: contextFraming.retrieved_stories,
       tools_executed: executedTools,
-      raw_prompt_sent_to_llm: prompt,
+      raw_prompt_sent_to_llm: finalPrompt,
       raw_system_prompt: systemPrompt,
       agent_internal_rationale: parsed.agent_internal_rationale,
       agentic_flow: agenticFlowSteps,
