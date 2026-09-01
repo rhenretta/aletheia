@@ -252,26 +252,108 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
     const formattedHistory = history.map((m) => `${m.role === "assistant" ? "ALETHEIA" : "USER"}: ${m.content}`).join("\n\n");
     let prompt = `${knownContext}${storyContext}\n\nConversation History:\n${formattedHistory}`;
 
+    const extractContextualSubject = (
+      userMsg: string,
+      chatHistory: ChatMessage[],
+      topicsNode?: UnifiedTopicNode,
+      story?: AttachedStoryContext
+    ): string => {
+      if (story?.topic) return story.topic;
+      if (story?.headline) return story.headline;
+
+      // Check if user message directly mentions known topics
+      if (topicsNode?.topics) {
+        for (const topicName of Object.keys(topicsNode.topics)) {
+          if (userMsg.toLowerCase().includes(topicName.toLowerCase())) {
+            return topicName;
+          }
+        }
+      }
+
+      // Check if user message mentions prominent keywords
+      const directMatch = userMsg.match(/\b(Starship|SpaceX|Falcon 9|Falcon Heavy|Super Heavy|FAA|Claude|Anthropic|OpenAI|ChatGPT|GPT-4|Gemini|Nvidia|Tesla|FSD|Waymo|Apple Vision|XReal|Ray-Ban Meta|Iran|Israel|Ukraine|Taiwan|Boeing|NASA)\b/i);
+      if (directMatch) {
+        return directMatch[0];
+      }
+
+      // Look back through previous turns in the conversation for topic entities
+      for (let i = chatHistory.length - 1; i >= 0; i--) {
+        const msg = chatHistory[i];
+        if (!msg || !msg.content) continue;
+        const content = msg.content;
+
+        if (topicsNode?.topics) {
+          for (const topicName of Object.keys(topicsNode.topics)) {
+            if (content.toLowerCase().includes(topicName.toLowerCase())) {
+              return topicName;
+            }
+          }
+        }
+
+        const entityMatch = content.match(/\b(Starship|SpaceX|Falcon 9|Falcon Heavy|Super Heavy|FAA|Claude|Anthropic|OpenAI|ChatGPT|GPT-4|Gemini|Nvidia|Tesla FSD|Apple Vision|XReal|Ray-Ban Meta|Iran|Israel|Ukraine|Taiwan|Boeing|NASA)\b/i);
+        if (entityMatch) {
+          return entityMatch[0];
+        }
+      }
+
+      // If user has tracked topics, pick the top active interest
+      if (topicsNode?.topics) {
+        const topTopic = Object.entries(topicsNode.topics).sort((a, b) => b[1].weight - a[1].weight)[0];
+        if (topTopic) return topTopic[0];
+      }
+
+      return "";
+    };
+
     // Step 2: Handle Proactive Live Grounding
     const isTemporalOrStatusInquiry =
-      /\b(when|latest|status|next|flight|launch|schedule|update|current|happened|recent|progress|test)\b/i.test(lastUserMessage) &&
-      !attachedStory && lastUserMessage.length > 5;
+      /\b(when|latest|status|next|flight|launch|schedule|update|current|happened|recent|progress|test|what will it look like|upcoming|timeline|date)\b/i.test(lastUserMessage) &&
+      lastUserMessage.length > 3;
 
-    if (isTemporalOrStatusInquiry) {
-      const cleanTerms = lastUserMessage.replace(/[?.,!]/g, " ").replace(/\s+/g, " ").trim();
-      yield { type: "tool_start", tool_name: "search_internet", query: cleanTerms };
+    if (isTemporalOrStatusInquiry || attachedStory) {
+      const activeSubject = extractContextualSubject(lastUserMessage, history, unifiedNode, attachedStory);
+      const cleanTerms = lastUserMessage
+        .replace(/[?.,!;:"()]/g, " ")
+        .replace(/\b(when|can|we|expect|the|next|and|what|will|it|look|like|is|there|any|update|on|status|of|happening|with|tell|me|about)\b/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const year = now.getFullYear();
+      let targetedQuery = [activeSubject, cleanTerms, String(year)].filter(Boolean).join(" ").trim();
+      if (!targetedQuery || targetedQuery.length < 5) {
+        targetedQuery = activeSubject ? `${activeSubject} latest launch schedule ${year}` : `${lastUserMessage} ${year}`;
+      }
+
+      yield { type: "tool_start", tool_name: "search_internet", query: targetedQuery };
 
       try {
-        const liveArticles = await FreeNewsFetcher.searchNews(cleanTerms, 5);
+        const liveArticles = await FreeNewsFetcher.searchNews(targetedQuery, 5);
         executedTools.push({
           tool_name: "search_internet",
-          query: cleanTerms,
-          results_summary: `Retrieved ${liveArticles.length} articles.`,
+          query: targetedQuery,
+          results_summary: `Retrieved ${liveArticles.length} live sources.`,
           items_retrieved: liveArticles.length,
         });
 
-        yield { type: "tool_complete", tool_name: "search_internet", query: cleanTerms, summary: `Retrieved ${liveArticles.length} live articles.` };
-        prompt += `\n\n[LIVE SEARCH RESULT FOR "${cleanTerms}"]: ${JSON.stringify(liveArticles)}`;
+        yield {
+          type: "tool_complete",
+          tool_name: "search_internet",
+          query: targetedQuery,
+          summary: `Retrieved ${liveArticles.length} live sources.`,
+        };
+
+        if (liveArticles.length > 0) {
+          prompt += `\n\n[REAL-TIME LIVE WIRE SEARCH RESULTS FOR "${targetedQuery}" (FETCHED AT ${now.toISOString()})]:
+${liveArticles.map((a, i) => `${i + 1}. "${a.title}" (${a.source_name}, Published: ${a.published_at || 'Recent'})
+Summary: ${a.raw_text.slice(0, 300)}
+URL: ${a.source_url}`).join("\n\n")}
+
+CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
+- Current real-world date: ${currentDateStr} (Year: ${year}).
+- Ground your response EXCLUSIVELY and FACTUALLY in the live search results above.
+- NEVER rely on obsolete pre-2026 training knowledge (e.g., Flight 5 occurred in 2024; upcoming flights are in 2026).
+- Detail the exact upcoming mission/flight profile, testing status, and timeline from the live search results above.`;
+        }
       } catch (err) {
         console.warn("Live search error:", err);
       }

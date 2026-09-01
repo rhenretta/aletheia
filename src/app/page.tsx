@@ -511,7 +511,43 @@ export default function AletheiaHome() {
             data = JSON.parse(dataMatch[1]);
           } catch (e) {}
 
-          if (eventType === "token" && data.token) {
+          if (eventType === "tool_start" && data.tool_name) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      tool_executions: [
+                        {
+                          tool_name: data.tool_name,
+                          query: data.query,
+                          results_summary: "Searching live web wire...",
+                          items_retrieved: 0,
+                        },
+                      ],
+                    }
+                  : msg
+              )
+            );
+          } else if (eventType === "tool_complete" && data.tool_name) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === botMessageId
+                  ? {
+                      ...msg,
+                      tool_executions: [
+                        {
+                          tool_name: data.tool_name,
+                          query: data.query,
+                          results_summary: data.summary || "Retrieved live sources",
+                          items_retrieved: 5,
+                        },
+                      ],
+                    }
+                  : msg
+              )
+            );
+          } else if (eventType === "token" && data.token) {
             accumulatedContent += data.token;
             setMessages((prev) =>
               prev.map((msg) =>
@@ -2112,12 +2148,14 @@ export default function AletheiaHome() {
                                   key={tIdx}
                                   className="px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 flex items-center gap-1.5 shadow-sm"
                                 >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                                  <span className={`w-1.5 h-1.5 rounded-full ${tool.items_retrieved > 0 ? "bg-emerald-400" : "bg-cyan-400 animate-ping"}`} />
                                   <span className="font-bold">
                                     {tool.tool_name === "search_internet" ? "🌐 Live Web Wire Search:" : "🧠 Local Knowledge Lookup:"}
                                   </span>
-                                  <span className="text-slate-300 truncate max-w-[140px]">"{tool.query}"</span>
-                                  <span className="text-emerald-400 font-bold ml-auto">({tool.items_retrieved} sources)</span>
+                                  <span className="text-slate-300 truncate max-w-[200px]" title={tool.query}>"{tool.query}"</span>
+                                  <span className={`font-bold ml-auto ${tool.items_retrieved > 0 ? "text-emerald-400" : "text-cyan-400 animate-pulse"}`}>
+                                    {tool.items_retrieved > 0 ? `(${tool.items_retrieved} sources)` : "Searching live..."}
+                                  </span>
                                 </div>
                               ))}
                             </div>
