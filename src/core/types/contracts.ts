@@ -211,7 +211,7 @@ export const DiscoveryParametersSchema = z.object({
 export interface TopicUpdateDiff {
   topic_name: string;
   timestamp: string;
-  trigger_source: "observer_agent" | "dialogue_agent" | "telemetry_agent";
+  trigger_source: "observer_agent" | "dialogue_agent" | "telemetry_agent" | "interest_harmonizer";
   reasoning: string;
   evidence?: string;
   previous_state: {
@@ -236,7 +236,7 @@ export interface TopicUpdateDiff {
 export const TopicUpdateDiffSchema = z.object({
   topic_name: z.string(),
   timestamp: z.string(),
-  trigger_source: z.enum(["observer_agent", "dialogue_agent", "telemetry_agent"]),
+  trigger_source: z.enum(["observer_agent", "dialogue_agent", "telemetry_agent", "interest_harmonizer"]),
   reasoning: z.string(),
   evidence: z.string().optional(),
   previous_state: z.object({
@@ -259,6 +259,52 @@ export const TopicUpdateDiffSchema = z.object({
 });
 
 /**
+ * Action taken during knowledge graph harmonization
+ */
+export interface HarmonizationAction {
+  type: "merge" | "split" | "normalize" | "delete" | "edit";
+  source_topics: string[];
+  resulting_topics: string[];
+  rationale: string;
+  before_state?: Record<string, Partial<TopicMetadata>>;
+  after_state?: Record<string, Partial<TopicMetadata>>;
+}
+
+export const HarmonizationActionSchema = z.object({
+  type: z.enum(["merge", "split", "normalize", "delete", "edit"]),
+  source_topics: z.array(z.string()),
+  resulting_topics: z.array(z.string()),
+  rationale: z.string(),
+  before_state: z.record(z.string(), z.any()).optional(),
+  after_state: z.record(z.string(), z.any()).optional(),
+});
+
+/**
+ * Historical record of a Knowledge Graph Harmonization run
+ */
+export interface HarmonizationRun {
+  run_id: string;
+  timestamp: string;
+  trigger_source: "background_observer" | "manual_user";
+  summary: string;
+  actions: HarmonizationAction[];
+  trace_id: string;
+  topics_before_count: number;
+  topics_after_count: number;
+}
+
+export const HarmonizationRunSchema = z.object({
+  run_id: z.string(),
+  timestamp: z.string(),
+  trigger_source: z.enum(["background_observer", "manual_user"]),
+  summary: z.string(),
+  actions: z.array(HarmonizationActionSchema),
+  trace_id: z.string(),
+  topics_before_count: z.number(),
+  topics_after_count: z.number(),
+});
+
+/**
  * Unified Topic Node: The Single Source of Truth in Mind-State Memory Architecture
  * Fuses conversational memory and news discovery parameters.
  */
@@ -271,6 +317,7 @@ export interface UnifiedTopicNode {
   interest_intersections?: InterestIntersection[]; // Cross-referenced synergies between topics
   adjacent_curiosity_frontiers?: AdjacentCuriosityFrontier[]; // Novel related domains at the boundary
   recent_topic_diffs?: TopicUpdateDiff[]; // Historical state delta transitions
+  harmonization_runs?: HarmonizationRun[]; // Audit trail of all harmonization runs
   dwell_history?: Array<{ topic: string; dwell_ms: number; date: string }>;
   last_updated: string;
 }
@@ -284,6 +331,7 @@ export const UnifiedTopicNodeSchema = z.object({
   interest_intersections: z.array(InterestIntersectionSchema).optional(),
   adjacent_curiosity_frontiers: z.array(AdjacentCuriosityFrontierSchema).optional(),
   recent_topic_diffs: z.array(TopicUpdateDiffSchema).optional(),
+  harmonization_runs: z.array(HarmonizationRunSchema).optional(),
   dwell_history: z
     .array(
       z.object({
@@ -620,6 +668,7 @@ export type ContextualSelection =
       recent_diff?: TopicUpdateDiff;
     }
   | { type: "topic_diff"; diff: TopicUpdateDiff }
+  | { type: "harmonization_run"; run: HarmonizationRun }
   | { type: "intersection"; theme: string; hypothesis?: string }
   | { type: "node_trace"; trace_id: string; node_name: string };
 

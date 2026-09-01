@@ -1754,6 +1754,94 @@ export default function DevToolsPanel({
                       </div>
                     );
                   })()}
+
+                  {/* Context 4: Harmonization Run Selected */}
+                  {selectedContext.type === "harmonization_run" && (() => {
+                    const run = (selectedContext as any).run;
+                    return (
+                      <div className="space-y-4">
+                        {/* Run Header */}
+                        <div className="p-4 rounded-xl bg-slate-900/90 border border-violet-500/30 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+                            <div className="flex items-center gap-2 font-mono">
+                              <Sparkles className="w-4 h-4 text-violet-400" />
+                              <span className="font-bold text-slate-100 text-xs uppercase">
+                                Knowledge Graph Harmonization Audit Run
+                              </span>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase border ${
+                                run.trigger_source === "background_observer"
+                                  ? "bg-amber-950/70 text-amber-300 border-amber-500/30"
+                                  : "bg-emerald-950/70 text-emerald-300 border-emerald-500/30"
+                              }`}
+                            >
+                              {run.trigger_source === "background_observer"
+                                ? "🤖 Background Observer Run"
+                                : "👤 Manual User Run"}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400">
+                            <span>Run ID: <strong className="text-slate-200">{run.run_id}</strong></span>
+                            <span>Timestamp: <strong className="text-slate-300">{new Date(run.timestamp).toLocaleString()}</strong></span>
+                            <span>Topic Delta: <strong className="text-cyan-300">{run.topics_before_count} → {run.topics_after_count}</strong></span>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-slate-950 border border-white/5 space-y-1 text-xs">
+                            <span className="text-[10px] font-mono text-violet-400 uppercase font-bold block">
+                              Harmonization Run Summary:
+                            </span>
+                            <p className="text-slate-200 text-xs">{run.summary}</p>
+                          </div>
+                        </div>
+
+                        {/* Step-by-Step Actions Taken */}
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-mono text-slate-400 font-bold uppercase block px-1">
+                            Harmonization Actions & Deduplication Decisions ({run.actions?.length || 0}):
+                          </span>
+                          {(run.actions || []).map((action: any, aIdx: number) => {
+                            const badgeColor =
+                              action.type === "merge"
+                                ? "bg-cyan-950 text-cyan-300 border-cyan-500/30"
+                                : action.type === "split"
+                                ? "bg-amber-950 text-amber-300 border-amber-500/30"
+                                : action.type === "delete"
+                                ? "bg-rose-950 text-rose-300 border-rose-500/30"
+                                : "bg-emerald-950 text-emerald-300 border-emerald-500/30";
+
+                            return (
+                              <div
+                                key={aIdx}
+                                className="p-3.5 rounded-xl bg-slate-950 border border-white/10 space-y-2.5 text-xs font-mono"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${badgeColor}`}>
+                                      {action.type}
+                                    </span>
+                                    <span className="text-slate-200 text-xs font-bold">
+                                      {action.source_topics?.join(", ")} → {action.resulting_topics?.join(", ")}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="p-2.5 rounded bg-slate-900/80 border border-white/5 space-y-1">
+                                  <span className="text-[9px] text-slate-500 uppercase font-bold block">
+                                    Harmonization Rationale:
+                                  </span>
+                                  <p className="text-slate-300 text-[11px] font-sans leading-relaxed">
+                                    {action.rationale}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

@@ -178,7 +178,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT user_id, topics, psychological_profile, discovery_parameters, historical_anchors, interest_intersections, adjacent_curiosity_frontiers, dwell_history, last_updated
+          `SELECT user_id, topics, psychological_profile, discovery_parameters, historical_anchors, interest_intersections, adjacent_curiosity_frontiers, recent_topic_diffs, harmonization_runs, dwell_history, last_updated
            FROM unified_topic_nodes WHERE user_id = $1`,
           [userId]
         );
@@ -192,6 +192,8 @@ export class PostgresStore {
             historical_anchors: row.historical_anchors || [],
             interest_intersections: row.interest_intersections || [],
             adjacent_curiosity_frontiers: row.adjacent_curiosity_frontiers || [],
+            recent_topic_diffs: row.recent_topic_diffs || [],
+            harmonization_runs: row.harmonization_runs || [],
             dwell_history: row.dwell_history || [],
             last_updated: row.last_updated?.toISOString() || new Date().toISOString(),
           };
@@ -236,8 +238,8 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(
-          `INSERT INTO unified_topic_nodes (user_id, topics, psychological_profile, discovery_parameters, historical_anchors, interest_intersections, adjacent_curiosity_frontiers, dwell_history, last_updated)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `INSERT INTO unified_topic_nodes (user_id, topics, psychological_profile, discovery_parameters, historical_anchors, interest_intersections, adjacent_curiosity_frontiers, recent_topic_diffs, harmonization_runs, dwell_history, last_updated)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (user_id) DO UPDATE SET
              topics = EXCLUDED.topics,
              psychological_profile = EXCLUDED.psychological_profile,
@@ -245,6 +247,8 @@ export class PostgresStore {
              historical_anchors = EXCLUDED.historical_anchors,
              interest_intersections = EXCLUDED.interest_intersections,
              adjacent_curiosity_frontiers = EXCLUDED.adjacent_curiosity_frontiers,
+             recent_topic_diffs = EXCLUDED.recent_topic_diffs,
+             harmonization_runs = EXCLUDED.harmonization_runs,
              dwell_history = EXCLUDED.dwell_history,
              last_updated = EXCLUDED.last_updated`,
           [
@@ -255,6 +259,8 @@ export class PostgresStore {
             JSON.stringify(node.historical_anchors),
             JSON.stringify(node.interest_intersections || []),
             JSON.stringify(node.adjacent_curiosity_frontiers || []),
+            JSON.stringify(node.recent_topic_diffs || []),
+            JSON.stringify(node.harmonization_runs || []),
             JSON.stringify(node.dwell_history || []),
             node.last_updated,
           ]

@@ -1,17 +1,18 @@
-import { UnifiedTopicNode, TechnicalDepth, TopicMetadata } from "../../types/contracts";
+import {
+  UnifiedTopicNode,
+  TechnicalDepth,
+  TopicMetadata,
+  HarmonizationAction,
+  HarmonizationRun,
+  TopicUpdateDiff,
+} from "../../types/contracts";
 import { deepseekProvider } from "../../llm/deepseek-provider";
 import { traceLogger } from "../../observability/trace-logger";
-
-export interface HarmonizationAction {
-  type: "merge" | "split" | "normalize";
-  source_topics: string[];
-  resulting_topics: string[];
-  rationale: string;
-}
 
 export interface HarmonizationResult {
   harmonized_node: UnifiedTopicNode;
   actions_taken: HarmonizationAction[];
+  harmonization_run?: HarmonizationRun;
   changed: boolean;
 }
 
@@ -19,8 +20,12 @@ export class InterestHarmonizer {
   /**
    * Evaluates the active interest graph, merging redundant/near-duplicate topics,
    * splitting amalgamated compound topics, and standardizing canonical topic entities.
+   * Produces an immutable, glass-box HarmonizationRun audit trail for user inspection.
    */
-  public static async harmonize(unifiedNode: UnifiedTopicNode): Promise<HarmonizationResult> {
+  public static async harmonize(
+    unifiedNode: UnifiedTopicNode,
+    triggerSource: "background_observer" | "manual_user" = "manual_user"
+  ): Promise<HarmonizationResult> {
     const originalTopics = unifiedNode.topics || {};
     const topicKeys = Object.keys(originalTopics);
 
@@ -34,8 +39,13 @@ export class InterestHarmonizer {
 
     const adaptedNode: UnifiedTopicNode = JSON.parse(JSON.stringify(unifiedNode));
     adaptedNode.topics = adaptedNode.topics || {};
+    adaptedNode.harmonization_runs = adaptedNode.harmonization_runs || [];
+    adaptedNode.recent_topic_diffs = adaptedNode.recent_topic_diffs || [];
 
     const actionsTaken: HarmonizationAction[] = [];
+    const timestamp = new Date().toISOString();
+    const runId = `run_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const traceId = `trace_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     // Step 1: DeepSeek semantic reasoning if available
     if (deepseekProvider.isConfigured()) {
@@ -50,24 +60,22 @@ export class InterestHarmonizer {
 
         const systemPrompt = `You are the Knowledge Graph Harmonizer for Aletheia's Mind-State Memory Architecture.
 Your role is to evaluate a user's active interest graph, and clean it up by:
-1. MERGING near-duplicate, overlapping, or fragmented sub-topics that represent the same core epistemic interest (e.g. "AI Taxation" + "UBI Policy" + "AI Economic Fallout" -> "AI and Economic Policy").
-2. SPLITTING compound, overloaded, or multi-domain amalgamations into distinct focused nodes (e.g. "Space Propulsion and Naval Warfare" -> "Space Logistics & Propulsion", "Naval Geopolitics").
-3. PRESERVING standalone, distinct, and specialized topics untouched.
+1. MERGING near-duplicate, overlapping, or fragmented sub-topics that represent the same core epistemic interest (e.g. "AI Taxation" + "UBI Policy" -> "AI & Economic Policy").
+2. SPLITTING compound, overloaded, or multi-domain amalgamations into distinct focused nodes.
+3. PRUNING obsolete or strictly duplicated fragments while keeping their motivations and curiosity vectors.
+4. PRESERVING standalone, distinct, and specialized topics untouched.
 
 CRITICAL RULES:
-- Do NOT invent or add brand new topics that the user never discussed.
-- Consolidate motivations and combine curiosity vectors.
+- Provide explicit, clear "rationale" explaining why topics were combined, split, or modified.
 - Maintain accurate technical depth ("introductory", "practitioner", "expert", "deep_technical").
-- Output the complete, cleaned, harmonized list of topics.
-
-Output strict JSON:
+- Output strict JSON:
 {
   "actions": [
     {
-      "type": "merge" | "split" | "normalize",
+      "type": "merge" | "split" | "normalize" | "delete" | "edit",
       "source_topics": ["Old Topic 1", "Old Topic 2"],
-      "resulting_topics": ["Harmonized Canonical Topic"],
-      "rationale": "Explanation of why these were merged or split"
+      "resulting_topics": ["Harmonized Topic"],
+      "rationale": "Clear explanation of why this action occurred"
     }
   ],
   "harmonized_topics": [
@@ -78,7 +86,8 @@ Output strict JSON:
       "why_they_care": "Consolidated user motivation",
       "curiosity_vectors": ["vector1", "vector2"]
     }
-  ]
+  ],
+  "summary": "High-level 1-2 sentence overview of the harmonization run"
 }`;
 
         const prompt = `Evaluate and harmonize these current user topics:\n${JSON.stringify(topicsFormatted, null, 2)}`;
@@ -113,32 +122,104 @@ Output strict JSON:
           if (Object.keys(newTopicsMap).length > 0) {
             adaptedNode.topics = newTopicsMap;
             if (Array.isArray(parsed.actions)) {
-              actionsTaken.push(...parsed.actions);
+              for (const act of parsed.actions) {
+                const beforeState: Record<string, any> = {};
+                for (const src of act.source_topics || []) {
+                  if (originalTopics[src]) beforeState[src] = originalTopics[src];
+                }
+                const afterState: Record<string, any> = {};
+                for (const res of act.resulting_topics || []) {
+                  if (newTopicsMap[res]) afterState[res] = newTopicsMap[res];
+                }
+
+                actionsTaken.push({
+                  type: act.type || "normalize",
+                  source_topics: act.source_topics || [],
+                  resulting_topics: act.resulting_topics || [],
+                  rationale: act.rationale || "Knowledge graph harmonization.",
+                  before_state: Object.keys(beforeState).length > 0 ? beforeState : undefined,
+                  after_state: Object.keys(afterState).length > 0 ? afterState : undefined,
+                });
+              }
             }
 
-            adaptedNode.last_updated = new Date().toISOString();
+            // Generate structured topic update diffs for full transparency
+            for (const act of actionsTaken) {
+              for (const src of act.source_topics) {
+                const prev = originalTopics[src];
+                const resName = act.resulting_topics[0];
+                const next = newTopicsMap[resName];
+
+                if (prev) {
+                  const diff: TopicUpdateDiff = {
+                    topic_name: src,
+                    timestamp,
+                    trigger_source: "interest_harmonizer",
+                    reasoning: act.rationale,
+                    evidence: `${act.type.toUpperCase()}: ${act.source_topics.join(", ")} -> ${act.resulting_topics.join(", ")}`,
+                    previous_state: {
+                      weight: prev.weight,
+                      technical_depth: prev.technical_depth,
+                      why_they_care: prev.why_they_care,
+                      curiosity_vectors: prev.curiosity_vectors || [],
+                    },
+                    current_state: {
+                      weight: next ? next.weight : 0,
+                      technical_depth: next ? next.technical_depth : prev.technical_depth,
+                      why_they_care: next ? next.why_they_care : "Harmonized into new canonical node.",
+                      curiosity_vectors: next ? next.curiosity_vectors || [] : [],
+                    },
+                    weight_delta: next ? Number((next.weight - prev.weight).toFixed(2)) : -prev.weight,
+                    depth_changed: next ? prev.technical_depth !== next.technical_depth : false,
+                    why_changed: next ? prev.why_they_care !== next.why_they_care : true,
+                  };
+                  adaptedNode.recent_topic_diffs = [diff, ...adaptedNode.recent_topic_diffs.slice(0, 30)];
+                }
+              }
+            }
+
+            const runSummary =
+              parsed.summary ||
+              `Harmonized ${topicKeys.length} topics into ${Object.keys(newTopicsMap).length} canonical nodes via ${actionsTaken.length} actions.`;
+
+            const harmonizationRun: HarmonizationRun = {
+              run_id: runId,
+              timestamp,
+              trigger_source: triggerSource,
+              summary: runSummary,
+              actions: actionsTaken,
+              trace_id: traceId,
+              topics_before_count: topicKeys.length,
+              topics_after_count: Object.keys(newTopicsMap).length,
+            };
+
+            adaptedNode.harmonization_runs = [harmonizationRun, ...adaptedNode.harmonization_runs.slice(0, 20)];
+            adaptedNode.last_updated = timestamp;
 
             traceLogger.logTrace({
-              trace_id: `harm_${Date.now()}`,
+              trace_id: traceId,
               session_id: `user_${unifiedNode.user_id}`,
-              timestamp: new Date().toISOString(),
+              timestamp,
               node_name: "node_observer",
               input_summary: {
                 initial_topics_count: topicKeys.length,
                 initial_topics: topicKeys,
+                trigger_source: triggerSource,
               },
               output_summary: {
                 harmonized_topics_count: Object.keys(newTopicsMap).length,
                 harmonized_topics: Object.keys(newTopicsMap),
                 actions_count: actionsTaken.length,
+                run_id: runId,
               },
-              reasoning_rationale: `Interest Harmonizer executed ${actionsTaken.length} graph harmonization actions.`,
+              reasoning_rationale: `Harmonization run [${triggerSource}]: ${runSummary}`,
               latency_ms: 0,
             });
 
             return {
               harmonized_node: adaptedNode,
               actions_taken: actionsTaken,
+              harmonization_run: harmonizationRun,
               changed: true,
             };
           }
@@ -148,19 +229,26 @@ Output strict JSON:
       }
     }
 
-    // Step 2: Fallback heuristic clustering & deduplication (Token Jaccard & Substring matching)
-    return this.heuristicHarmonize(adaptedNode);
+    // Step 2: Fallback heuristic clustering
+    return this.heuristicHarmonize(adaptedNode, triggerSource);
   }
 
   /**
-   * Fast, deterministic heuristic clustering when LLM is offline or for instant local deduplication
+   * Fast, deterministic heuristic clustering when LLM is offline
    */
-  private static heuristicHarmonize(node: UnifiedTopicNode): HarmonizationResult {
+  private static heuristicHarmonize(
+    node: UnifiedTopicNode,
+    triggerSource: "background_observer" | "manual_user"
+  ): HarmonizationResult {
     const topics = node.topics || {};
     const entries = Object.entries(topics);
+    const initialCount = entries.length;
     const merged: Record<string, TopicMetadata> = {};
     const actions: HarmonizationAction[] = [];
     const visited = new Set<string>();
+    const timestamp = new Date().toISOString();
+    const runId = `run_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const traceId = `trace_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     for (let i = 0; i < entries.length; i++) {
       const [nameA, metaA] = entries[i];
@@ -197,7 +285,6 @@ Output strict JSON:
       }
 
       if (cluster.length > 1) {
-        // Pick the most comprehensive/longest canonical name
         const canonicalName = cluster.reduce((best, cur) => (cur[0].length > best.length ? cur[0] : best), cluster[0][0]);
         const combinedWeight = Number(Math.min(1.0, Math.max(...cluster.map((c) => c[1].weight)) + 0.05).toFixed(2));
         const allVectors = Array.from(new Set(cluster.flatMap((c) => c[1].curiosity_vectors || [])));
@@ -208,14 +295,14 @@ Output strict JSON:
           why_they_care: bestWhy || metaA.why_they_care,
           technical_depth: metaA.technical_depth || "practitioner",
           curiosity_vectors: allVectors.length > 0 ? allVectors : [canonicalName],
-          last_discussed_at: new Date().toISOString(),
+          last_discussed_at: timestamp,
         };
 
         actions.push({
           type: "merge",
           source_topics: cluster.map((c) => c[0]),
           resulting_topics: [canonicalName],
-          rationale: `Merged ${cluster.length} closely related topic variations into "${canonicalName}".`,
+          rationale: `Merged ${cluster.length} overlapping topic phrases into canonical node "${canonicalName}".`,
         });
       } else {
         merged[nameA] = metaA;
@@ -224,11 +311,27 @@ Output strict JSON:
 
     const changed = actions.length > 0;
     node.topics = merged;
-    node.last_updated = new Date().toISOString();
+    node.last_updated = timestamp;
+
+    let harmonizationRun: HarmonizationRun | undefined;
+    if (changed) {
+      harmonizationRun = {
+        run_id: runId,
+        timestamp,
+        trigger_source: triggerSource,
+        summary: `Heuristic clustering consolidated ${initialCount} topics into ${Object.keys(merged).length} nodes.`,
+        actions,
+        trace_id: traceId,
+        topics_before_count: initialCount,
+        topics_after_count: Object.keys(merged).length,
+      };
+      node.harmonization_runs = [harmonizationRun, ...(node.harmonization_runs || []).slice(0, 20)];
+    }
 
     return {
       harmonized_node: node,
       actions_taken: actions,
+      harmonization_run: harmonizationRun,
       changed,
     };
   }

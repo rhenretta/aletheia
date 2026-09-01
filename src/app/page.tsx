@@ -1790,6 +1790,80 @@ export default function AletheiaHome() {
                     ))}
                   </div>
                 )}
+
+                {/* Knowledge Graph Harmonization History & Audit Trail */}
+                {(unifiedTopicNode?.harmonization_runs || []).length > 0 && (
+                  <div className="space-y-3 pt-3 border-t border-white/10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-mono text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        Harmonization Audit Trail ({unifiedTopicNode?.harmonization_runs?.length || 0}):
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+                      {unifiedTopicNode?.harmonization_runs?.map((run, rIdx) => (
+                        <div
+                          key={rIdx}
+                          className="p-3.5 rounded-xl bg-slate-900/80 border border-white/10 hover:border-violet-500/40 transition space-y-2"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 font-mono">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${
+                                  run.trigger_source === "background_observer"
+                                    ? "bg-amber-950/70 text-amber-300 border-amber-500/30"
+                                    : "bg-emerald-950/70 text-emerald-300 border-emerald-500/30"
+                                }`}
+                              >
+                                {run.trigger_source === "background_observer" ? "Background Run" : "Manual Run"}
+                              </span>
+                              <span className="text-slate-400 text-[10px]">
+                                {new Date(run.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                setSelectedContext({
+                                  type: "harmonization_run",
+                                  run,
+                                });
+                                setIsDevToolsOpen(true);
+                              }}
+                              className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900 px-2 py-0.5 rounded border border-cyan-500/30 transition flex items-center gap-1"
+                            >
+                              <span>Inspect Run</span>
+                              <span>→</span>
+                            </button>
+                          </div>
+
+                          <p className="text-slate-200 text-xs leading-relaxed">{run.summary}</p>
+
+                          {/* Action Badges */}
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {run.actions?.map((act, aIdx) => (
+                              <span
+                                key={aIdx}
+                                className={`px-2 py-0.5 rounded text-[9px] font-mono border ${
+                                  act.type === "merge"
+                                    ? "bg-cyan-950/60 text-cyan-300 border-cyan-500/30"
+                                    : act.type === "split"
+                                    ? "bg-amber-950/60 text-amber-300 border-amber-500/30"
+                                    : act.type === "delete"
+                                    ? "bg-rose-950/60 text-rose-300 border-rose-500/30"
+                                    : "bg-emerald-950/60 text-emerald-300 border-emerald-500/30"
+                                }`}
+                              >
+                                {act.type.toUpperCase()}: {act.source_topics.join(", ")}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

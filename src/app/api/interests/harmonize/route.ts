@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     const unifiedNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
-    const result = await InterestHarmonizer.harmonize(unifiedNode);
+    const result = await InterestHarmonizer.harmonize(unifiedNode, "manual_user");
 
     if (result.changed) {
       await postgresStore.saveUnifiedTopicNode(result.harmonized_node);
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       success: true,
       changed: result.changed,
       actions_taken: result.actions_taken,
+      harmonization_run: result.harmonization_run,
       unified_topic_node: result.harmonized_node,
       user_graph: userGraph,
     });

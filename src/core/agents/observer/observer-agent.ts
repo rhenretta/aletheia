@@ -308,7 +308,28 @@ Output strict JSON:
       }
     }
 
-    // Harmonization is explicitly user-triggered via /api/interests/harmonize button, never performed silently in background
+    // Step 3: Background knowledge graph harmonization with full audit log & rationale
+    if (Object.keys(adaptedNode.topics || {}).length >= 5) {
+      try {
+        const harmResult = await InterestHarmonizer.harmonize(adaptedNode, "background_observer");
+        if (harmResult.changed) {
+          adaptedNode.topics = harmResult.harmonized_node.topics;
+          adaptedNode.harmonization_runs = harmResult.harmonized_node.harmonization_runs;
+          adaptedNode.recent_topic_diffs = harmResult.harmonized_node.recent_topic_diffs;
+
+          for (const act of harmResult.actions_taken) {
+            adaptationsMade.push({
+              category: "why_they_care",
+              description: `Background Harmonization (${act.type}): ${act.rationale}`,
+              evidence: `${act.source_topics.join(", ")} -> ${act.resulting_topics.join(", ")}`,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("ObserverAgent: Background interest harmonization error:", err);
+      }
+    }
+
     adaptedNode.last_updated = new Date().toISOString();
 
     // Persist updated Unified Topic Node to database and disk cache
