@@ -12,6 +12,16 @@ export interface TopicBriefHighlight {
   sources: EventSourceArticle[];
 }
 
+export interface BriefNarrativeSentence {
+  sentence_id: string;
+  text: string;
+  citation_index: number;
+  story_id: string;
+  story_headline: string;
+  story_summary: string;
+  sources: EventSourceArticle[];
+}
+
 export interface TopicBrief {
   topic: string;
   weight: number;
@@ -29,7 +39,128 @@ export interface TopicBrief {
   story_count: number;
   stories: SynthesizedEventCard[];
   key_highlights: TopicBriefHighlight[];
+  narrative_sentences: BriefNarrativeSentence[];
+  narrative_full_text: string;
   all_sources: EventSourceArticle[];
+}
+
+/**
+ * Deduplicate syndicated news coverage covering the identical event
+ */
+export function deduplicateStories(cards: SynthesizedEventCard[]): SynthesizedEventCard[] {
+  const uniqueCards: SynthesizedEventCard[] = [];
+
+  for (const card of cards) {
+    const tokensA = new Set(
+      card.headline
+        .toLowerCase()
+        .replace(/[^\w\s]/g, "")
+        .split(/\s+/)
+        .filter((w) => w.length > 3)
+    );
+
+    let isDuplicate = false;
+    for (let i = 0; i < uniqueCards.length; i++) {
+      const existing = uniqueCards[i];
+      const tokensB = new Set(
+        existing.headline
+          .toLowerCase()
+          .replace(/[^\w\s]/g, "")
+          .split(/\s+/)
+          .filter((w) => w.length > 3)
+      );
+
+      let intersection = 0;
+      tokensA.forEach((t) => {
+        if (tokensB.has(t)) intersection++;
+      });
+
+      const minLen = Math.min(tokensA.size, tokensB.size);
+      const similarity = minLen > 0 ? intersection / minLen : 0;
+
+      // Duplicate threshold: >55% token overlap or identical event cluster
+      if (similarity >= 0.55 || (existing.event_id && card.event_id && existing.event_id === card.event_id)) {
+        // Merge sources from duplicate reporting
+        const existingSources = existing.sources || [];
+        const newSources = card.sources || [];
+        const mergedSourcesMap = new Map<string, EventSourceArticle>();
+
+        existingSources.forEach((s) => mergedSourcesMap.set(s.name, s));
+        newSources.forEach((s) => {
+          if (!mergedSourcesMap.has(s.name)) {
+            mergedSourcesMap.set(s.name, s);
+          }
+        });
+
+        existing.sources = Array.from(mergedSourcesMap.values());
+        if ((card.fact_bullets?.length || 0) > (existing.fact_bullets?.length || 0)) {
+          existing.fact_bullets = card.fact_bullets;
+        }
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      uniqueCards.push({ ...card, sources: [...(card.sources || [])] });
+    }
+  }
+
+  return uniqueCards;
+}
+
+/**
+ * Synthesizes a flowing narrative update with sentence-level story mappings
+ */
+export function synthesizeBriefNarrative(
+  topic: string,
+  cards: SynthesizedEventCard[],
+  topicMeta?: any
+): { sentences: BriefNarrativeSentence[]; fullText: string } {
+  if (!cards || cards.length === 0) {
+    const fallbackText = topicMeta?.living_narrative || topicMeta?.why_they_care || `Monitoring wire for active updates on ${topic}. No major shifts reported this week.`;
+    return {
+      sentences: [
+        {
+          sentence_id: `sent_0`,
+          text: fallbackText,
+          citation_index: 1,
+          story_id: "",
+          story_headline: topic,
+          story_summary: fallbackText,
+          sources: [],
+        },
+      ],
+      fullText: fallbackText,
+    };
+  }
+
+  const sentences: BriefNarrativeSentence[] = [];
+
+  cards.slice(0, 4).forEach((card, idx) => {
+    // Extract substantive sentence from summary or headline
+    let sentenceText = card.summary.trim();
+    if (sentenceText.includes(".")) {
+      const parts = sentenceText.split(/(?<=[.?!])\s+/);
+      sentenceText = parts.slice(0, 2).join(" ");
+    }
+    if (!sentenceText.endsWith(".")) {
+      sentenceText += ".";
+    }
+
+    sentences.push({
+      sentence_id: `sent_${idx + 1}`,
+      text: sentenceText,
+      citation_index: idx + 1,
+      story_id: card.event_id,
+      story_headline: card.headline,
+      story_summary: card.summary,
+      sources: card.sources || [],
+    });
+  });
+
+  const fullText = sentences.map((s) => s.text).join(" ");
+  return { sentences, fullText };
 }
 
 /**
@@ -87,8 +218,11 @@ export function buildTopicBriefs(
     const topicMeta = userTopics[topic];
     const weight = topicMeta?.weight !== undefined ? topicMeta.weight : 0.65;
 
-    // Sort cards in this topic by publication date descending
-    const sortedCards = [...matchedCards].sort((a, b) => {
+    // Step A: Deduplicate syndicated stories covering identical events
+    const deduplicatedCards = deduplicateStories(matchedCards);
+
+    // Step B: Sort deduplicated cards by publication date descending
+    const sortedCards = [...deduplicatedCards].sort((a, b) => {
       const timeA = new Date(a.published_at || 0).getTime();
       const timeB = new Date(b.published_at || 0).getTime();
       return timeB - timeA;
@@ -131,7 +265,7 @@ export function buildTopicBriefs(
       timeAgoLabel = "No recent stories";
     }
 
-    // Build key development highlights
+    // Step C: Build deduplicated development highlights
     const keyHighlights: TopicBriefHighlight[] = sortedCards.slice(0, 4).map((card) => ({
       event_id: card.event_id,
       headline: card.headline,
@@ -143,7 +277,14 @@ export function buildTopicBriefs(
       sources: card.sources || [],
     }));
 
-    // Collect all distinct corroborating sources
+    // Step D: Synthesize narrative update with sentence-level story links
+    const { sentences: narrativeSentences, fullText: narrativeFullText } = synthesizeBriefNarrative(
+      topic,
+      sortedCards,
+      topicMeta
+    );
+
+    // Step E: Collect all distinct corroborating sources
     const sourceMap = new Map<string, EventSourceArticle>();
     sortedCards.forEach((c) => {
       c.sources?.forEach((s) => {
@@ -170,6 +311,8 @@ export function buildTopicBriefs(
       story_count: sortedCards.length,
       stories: sortedCards,
       key_highlights: keyHighlights,
+      narrative_sentences: narrativeSentences,
+      narrative_full_text: narrativeFullText,
       all_sources: Array.from(sourceMap.values()),
     });
   }

@@ -116,5 +116,54 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     expect(factorioBrief).toBeDefined();
     expect(factorioBrief!.story_count).toBe(0);
     expect(factorioBrief!.velocity_status).toBe("dormant");
+
+    // Executive Narrative Sentences with story citations
+    expect(conflictBrief!.narrative_sentences.length).toBe(2);
+    expect(conflictBrief!.narrative_sentences[0].citation_index).toBe(1);
+    expect(conflictBrief!.narrative_sentences[0].story_id).toBe("evt_1");
+  });
+
+  it("deduplicates syndicated articles with overlapping headlines and merges sources", () => {
+    const duplicateCards: SynthesizedEventCard[] = [
+      {
+        event_id: "evt_dup_1",
+        topic: "SpaceX Starship",
+        headline: "SpaceX Starship Orbital Failure Could Outpace Anti-Satellite Tests in Debris Generation",
+        personalized_framing: "Space debris risk analysis.",
+        summary: "A recent analysis warns that in-orbit explosion could produce more space debris.",
+        fact_bullets: ["Orbital debris analysis"],
+        disputed_claims: [],
+        verified_entities: ["SpaceX", "Starship"],
+        sources: [{ name: "South China Morning Post", url: "https://scmp.com/1", bias: "center", raw_text: "..." }],
+        format: "bulleted_distillation",
+        published_at: new Date().toISOString(),
+        recency_label: "4h ago",
+      },
+      {
+        event_id: "evt_dup_2",
+        topic: "SpaceX Starship",
+        headline: "Starship's Orbital Failure Could Outpace Anti-Satellite Tests in Debris Generation",
+        personalized_framing: "Space debris risk analysis.",
+        summary: "A new analysis warns that Starship explosion in orbit could generate more debris.",
+        fact_bullets: ["Orbital debris analysis"],
+        disputed_claims: [],
+        verified_entities: ["SpaceX", "Starship"],
+        sources: [{ name: "Yahoo News", url: "https://yahoo.com/1", bias: "center", raw_text: "..." }],
+        format: "bulleted_distillation",
+        published_at: new Date().toISOString(),
+        recency_label: "4h ago",
+      },
+    ];
+
+    const briefs = buildTopicBriefs(duplicateCards, mockNode);
+    const spaceXBrief = briefs.find((b) => b.topic === "SpaceX Starship");
+
+    expect(spaceXBrief).toBeDefined();
+    // 2 duplicate cards must be deduplicated to 1 unique event highlight
+    expect(spaceXBrief!.key_highlights.length).toBe(1);
+    // Sources from both reporting outlets must be merged
+    expect(spaceXBrief!.all_sources.length).toBe(2);
+    expect(spaceXBrief!.all_sources.some((s) => s.name === "South China Morning Post")).toBe(true);
+    expect(spaceXBrief!.all_sources.some((s) => s.name === "Yahoo News")).toBe(true);
   });
 });

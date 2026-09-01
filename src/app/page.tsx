@@ -1388,51 +1388,103 @@ export default function AletheiaHome() {
                         </div>
                       </div>
 
-                      {/* Key Development Highlights */}
-                      {brief.key_highlights.length > 0 ? (
-                        <div className="space-y-3 pt-2 border-t border-white/5">
-                          <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <Flame className="w-3.5 h-3.5 text-amber-400" />
-                            Recent Development Highlights ({brief.key_highlights.length})
-                          </span>
+                      {/* Executive Topic Briefing Narrative with Clickable Sentences */}
+                      {brief.narrative_sentences && brief.narrative_sentences.length > 0 && (
+                        <div className="p-4 rounded-xl bg-slate-900/90 border border-cyan-500/30 space-y-2.5 shadow-md">
+                          <div className="flex items-center justify-between text-xs font-mono text-cyan-300 font-bold border-b border-white/5 pb-2">
+                            <span className="flex items-center gap-1.5 uppercase">
+                              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                              Executive Update & Recent Developments
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              Click any sentence to open original reporting
+                            </span>
+                          </div>
+                          <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans">
+                            {brief.narrative_sentences.map((sentence, sIdx) => {
+                              const matchedStory = brief.stories.find((s) => s.event_id === sentence.story_id) || brief.stories[0];
+                              const firstSource = sentence.sources?.[0] || matchedStory?.sources?.[0] || brief.all_sources[0] || ({
+                                name: "News Wire",
+                                title: sentence.story_headline || brief.topic,
+                                url: "#",
+                                bias: "center",
+                                raw_text: sentence.story_summary,
+                              } as any);
 
-                          <div className="space-y-2.5">
-                            {brief.key_highlights.map((highlight, hIdx) => (
-                              <div
-                                key={hIdx}
-                                className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-2 hover:border-cyan-500/20 transition"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <h4 className="text-sm font-bold text-slate-100 hover:text-cyan-300 transition">
-                                    {sanitizeDisplay(highlight.headline)}
-                                  </h4>
-                                  <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
-                                    {highlight.recency_label}
-                                  </span>
-                                </div>
-
-                                <p className="text-xs text-slate-300 leading-relaxed">
-                                  {sanitizeDisplay(highlight.summary)}
-                                </p>
-
-                                {/* Fact Bullets */}
-                                {highlight.facts.length > 0 && (
-                                  <div className="space-y-1 pt-1">
-                                    {highlight.facts.slice(0, 2).map((fact, fIdx) => (
-                                      <div key={fIdx} className="flex items-start gap-1.5 text-xs text-slate-300 font-mono">
-                                        <span className="text-emerald-400">•</span>
-                                        <span>{sanitizeDisplay(fact.replace(/^[•\s-]+/, ""))}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                              return (
+                                <span
+                                  key={sIdx}
+                                  onClick={() => setSelectedReadingSource({ source: firstSource, card: matchedStory || ({} as any) })}
+                                  className="cursor-pointer hover:bg-cyan-500/20 hover:text-white rounded px-1 py-0.5 transition inline group mr-1.5"
+                                  title={`Click to read original reporting from ${firstSource.name || "source"}: "${sentence.story_headline}"`}
+                                >
+                                  <span>{sentence.text}</span>
+                                  <sup className="ml-1 text-[10px] font-mono text-cyan-400 font-bold group-hover:text-cyan-200 underline">
+                                    [{sentence.citation_index}]
+                                  </sup>
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
-                      ) : (
-                        <div className="p-4 rounded-xl bg-slate-900/40 border border-white/5 text-center text-xs text-slate-400 font-mono">
-                          No major new developments detected this week. Wire is actively monitoring for updates.
+                      )}
+
+                      {/* Referenced Primary Development Stories (Deduplicated) */}
+                      {brief.key_highlights.length > 0 && (
+                        <div className="space-y-2.5 pt-1">
+                          <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Flame className="w-3.5 h-3.5 text-amber-400" />
+                            Referenced Unique Developments ({brief.key_highlights.length})
+                          </span>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {brief.key_highlights.map((highlight, hIdx) => {
+                              const matchedCard = brief.stories.find((s) => s.event_id === highlight.event_id) || brief.stories[0];
+                              const primarySource = highlight.sources?.[0] || matchedCard?.sources?.[0] || ({
+                                name: "Wire",
+                                title: highlight.headline,
+                                url: "#",
+                                bias: "center",
+                                raw_text: highlight.summary,
+                              } as any);
+
+                              return (
+                                <div
+                                  key={hIdx}
+                                  onClick={() => setSelectedReadingSource({ source: primarySource, card: matchedCard || ({} as any) })}
+                                  className="p-3.5 rounded-xl bg-slate-900/70 border border-white/5 space-y-2 hover:border-cyan-500/30 hover:bg-slate-900/90 transition cursor-pointer group flex flex-col justify-between"
+                                >
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <h4 className="text-xs sm:text-sm font-bold text-slate-100 group-hover:text-cyan-300 transition line-clamp-2">
+                                        {sanitizeDisplay(highlight.headline)}
+                                      </h4>
+                                      <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
+                                        {highlight.recency_label}
+                                      </span>
+                                    </div>
+
+                                    <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
+                                      {sanitizeDisplay(highlight.summary)}
+                                    </p>
+                                  </div>
+
+                                  {/* Sources on this specific card */}
+                                  <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-white/5">
+                                    <span className="text-[9px] font-mono text-slate-500 uppercase">Coverage:</span>
+                                    {highlight.sources.slice(0, 3).map((src, srcIdx) => (
+                                      <span
+                                        key={srcIdx}
+                                        className="text-[9px] font-mono text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40"
+                                      >
+                                        {src.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
 
