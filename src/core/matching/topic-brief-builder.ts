@@ -1,4 +1,4 @@
-import { SynthesizedEventCard, UnifiedTopicNode, EventSourceArticle } from "../types/contracts";
+import { SynthesizedEventCard, UnifiedTopicNode, EventSourceArticle, TopicEvolutionEntry } from "../types/contracts";
 import { calculateSemanticAffinity } from "./semantic-matcher";
 
 export interface TopicBriefHighlight {
@@ -17,7 +17,11 @@ export interface TopicBrief {
   weight: number;
   technical_depth?: string;
   why_they_care?: string;
+  living_narrative?: string;
+  likes_and_angles?: string[];
+  dislikes_and_critiques?: string[];
   curiosity_vectors?: string[];
+  evolution_timeline?: TopicEvolutionEntry[];
   last_updated: string;
   time_ago_label: string;
   velocity_status: "breaking" | "active" | "recent" | "steady" | "dormant";
@@ -154,7 +158,11 @@ export function buildTopicBriefs(
       weight,
       technical_depth: topicMeta?.technical_depth || "practitioner",
       why_they_care: topicMeta?.why_they_care || "Tracked interest from conversation and reading telemetry.",
+      living_narrative: topicMeta?.living_narrative || topicMeta?.why_they_care || `Developing ongoing perspective on ${topic}.`,
+      likes_and_angles: topicMeta?.likes_and_angles || [],
+      dislikes_and_critiques: topicMeta?.dislikes_and_critiques || [],
       curiosity_vectors: topicMeta?.curiosity_vectors || [topic],
+      evolution_timeline: topicMeta?.evolution_timeline || [],
       last_updated: new Date(latestPubTime).toISOString(),
       time_ago_label: timeAgoLabel,
       velocity_status: velocityStatus,

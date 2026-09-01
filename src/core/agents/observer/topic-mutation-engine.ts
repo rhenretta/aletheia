@@ -11,7 +11,11 @@ export interface CreateTopicParams {
   weight?: number;
   why_they_care: string;
   technical_depth?: TechnicalDepth;
+  living_narrative?: string;
+  likes_and_angles?: string[];
+  dislikes_and_critiques?: string[];
   curiosity_vectors?: string[];
+  evolution_insight?: string;
   evidence?: string;
 }
 
@@ -20,8 +24,12 @@ export interface UpdateTopicParams {
   weight_delta?: number;
   why_they_care?: string;
   technical_depth?: TechnicalDepth;
+  living_narrative?: string;
+  likes_and_angles?: string[];
+  dislikes_and_critiques?: string[];
   curiosity_vectors_to_add?: string[];
   curiosity_vectors_to_remove?: string[];
+  evolution_insight?: string;
   evidence?: string;
 }
 
@@ -110,7 +118,18 @@ export class TopicMutationEngine {
       weight: initialWeight,
       why_they_care: params.why_they_care || `Substantive interest in ${topicName}.`,
       technical_depth: validDepth,
+      living_narrative: params.living_narrative || params.why_they_care || `Developing ongoing perspective on ${topicName}.`,
+      likes_and_angles: params.likes_and_angles || [],
+      dislikes_and_critiques: params.dislikes_and_critiques || [],
       curiosity_vectors: curiosityVectors,
+      evolution_timeline: [
+        {
+          timestamp,
+          insight: params.evolution_insight || params.why_they_care || `Initial interest established in ${topicName}.`,
+          trigger_source: triggerSource,
+          evidence: params.evidence,
+        },
+      ],
       last_discussed_at: timestamp,
     };
 
@@ -171,7 +190,11 @@ export class TopicMutationEngine {
           weight: Math.max(0.2, (params.weight_delta || 0.1) + 0.5),
           why_they_care: params.why_they_care || `Interest in ${topicName}.`,
           technical_depth: params.technical_depth || "practitioner",
+          living_narrative: params.living_narrative,
+          likes_and_angles: params.likes_and_angles,
+          dislikes_and_critiques: params.dislikes_and_critiques,
           curiosity_vectors: params.curiosity_vectors_to_add || [topicName],
+          evolution_insight: params.evolution_insight,
           evidence: params.evidence,
         },
         triggerSource
@@ -202,11 +225,47 @@ export class TopicMutationEngine {
       newVectors = newVectors.filter((v) => !params.curiosity_vectors_to_remove?.includes(v));
     }
 
+    // Merge Living Narrative
+    let updatedNarrative = existing.living_narrative || existing.why_they_care;
+    if (params.living_narrative) {
+      updatedNarrative = params.living_narrative;
+    } else if (params.why_they_care && !updatedNarrative.includes(params.why_they_care)) {
+      updatedNarrative = `${updatedNarrative} ${params.why_they_care}`.trim();
+    }
+
+    // Merge Likes & Angles
+    const mergedLikes = new Set(existing.likes_and_angles || []);
+    if (params.likes_and_angles) {
+      params.likes_and_angles.forEach((l) => mergedLikes.add(l));
+    }
+
+    // Merge Dislikes & Critiques
+    const mergedDislikes = new Set(existing.dislikes_and_critiques || []);
+    if (params.dislikes_and_critiques) {
+      params.dislikes_and_critiques.forEach((d) => mergedDislikes.add(d));
+    }
+
+    // Append to Evolution Timeline
+    const timeline = [...(existing.evolution_timeline || [])];
+    const newInsight = params.evolution_insight || (params.why_they_care && params.why_they_care !== prevWhy ? params.why_they_care : undefined) || (params.evidence ? `Expressed: "${params.evidence.slice(0, 80)}"` : undefined);
+    if (newInsight && !timeline.some((t) => t.insight === newInsight)) {
+      timeline.push({
+        timestamp,
+        insight: newInsight,
+        trigger_source: triggerSource,
+        evidence: params.evidence,
+      });
+    }
+
     node.topics[topicName] = {
       weight: newWeight,
       why_they_care: newWhy,
       technical_depth: validDepth,
+      living_narrative: updatedNarrative,
+      likes_and_angles: Array.from(mergedLikes),
+      dislikes_and_critiques: Array.from(mergedDislikes),
       curiosity_vectors: newVectors,
+      evolution_timeline: timeline.slice(-20),
       last_discussed_at: timestamp,
     };
     node.last_updated = timestamp;

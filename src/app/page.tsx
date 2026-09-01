@@ -36,6 +36,8 @@ import {
   NewsStateContext,
   UserKnowledgeGraph,
   UnifiedTopicNode,
+  TopicMetadata,
+  TopicEvolutionEntry,
   PureFactObject,
   SynthesizedEventCard,
   AttachedStoryContext,
@@ -119,6 +121,7 @@ export default function AletheiaHome() {
 
   // Expandable Stories State (Accordion/Expansion per card)
   const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
+  const [expandedTopicTimelines, setExpandedTopicTimelines] = useState<Set<string>>(new Set());
 
   const toggleCardExpansion = (eventId: string) => {
     setExpandedCardIds((prev) => {
@@ -127,6 +130,18 @@ export default function AletheiaHome() {
         next.delete(eventId);
       } else {
         next.add(eventId);
+      }
+      return next;
+    });
+  };
+
+  const toggleTopicTimeline = (topic: string) => {
+    setExpandedTopicTimelines((prev) => {
+      const next = new Set(prev);
+      if (next.has(topic)) {
+        next.delete(topic);
+      } else {
+        next.add(topic);
       }
       return next;
     });
@@ -1275,7 +1290,7 @@ export default function AletheiaHome() {
                     >
                       {/* Topic Header & Velocity Badge */}
                       <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1.5 max-w-xl">
+                        <div className="space-y-2 max-w-xl">
                           <div className="flex items-center gap-2.5 flex-wrap">
                             <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
                               <span>{brief.topic}</span>
@@ -1287,9 +1302,33 @@ export default function AletheiaHome() {
                               {brief.technical_depth}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-400 font-sans leading-relaxed">
-                            {brief.why_they_care}
+
+                          {/* Living Narrative */}
+                          <p className="text-xs text-slate-300 font-sans leading-relaxed">
+                            {brief.living_narrative || brief.why_they_care}
                           </p>
+
+                          {/* Likes & Angles / Critiques & Anti-Preferences */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            {brief.likes_and_angles && brief.likes_and_angles.map((like, lIdx) => (
+                              <span
+                                key={lIdx}
+                                className="px-2 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 flex items-center gap-1"
+                              >
+                                <span>✓</span>
+                                <span>{like}</span>
+                              </span>
+                            ))}
+                            {brief.dislikes_and_critiques && brief.dislikes_and_critiques.map((dislike, dIdx) => (
+                              <span
+                                key={dIdx}
+                                className="px-2 py-0.5 rounded-md bg-rose-950/60 border border-rose-500/30 text-[10px] font-mono text-rose-300 flex items-center gap-1"
+                              >
+                                <span>✕</span>
+                                <span>{dislike}</span>
+                              </span>
+                            ))}
+                          </div>
                         </div>
 
                         {/* Velocity Status Pill */}
@@ -2193,16 +2232,12 @@ export default function AletheiaHome() {
                 </div>
 
                 {(() => {
-                  const topicMap = new Map<string, { weight: number; why_they_care: string; technical_depth?: string }>();
+                  const topicMap = new Map<string, TopicMetadata>();
 
                   // 1. Unified Topic Node (Primary Source of Truth)
                   if (unifiedTopicNode?.topics) {
                     for (const [topic, meta] of Object.entries(unifiedTopicNode.topics)) {
-                      topicMap.set(topic, {
-                        weight: meta.weight,
-                        why_they_care: meta.why_they_care,
-                        technical_depth: meta.technical_depth,
-                      });
+                      topicMap.set(topic, meta);
                     }
                   }
 
@@ -2213,6 +2248,8 @@ export default function AletheiaHome() {
                         topicMap.set(topic, {
                           weight,
                           why_they_care: `Explicit dialogue interest in ${topic}.`,
+                          technical_depth: "practitioner",
+                          living_narrative: `Explicit dialogue interest in ${topic}.`,
                         });
                       }
                     }
@@ -2224,6 +2261,8 @@ export default function AletheiaHome() {
                       topicMap.set(et.topic, {
                         weight: et.weight || 0.6,
                         why_they_care: et.reasoning || `Identified from conversational focus on ${et.topic}.`,
+                        technical_depth: "practitioner",
+                        living_narrative: et.reasoning || `Identified from conversational focus on ${et.topic}.`,
                       });
                     }
                   }
@@ -2242,19 +2281,22 @@ export default function AletheiaHome() {
                   }
 
                   return (
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                       {entries.map(([topic, data], idx) => {
                         const pct = Math.round(data.weight * 100);
+                        const isTimelineOpen = expandedTopicTimelines.has(topic);
+                        const timeline = data.evolution_timeline || [];
+
                         return (
                           <div
                             key={idx}
-                            className="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-2 hover:border-cyan-500/40 transition"
+                            className="p-4 rounded-xl bg-slate-900/90 border border-white/10 space-y-3 hover:border-cyan-500/40 transition shadow-lg shadow-black/20"
                           >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-semibold text-slate-100 text-sm">{topic}</span>
                                 {data.technical_depth && (
-                                  <span className="px-1.5 py-0.2 rounded bg-cyan-950/60 text-cyan-300 font-mono text-[9px] border border-cyan-500/30 uppercase">
+                                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-300 font-mono text-[9px] border border-cyan-500/30 uppercase">
                                     {data.technical_depth}
                                   </span>
                                 )}
@@ -2272,29 +2314,126 @@ export default function AletheiaHome() {
                               />
                             </div>
 
-                            {/* Rationale */}
-                            <div className="space-y-1 pt-1">
-                              <span className="text-[10px] font-mono text-slate-400 font-semibold block">
-                                Rationale:
+                            {/* Living Perspective / Narrative */}
+                            <div className="space-y-1">
+                              <span className="text-[10px] font-mono text-cyan-400 font-semibold flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-cyan-400" />
+                                <span>Living Perspective:</span>
                               </span>
-                              <p className="text-slate-300 text-xs leading-relaxed">{data.why_they_care}</p>
+                              <p className="text-slate-300 text-xs leading-relaxed">
+                                {data.living_narrative || data.why_they_care}
+                              </p>
                             </div>
 
+                            {/* What You Value (Likes & Angles) */}
+                            {data.likes_and_angles && data.likes_and_angles.length > 0 && (
+                              <div className="space-y-1 pt-0.5">
+                                <span className="text-[10px] font-mono text-emerald-400 font-semibold block">
+                                  What You Value:
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {data.likes_and_angles.map((like: string, lIdx: number) => (
+                                    <span
+                                      key={lIdx}
+                                      className="px-2 py-0.5 rounded-md bg-emerald-950/50 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 flex items-center gap-1"
+                                    >
+                                      <span>✓</span>
+                                      <span>{like}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Critiques & Anti-Preferences (Dislikes) */}
+                            {data.dislikes_and_critiques && data.dislikes_and_critiques.length > 0 && (
+                              <div className="space-y-1 pt-0.5">
+                                <span className="text-[10px] font-mono text-rose-400 font-semibold block">
+                                  Critiques & Anti-Preferences:
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {data.dislikes_and_critiques.map((dislike: string, dIdx: number) => (
+                                    <span
+                                      key={dIdx}
+                                      className="px-2 py-0.5 rounded-md bg-rose-950/50 border border-rose-500/30 text-[10px] font-mono text-rose-300 flex items-center gap-1"
+                                    >
+                                      <span>✕</span>
+                                      <span>{dislike}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Curiosity Vectors Tags */}
+                            {data.curiosity_vectors && data.curiosity_vectors.length > 0 && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {data.curiosity_vectors.map((vec: string, vIdx: number) => (
+                                  <span
+                                    key={vIdx}
+                                    className="px-1.5 py-0.5 rounded bg-slate-800 text-[9px] font-mono text-slate-400 border border-white/5"
+                                  >
+                                    #{vec}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Living Evolution Timeline */}
+                            {timeline.length > 0 && (
+                              <div className="pt-1.5 border-t border-white/5 space-y-1.5">
+                                <button
+                                  onClick={() => toggleTopicTimeline(topic)}
+                                  className="text-[10px] font-mono text-slate-400 hover:text-cyan-300 flex items-center justify-between w-full transition py-0.5"
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    <RotateCcw className="w-3 h-3 text-cyan-400" />
+                                    <span>Evolution Timeline ({timeline.length} {timeline.length === 1 ? "entry" : "entries"})</span>
+                                  </span>
+                                  <ChevronDown
+                                    className={`w-3 h-3 transition transform ${isTimelineOpen ? "rotate-180" : ""}`}
+                                  />
+                                </button>
+
+                                {isTimelineOpen && (
+                                  <div className="space-y-1.5 pl-2 border-l border-cyan-500/30 text-[11px] font-mono text-slate-300 pt-1 animate-in fade-in duration-150">
+                                    {timeline.map((entry: TopicEvolutionEntry, eIdx: number) => (
+                                      <div key={eIdx} className="space-y-0.5 pb-1">
+                                        <div className="flex items-center justify-between text-[9px] text-slate-500">
+                                          <span>
+                                            {new Date(entry.timestamp).toLocaleDateString(undefined, {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "numeric",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        </div>
+                                        <p className="text-slate-300 font-sans leading-tight text-xs">
+                                          {entry.insight}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {/* Topic Actions */}
-                            <div className="pt-1 flex items-center justify-between">
+                            <div className="pt-1.5 flex items-center justify-between border-t border-white/5">
                               <button
                                 onClick={() =>
                                   handleInspectTopic({
                                     topic,
                                     weight: data.weight,
-                                    reasoning: data.why_they_care,
+                                    reasoning: data.living_narrative || data.why_they_care,
                                     technical_depth: data.technical_depth as any,
                                   })
                                 }
                                 className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900/90 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1 transition"
                               >
                                 <Sliders className="w-2.5 h-2.5 text-cyan-400" />
-                                <span>View Topic Diff</span>
+                                <span>Inspect Node</span>
                               </button>
 
                               <button
@@ -2302,6 +2441,8 @@ export default function AletheiaHome() {
                                   setSelectedTopicFilter(topic);
                                   setSelectedCategoryFilter("all");
                                   setAiFeedFilter(null);
+                                  setActiveViewMode("stories");
+                                  setMobileTab("feed");
                                   setCompanionTab("chat");
                                 }}
                                 className="text-[10px] font-mono text-cyan-400 hover:underline flex items-center gap-1 font-semibold"

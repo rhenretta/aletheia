@@ -152,14 +152,32 @@ export const AdjacentCuriosityFrontierSchema = z.object({
  */
 export type TechnicalDepth = "introductory" | "practitioner" | "expert" | "deep_technical";
 
+export interface TopicEvolutionEntry {
+  timestamp: string;
+  insight: string;
+  trigger_source?: string;
+  evidence?: string;
+}
+
+export const TopicEvolutionEntrySchema = z.object({
+  timestamp: z.string(),
+  insight: z.string(),
+  trigger_source: z.string().optional(),
+  evidence: z.string().optional(),
+});
+
 /**
- * Topic Metadata in Unified Topic Node
+ * Topic Metadata in Unified Topic Node (A Living Topic Dossier)
  */
 export interface TopicMetadata {
   weight: number; // 0.0 - 1.0
   why_they_care: string; // Core psychological and intellectual motivation
   technical_depth: TechnicalDepth;
+  living_narrative?: string; // Rich evolving synthesis of user's perspective on this topic
+  likes_and_angles?: string[]; // Specific dimensions, features, or philosophies the user values
+  dislikes_and_critiques?: string[]; // What the user dislikes, critiques, finds gimmicky, or rejects
   curiosity_vectors?: string[];
+  evolution_timeline?: TopicEvolutionEntry[]; // Chronological timeline of how the perspective evolved
   last_discussed_at?: string;
 }
 
@@ -167,7 +185,11 @@ export const TopicMetadataSchema = z.object({
   weight: z.number().min(0).max(1),
   why_they_care: z.string(),
   technical_depth: z.enum(["introductory", "practitioner", "expert", "deep_technical"]),
+  living_narrative: z.string().optional(),
+  likes_and_angles: z.array(z.string()).optional(),
+  dislikes_and_critiques: z.array(z.string()).optional(),
   curiosity_vectors: z.array(z.string()).optional(),
+  evolution_timeline: z.array(TopicEvolutionEntrySchema).optional(),
   last_discussed_at: z.string().optional(),
 });
 

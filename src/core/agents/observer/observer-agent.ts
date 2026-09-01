@@ -57,15 +57,26 @@ export class ObserverAgent {
     if (deepseekProvider.isConfigured() && lastUserMessage.length > 3) {
       try {
         const systemPrompt = `You are the Observer Agent in the Mind-State Memory Architecture.
-Your role is silent, empathetic, and continuous adaptation. You analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation tool calls:
+Your role is silent, empathetic, and continuous adaptation. You build and evolve a LIVING DOCUMENT for each user interest topic.
+Analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation tool calls:
 1. "updated_emotional_trajectory": The user's updated psychological state and mindset revealed by their words.
 2. "new_sensitivities": Subtle sensitivities, pet peeves, or communication preferences revealed EXCLUSIVELY by the user.
 3. "new_boundaries": Hard boundaries or topics the user explicitly or implicitly wants to avoid.
 4. "tool_calls": Discrete atomic tool calls to mutate individual user interests one by one ("create_topic" or "update_topic").
 
 DISCRETE MUTATION TOOLS:
-- "create_topic": Call when the user introduces a brand-new substantive interest or topic.
-- "update_topic": Call when the user continues or deepens discussion on an existing topic.
+- "create_topic" & "update_topic":
+  Parameters:
+  - "topic": Canonical name of the topic.
+  - "weight_delta": Numeric delta (+0.05 to +0.2).
+  - "why_they_care": 1-sentence bottom-line motivation summary.
+  - "living_narrative": A rich, evolving 2-3 sentence living dossier synthesis of the user's specific perspective, context, and nuance on this topic.
+  - "likes_and_angles": Specific dimensions, features, philosophies, or use cases the user appreciates/values (e.g. ["hardware ergonomics", "on-device SLM inference", "open weights"]).
+  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed about this topic (e.g. ["cloud latency dependencies", "gimmicky form factors without screens like Rabbit R1 / Humane"]).
+  - "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical"
+  - "curiosity_vectors": Sub-themes explored.
+  - "evolution_insight": 1-sentence insight describing what was learned or how their perspective shifted in this conversation.
+  - "evidence": Verbatim quote from user.
 
 IRONCLAD GUARDRAILS & NEGATIVE CONSTRAINTS:
 - NEVER extract topics, interests, or sensitivities from statements, greetings, suggestions, or analogies made by the ASSISTANT / ALETHEIA.
@@ -89,8 +100,12 @@ Output strict JSON:
         "topic": string,
         "weight_delta": number,
         "why_they_care": string,
+        "living_narrative": string,
+        "likes_and_angles": string[],
+        "dislikes_and_critiques": string[],
         "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
         "curiosity_vectors": string[],
+        "evolution_insight": string,
         "evidence": string
       }
     }
@@ -213,7 +228,11 @@ Output strict JSON:
                 weight: params.weight || 0.6,
                 why_they_care: params.why_they_care,
                 technical_depth: params.technical_depth,
+                living_narrative: params.living_narrative,
+                likes_and_angles: params.likes_and_angles,
+                dislikes_and_critiques: params.dislikes_and_critiques,
                 curiosity_vectors: params.curiosity_vectors,
+                evolution_insight: params.evolution_insight,
                 evidence: params.evidence || lastUserMessage.slice(0, 80),
               },
               "observer_agent"
@@ -222,7 +241,7 @@ Output strict JSON:
               topicDiffs.push(res.diff);
               adaptationsMade.push({
                 category: "why_they_care",
-                description: `Created new interest node "${topicName}" via tool call create_topic.`,
+                description: `Created new living topic dossier "${topicName}" via tool call create_topic.`,
                 evidence: params.evidence || lastUserMessage.slice(0, 80),
               });
             }
@@ -234,7 +253,11 @@ Output strict JSON:
                 weight_delta: params.weight_delta || 0.05,
                 why_they_care: params.why_they_care,
                 technical_depth: params.technical_depth,
+                living_narrative: params.living_narrative,
+                likes_and_angles: params.likes_and_angles,
+                dislikes_and_critiques: params.dislikes_and_critiques,
                 curiosity_vectors_to_add: params.curiosity_vectors,
+                evolution_insight: params.evolution_insight,
                 evidence: params.evidence || lastUserMessage.slice(0, 80),
               },
               "observer_agent"
@@ -243,7 +266,7 @@ Output strict JSON:
               topicDiffs.push(res.diff);
               adaptationsMade.push({
                 category: "why_they_care",
-                description: `Updated interest "${topicName}" via tool call update_topic (Weight Δ: ${res.diff.weight_delta}).`,
+                description: `Evolved living dossier for "${topicName}" (Weight Δ: ${res.diff.weight_delta}).`,
                 evidence: params.evidence || lastUserMessage.slice(0, 80),
               });
             }
