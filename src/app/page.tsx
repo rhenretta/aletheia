@@ -702,10 +702,15 @@ export default function AletheiaHome() {
 
     // 1. AI conversational feed filter (if active and manual filter not explicitly set)
     if (selectedTopicFilter === "all" && aiFeedFilter && aiFeedFilter.is_active !== false) {
+      const topicToFilter = aiFeedFilter.topic;
+      if (topicToFilter && topicToFilter !== "all") {
+        const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter);
+        if (semanticallyFiltered.length > 0) {
+          return semanticallyFiltered;
+        }
+      }
       if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
-        pool = pool.filter((c) => aiFeedFilter.matched_event_ids!.includes(c.event_id));
-      } else if (aiFeedFilter.topic) {
-        return filterFeedBySemanticAffinity(pool, aiFeedFilter.topic, unifiedTopicNode, selectedCategoryFilter);
+        return pool.filter((c) => aiFeedFilter.matched_event_ids!.includes(c.event_id));
       }
     }
 
