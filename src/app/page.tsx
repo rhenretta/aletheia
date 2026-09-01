@@ -47,6 +47,7 @@ import DevToolsPanel from "@/components/DevToolsPanel";
 import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import { filterFeedBySemanticAffinity } from "@/core/matching/semantic-matcher";
+import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { useSession, signIn, signOut } from "next-auth/react";
 
 function sanitizeDisplay(input?: string): string {
@@ -101,6 +102,7 @@ export default function AletheiaHome() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<
     "all" | "revealed_preference" | "thematic_intersection" | "curiosity_frontier"
   >("all");
+  const [activeViewMode, setActiveViewMode] = useState<"stories" | "briefs">("stories");
   const [cognitiveLoad, setCognitiveLoad] = useState<"low" | "balanced" | "deep_dive">("balanced");
   const [isTopicDropdownOpen, setIsTopicDropdownOpen] = useState(false);
   const [aiFeedFilter, setAiFeedFilter] = useState<{
@@ -752,6 +754,10 @@ export default function AletheiaHome() {
     return filterFeedBySemanticAffinity(pool, selectedTopicFilter, unifiedTopicNode, selectedCategoryFilter);
   }, [feedCards, selectedTopicFilter, selectedCategoryFilter, aiFeedFilter, unifiedTopicNode]);
 
+  const topicBriefs = React.useMemo(() => {
+    return buildTopicBriefs(feedCards, unifiedTopicNode);
+  }, [feedCards, unifiedTopicNode]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
       {/* Platform Header Bar */}
@@ -1071,30 +1077,70 @@ export default function AletheiaHome() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pb-20 lg:pb-0">
         {/* LEFT COLUMN: THE PERSONALIZED EPISTEMIC FEED (7 of 12 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          {/* Unified Epistemic Filter Command Bar */}
-          <div className="glass-panel rounded-2xl p-3 sm:p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3">
-            {/* Left: Discovery Horizon Segmented Switcher */}
-            <div className="flex flex-wrap items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-white/5 text-xs font-mono">
+          {/* Primary View Switcher: Story Feed vs Topic Briefs */}
+          <div className="flex items-center justify-between gap-3 bg-slate-900/60 p-1.5 rounded-2xl border border-white/10">
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setSelectedCategoryFilter("all")}
-                className={`px-3 py-1.5 rounded-lg transition font-medium ${
-                  selectedCategoryFilter === "all"
-                    ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
+                onClick={() => setActiveViewMode("stories")}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  activeViewMode === "stories"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                All ({feedCards.length})
+                <Newspaper className="w-3.5 h-3.5" />
+                <span>Story Feed</span>
+                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                  {filteredFeedCards.length}
+                </span>
               </button>
+
               <button
-                onClick={() => setSelectedCategoryFilter("revealed_preference")}
-                className={`px-3 py-1.5 rounded-lg transition font-medium ${
-                  selectedCategoryFilter === "revealed_preference"
-                    ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
+                onClick={() => setActiveViewMode("briefs")}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  activeViewMode === "briefs"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                🎯 Preferences ({prefCount})
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Topic Briefs</span>
+                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                  {topicBriefs.length}
+                </span>
               </button>
+            </div>
+
+            <span className="text-[11px] font-mono text-slate-400 hidden sm:inline-block pr-2">
+              {activeViewMode === "stories" ? "Granular Wire Stream" : "Aggregated Topic Intelligence"}
+            </span>
+          </div>
+
+          {/* Unified Epistemic Filter Command Bar (for Story Feed view) */}
+          {activeViewMode === "stories" && (
+            <div className="glass-panel rounded-2xl p-3 sm:p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3">
+              {/* Left: Discovery Horizon Segmented Switcher */}
+              <div className="flex flex-wrap items-center gap-1 bg-slate-900/80 p-1 rounded-xl border border-white/5 text-xs font-mono">
+                <button
+                  onClick={() => setSelectedCategoryFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                    selectedCategoryFilter === "all"
+                      ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  All ({feedCards.length})
+                </button>
+                <button
+                  onClick={() => setSelectedCategoryFilter("revealed_preference")}
+                  className={`px-3 py-1.5 rounded-lg transition font-medium ${
+                    selectedCategoryFilter === "revealed_preference"
+                      ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  🎯 Preferences ({prefCount})
+                </button>
               <button
                 onClick={() => setSelectedCategoryFilter("thematic_intersection")}
                 className={`px-3 py-1.5 rounded-lg transition font-medium ${
@@ -1202,54 +1248,220 @@ export default function AletheiaHome() {
               </div>
             </div>
           </div>
-
-          {/* AI Focus Filter Banner (if active) */}
-          {aiFeedFilter && aiFeedFilter.is_active !== false && (
-            <div className="p-3.5 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center gap-2.5 text-xs text-cyan-200">
-                <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 animate-pulse" />
-                <span>
-                  <strong className="text-cyan-300 font-semibold">AI Feed Focus:</strong>{" "}
-                  {aiFeedFilter.filter_reason || `Focusing on "${aiFeedFilter.topic}"`}
-                  <span className="text-cyan-400/80 text-[11px] ml-1.5 font-mono">
-                    ({filteredFeedCards.length} matching {filteredFeedCards.length === 1 ? "story" : "stories"})
-                  </span>
-                </span>
-              </div>
-              <button
-                onClick={() => setAiFeedFilter(null)}
-                className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs border border-white/10 flex items-center gap-1.5 transition font-medium flex-shrink-0"
-                title="Override and view all news stories"
-              >
-                <X className="w-3.5 h-3.5 text-slate-400" />
-                <span>Show All Stories</span>
-              </button>
-            </div>
           )}
 
-          {/* Active Manual Topic Filter Banner */}
-          {selectedTopicFilter !== "all" && (
-            <div className="p-3.5 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center gap-2.5 text-xs text-cyan-200">
-                <Filter className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                <span>
-                  <span className="text-slate-400">Filtering by Topic:</span>{" "}
-                  <strong className="text-cyan-300 font-bold text-sm font-mono">&quot;{selectedTopicFilter}&quot;</strong>
-                  <span className="text-cyan-400/90 text-xs ml-2 font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/30">
-                    {filteredFeedCards.length} {filteredFeedCards.length === 1 ? "story" : "stories"}
-                  </span>
-                </span>
-              </div>
-              <button
-                onClick={() => setSelectedTopicFilter("all")}
-                className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs border border-white/15 flex items-center gap-1.5 transition font-mono font-medium flex-shrink-0"
-                title="Clear topic filter"
-              >
-                <X className="w-3.5 h-3.5 text-slate-400" />
-                <span>Show All ({feedCards.length})</span>
-              </button>
+          {/* TOPIC BRIEFS DASHBOARD (when activeViewMode === 'briefs') */}
+          {activeViewMode === "briefs" ? (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              {topicBriefs.length === 0 ? (
+                <div className="glass-panel rounded-2xl p-12 text-center border border-white/10 space-y-4">
+                  <BookOpen className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
+                  <div className="text-sm font-semibold text-slate-200">
+                    No topic dossiers available yet. Refresh or converse with Aletheia to generate briefs.
+                  </div>
+                </div>
+              ) : (
+                topicBriefs.map((brief, bIdx) => {
+                  const isHighVelocity = brief.velocity_status === "breaking" || brief.velocity_status === "active";
+
+                  return (
+                    <div
+                      key={bIdx}
+                      className={`glass-panel rounded-2xl p-5 border transition duration-200 space-y-4 ${
+                        isHighVelocity
+                          ? "border-cyan-500/40 shadow-lg shadow-cyan-950/30"
+                          : "border-white/10 hover:border-white/20"
+                      }`}
+                    >
+                      {/* Topic Header & Velocity Badge */}
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1.5 max-w-xl">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                              <span>{brief.topic}</span>
+                            </h3>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
+                              {Math.round(brief.weight * 100)}% Priority
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono capitalize bg-slate-800 text-slate-300 border border-white/5">
+                              {brief.technical_depth}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 font-sans leading-relaxed">
+                            {brief.why_they_care}
+                          </p>
+                        </div>
+
+                        {/* Velocity Status Pill */}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-3 py-1 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 border ${
+                              brief.velocity_status === "breaking"
+                                ? "bg-rose-950/70 border-rose-500/50 text-rose-300"
+                                : brief.velocity_status === "active"
+                                ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-300"
+                                : brief.velocity_status === "recent"
+                                ? "bg-amber-950/70 border-amber-500/50 text-amber-300"
+                                : "bg-slate-900 border-white/10 text-slate-400"
+                            }`}
+                          >
+                            {brief.velocity_label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Key Development Highlights */}
+                      {brief.key_highlights.length > 0 ? (
+                        <div className="space-y-3 pt-2 border-t border-white/5">
+                          <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Flame className="w-3.5 h-3.5 text-amber-400" />
+                            Recent Development Highlights ({brief.key_highlights.length})
+                          </span>
+
+                          <div className="space-y-2.5">
+                            {brief.key_highlights.map((highlight, hIdx) => (
+                              <div
+                                key={hIdx}
+                                className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-2 hover:border-cyan-500/20 transition"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <h4 className="text-sm font-bold text-slate-100 hover:text-cyan-300 transition">
+                                    {sanitizeDisplay(highlight.headline)}
+                                  </h4>
+                                  <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
+                                    {highlight.recency_label}
+                                  </span>
+                                </div>
+
+                                <p className="text-xs text-slate-300 leading-relaxed">
+                                  {sanitizeDisplay(highlight.summary)}
+                                </p>
+
+                                {/* Fact Bullets */}
+                                {highlight.facts.length > 0 && (
+                                  <div className="space-y-1 pt-1">
+                                    {highlight.facts.slice(0, 2).map((fact, fIdx) => (
+                                      <div key={fIdx} className="flex items-start gap-1.5 text-xs text-slate-300 font-mono">
+                                        <span className="text-emerald-400">•</span>
+                                        <span>{sanitizeDisplay(fact.replace(/^[•\s-]+/, ""))}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-slate-900/40 border border-white/5 text-center text-xs text-slate-400 font-mono">
+                          No major new developments detected this week. Wire is actively monitoring for updates.
+                        </div>
+                      )}
+
+                      {/* Sources & Action Controls Footer */}
+                      <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+                        {/* Corroborating Primary Sources */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] font-mono text-slate-500">Sources:</span>
+                          {brief.all_sources.slice(0, 4).map((src, sIdx) => (
+                            <button
+                              key={sIdx}
+                              onClick={() => setSelectedReadingSource({ source: src, card: brief.stories[0] || ({} as any) })}
+                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-300 border border-white/5 text-[11px] text-slate-300 font-mono transition"
+                            >
+                              {src.name}
+                            </button>
+                          ))}
+                          {brief.all_sources.length > 4 && (
+                            <span className="text-[10px] font-mono text-slate-500">
+                              +{brief.all_sources.length - 4} more
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2">
+                          {brief.story_count > 0 && (
+                            <button
+                              onClick={() => {
+                                setSelectedTopicFilter(brief.topic);
+                                setSelectedCategoryFilter("all");
+                                setActiveViewMode("stories");
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition"
+                            >
+                              <Newspaper className="w-3.5 h-3.5 text-slate-400" />
+                              <span>View Stories ({brief.story_count})</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              const synthStory = brief.stories[0];
+                              if (synthStory) {
+                                handleDiscussStory(synthStory);
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Discuss Topic</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
-          )}
+          ) : (
+            <>
+              {/* AI Focus Filter Banner (if active) */}
+              {aiFeedFilter && aiFeedFilter.is_active !== false && (
+                <div className="p-3.5 rounded-2xl bg-cyan-950/70 border border-cyan-500/40 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-2.5 text-xs text-cyan-200">
+                    <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 animate-pulse" />
+                    <span>
+                      <strong className="text-cyan-300 font-semibold">AI Feed Focus:</strong>{" "}
+                      {aiFeedFilter.filter_reason || `Focusing on "${aiFeedFilter.topic}"`}
+                      <span className="text-cyan-400/80 text-[11px] ml-1.5 font-mono">
+                        ({filteredFeedCards.length} matching {filteredFeedCards.length === 1 ? "story" : "stories"})
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setAiFeedFilter(null)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white text-xs border border-white/10 flex items-center gap-1.5 transition font-medium flex-shrink-0"
+                    title="Override and view all news stories"
+                  >
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Show All Stories</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Active Manual Topic Filter Banner */}
+              {selectedTopicFilter !== "all" && (
+                <div className="p-3.5 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-2.5 text-xs text-cyan-200">
+                    <Filter className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    <span>
+                      <span className="text-slate-400">Filtering by Topic:</span>{" "}
+                      <strong className="text-cyan-300 font-bold text-sm font-mono">&quot;{selectedTopicFilter}&quot;</strong>
+                      <span className="text-cyan-400/90 text-xs ml-2 font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/30">
+                        {filteredFeedCards.length} {filteredFeedCards.length === 1 ? "story" : "stories"}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedTopicFilter("all")}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs border border-white/15 flex items-center gap-1.5 transition font-mono font-medium flex-shrink-0"
+                    title="Clear topic filter"
+                  >
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Show All ({feedCards.length})</span>
+                  </button>
+                </div>
+              )}
 
           {/* Stories Stream */}
           {filteredFeedCards.length === 0 ? (
@@ -1719,6 +1931,8 @@ export default function AletheiaHome() {
                 );
               })}
             </div>
+          )}
+          </>
           )}
         </div>
 
