@@ -14,6 +14,8 @@ import { FreeNewsFetcher } from "../../ingestion/rss-search";
 import { postgresStore } from "../../storage/postgres-store";
 import { ContextAgent } from "../context/context-agent";
 import { ObserverAgent } from "../observer/observer-agent";
+import { SemanticTopicResolver } from "../../search/semantic-topic-resolver";
+import { filterFeedBySemanticAffinity } from "../../matching/semantic-matcher";
 
 export interface ToolExecution {
   tool_name: string;
@@ -78,6 +80,17 @@ export interface DialogueResponse {
 
 export type DialogueStreamEvent =
   | { type: "token"; token: string }
+  | {
+      type: "feed_filter";
+      data: {
+        is_active: boolean;
+        topic?: string;
+        matched_event_ids?: string[];
+        filter_reason?: string;
+        trigger_targeted_curation?: boolean;
+        curation_query?: string;
+      };
+    }
   | { type: "tool_start"; tool_name: string; query: string }
   | { type: "tool_complete"; tool_name: string; query: string; summary: string; sources?: EventSourceArticle[] }
   | { type: "meta"; data: DialogueResponse };
@@ -175,19 +188,112 @@ export class DialogueAgent {
       unifiedNode = await postgresStore.getUnifiedTopicNode("usr_default");
     }
 
-    // 2. Invoke Context Agent
-    const contextFraming = await ContextAgent.generateContextFraming(
+    // 2. Step 1: Immediate Semantic Topic Resolution & Feed Filtering FIRST
+    const semanticResult = await SemanticTopicResolver.resolveContextualTopics(
       unifiedNode,
       history.map((m) => ({ role: m.role, content: m.content })),
       lastUserMessage,
-      attachedStory,
-      currentStories
+      attachedStory
     );
+
+    const identifiedTopic =
+      semanticResult.identified_discussion_subject ||
+      semanticResult.selected_topics[0]?.topic_name ||
+      attachedStory?.topic;
+
+    let relevantStories: Array<{
+      event_id: string;
+      headline: string;
+      topic: string;
+      summary: string;
+      fact_bullets?: string[];
+    }> = [];
+
+    let matchedIds: string[] = [];
+
+    // Filter available candidate stories by the identified topic FIRST
+    if (currentStories && currentStories.length > 0 && identifiedTopic) {
+      const semanticallyMatched = filterFeedBySemanticAffinity(
+        currentStories as any,
+        identifiedTopic,
+        unifiedNode
+      );
+      relevantStories = semanticallyMatched.slice(0, 5);
+      matchedIds = semanticallyMatched.map((s) => s.event_id);
+    }
+
+    // Instantly emit feed_filter event to the client so UI updates immediately!
+    if (identifiedTopic && identifiedTopic !== "all") {
+      yield {
+        type: "feed_filter",
+        data: {
+          is_active: true,
+          topic: identifiedTopic,
+          matched_event_ids: matchedIds,
+          filter_reason: `Focusing on "${identifiedTopic}"`,
+          trigger_targeted_curation: matchedIds.length === 0,
+          curation_query: identifiedTopic,
+        },
+      };
+    }
 
     const now = new Date();
     const currentDateStr = clientContext?.localFormatted || now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     const timeZoneStr = clientContext?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     const locationStr = clientContext?.location || timeZoneStr;
+
+    // If no matching stories exist in the feed, execute a live search to get current facts on this topic!
+    if (relevantStories.length === 0 && identifiedTopic && identifiedTopic !== "all") {
+      yield { type: "tool_start", tool_name: "search_internet", query: identifiedTopic };
+
+      try {
+        const liveArticles = await FreeNewsFetcher.searchNews(identifiedTopic, 5);
+        const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
+          name: a.source_name || "News Wire",
+          title: a.title,
+          url: a.source_url,
+          bias: a.author_bias_rating || "center",
+          raw_text: a.raw_text,
+          published_at: a.published_at,
+          highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
+        }));
+
+        executedTools.push({
+          tool_name: "search_internet",
+          query: identifiedTopic,
+          results_summary: `Retrieved ${liveArticles.length} live sources for "${identifiedTopic}".`,
+          items_retrieved: liveArticles.length,
+          sources: eventSources,
+        });
+
+        yield {
+          type: "tool_complete",
+          tool_name: "search_internet",
+          query: identifiedTopic,
+          summary: `Retrieved ${liveArticles.length} live sources for "${identifiedTopic}".`,
+          sources: eventSources,
+        };
+
+        relevantStories = liveArticles.map((a, i) => ({
+          event_id: `live_curated_${i}`,
+          headline: a.title,
+          topic: identifiedTopic,
+          summary: a.raw_text.slice(0, 300),
+          fact_bullets: [],
+        }));
+      } catch (err) {
+        console.warn("Auto-curation search error:", err);
+      }
+    }
+
+    // 3. Step 2: Context Agent Framing grounded in the newly filtered/fetched stories
+    const contextFraming = await ContextAgent.generateContextFraming(
+      unifiedNode,
+      history.map((m) => ({ role: m.role, content: m.content })),
+      lastUserMessage,
+      attachedStory,
+      relevantStories
+    );
 
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
 You engage in dual-intent conversations equipped with real-time tool execution and feed filtering capabilities:
@@ -269,21 +375,18 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
       : "";
 
     const currentFeedContext =
-      currentStories && currentStories.length > 0
-        ? `\nCURRENT FILTERED FEED STORIES IN USER'S VIEW (${currentStories.length} articles):
-${currentStories.slice(0, 5).map((s, i) => `${i + 1}. [${s.topic}] "${s.headline}"
+      relevantStories.length > 0
+        ? `\nCURRENT FILTERED FEED STORIES FOR THIS TOPIC (${relevantStories.length} articles):
+${relevantStories.map((s, i) => `${i + 1}. [${s.topic}] "${s.headline}"
 Summary: ${s.summary}
 ${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.join(" | ")}` : ""}`).join("\n\n")}`
         : "";
 
     const formattedHistory = history.map((m) => `${m.role === "assistant" ? "ALETHEIA" : "USER"}: ${m.content}`).join("\n\n");
-    let prompt = `${knownContext}${storyContext}${currentFeedContext}\n\nConversation History:\n${formattedHistory}`;
-
-    // LLM-Driven Epistemic Tool Execution (Zero Hardcoded Regexes or Keywords)
-    let finalPrompt = prompt;
+    let finalPrompt = `${knownContext}${storyContext}${currentFeedContext}\n\nConversation History:\n${formattedHistory}`;
 
     // First, let DeepSeek evaluate whether local context is sufficient or if a live search tool is required
-    const toolEvaluationPrompt = `${prompt}
+    const toolEvaluationPrompt = `${finalPrompt}
 
 EPISTEMIC SUFFICIENCY & TEMPORAL INTEGRITY EVALUATION:
 - CURRENT REAL-WORLD DATE: ${currentDateStr} (Year: ${now.getFullYear()})

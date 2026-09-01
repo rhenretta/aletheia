@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
           for await (const chunk of dialogueStream) {
             if (chunk.type === "token") {
               sendEvent("token", { token: chunk.token });
+            } else if (chunk.type === "feed_filter") {
+              sendEvent("feed_filter", chunk.data);
             } else if (chunk.type === "tool_start") {
               sendEvent("tool_start", { tool_name: chunk.tool_name, query: chunk.query });
             } else if (chunk.type === "tool_complete") {

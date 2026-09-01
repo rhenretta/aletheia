@@ -613,7 +613,16 @@ export default function AletheiaHome() {
             data = JSON.parse(dataMatch[1]);
           } catch (e) {}
 
-          if (eventType === "tool_start" && data.tool_name) {
+          if (eventType === "feed_filter" && data) {
+            if (data.is_active && (data.matched_event_ids?.length || data.topic)) {
+              setAiFeedFilter(data);
+              if (data.trigger_targeted_curation && (data.curation_query || data.topic)) {
+                handleTargetedCuration(data.curation_query || data.topic, data.topic);
+              }
+            } else {
+              setAiFeedFilter(null);
+            }
+          } else if (eventType === "tool_start" && data.tool_name) {
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === botMessageId
