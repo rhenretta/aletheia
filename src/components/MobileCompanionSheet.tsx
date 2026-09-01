@@ -34,7 +34,7 @@ interface MobileCompanionSheetProps {
   companionTab: "chat" | "interests";
   setCompanionTab: (tab: "chat" | "interests") => void;
   session: any;
-  signIn: (provider: string) => void;
+  signIn: (provider?: string, options?: any) => Promise<any> | void;
   messages: ChatMessage[];
   chatInput: string;
   setChatInput: (val: string) => void;
