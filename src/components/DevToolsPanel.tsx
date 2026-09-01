@@ -495,6 +495,64 @@ export default function DevToolsPanel({
                       );
                     })}
                   </div>
+
+                  {/* Harmonization Audit History */}
+                  <div className="pt-2 border-t border-white/10 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-cyan-400" />
+                        Harmonization Runs ({effectiveTopicNode?.harmonization_runs?.length || 0}):
+                      </span>
+                    </div>
+
+                    {(effectiveTopicNode?.harmonization_runs || []).length > 0 ? (
+                      <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                        {effectiveTopicNode?.harmonization_runs?.map((run, rIdx) => (
+                          <div
+                            key={rIdx}
+                            className="p-2 rounded bg-slate-950 border border-white/5 flex items-center justify-between text-[10px]"
+                          >
+                            <div className="space-y-0.5 max-w-[75%]">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase border ${
+                                    run.trigger_source === "background_observer"
+                                      ? "bg-amber-950/70 text-amber-300 border-amber-500/30"
+                                      : "bg-emerald-950/70 text-emerald-300 border-emerald-500/30"
+                                  }`}
+                                >
+                                  {run.trigger_source === "background_observer" ? "Background" : "Manual"}
+                                </span>
+                                <span className="text-slate-400 text-[9px]">
+                                  {new Date(run.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                              <p className="text-slate-300 truncate">{run.summary}</p>
+                            </div>
+
+                            {onSelectContext && (
+                              <button
+                                onClick={() => {
+                                  onSelectContext({
+                                    type: "harmonization_run",
+                                    run,
+                                  });
+                                  setActiveTab("contextual");
+                                }}
+                                className="text-[9px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/30"
+                              >
+                                Inspect →
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-slate-500 italic">
+                        No harmonization runs yet. Click &quot;Harmonize&quot; in the Interests tab to trigger a run.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Pillar 2: The Context Agent (The Empath) */}

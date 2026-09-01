@@ -27,9 +27,8 @@ export async function POST(req: NextRequest) {
     const unifiedNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
     const result = await InterestHarmonizer.harmonize(unifiedNode, "manual_user");
 
-    if (result.changed) {
-      await postgresStore.saveUnifiedTopicNode(result.harmonized_node);
-    }
+    // Always persist updated node to preserve the HarmonizationRun audit log
+    await postgresStore.saveUnifiedTopicNode(result.harmonized_node);
 
     const userGraph = await postgresStore.getUserGraph(effectiveUserId);
 

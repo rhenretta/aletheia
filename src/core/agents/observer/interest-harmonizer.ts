@@ -132,52 +132,52 @@ Output strict JSON:
             }
           }
 
-          if (actionsTaken.length > 0) {
-            const runSummary =
-              parsed.summary ||
-              `Executed ${actionsTaken.length} discrete graph mutation tool actions on ${topicKeys.length} topics.`;
+          const runSummary =
+            parsed.summary ||
+            (actionsTaken.length > 0
+              ? `Executed ${actionsTaken.length} discrete graph mutation tool actions on ${topicKeys.length} topics.`
+              : `Evaluated ${topicKeys.length} active topics. All topics are distinct and well-formed; no merges or splits required.`);
 
-            const harmonizationRun: HarmonizationRun = {
-              run_id: runId,
-              timestamp,
+          const harmonizationRun: HarmonizationRun = {
+            run_id: runId,
+            timestamp,
+            trigger_source: triggerSource,
+            summary: runSummary,
+            actions: actionsTaken,
+            trace_id: traceId,
+            topics_before_count: topicKeys.length,
+            topics_after_count: Object.keys(adaptedNode.topics).length,
+          };
+
+          adaptedNode.harmonization_runs = [harmonizationRun, ...(adaptedNode.harmonization_runs || []).slice(0, 20)];
+          adaptedNode.last_updated = timestamp;
+
+          traceLogger.logTrace({
+            trace_id: traceId,
+            session_id: `user_${unifiedNode.user_id}`,
+            timestamp,
+            node_name: "node_observer",
+            input_summary: {
+              initial_topics_count: topicKeys.length,
+              initial_topics: topicKeys,
               trigger_source: triggerSource,
-              summary: runSummary,
-              actions: actionsTaken,
-              trace_id: traceId,
-              topics_before_count: topicKeys.length,
-              topics_after_count: Object.keys(adaptedNode.topics).length,
-            };
+            },
+            output_summary: {
+              harmonized_topics_count: Object.keys(adaptedNode.topics).length,
+              harmonized_topics: Object.keys(adaptedNode.topics),
+              actions_count: actionsTaken.length,
+              run_id: runId,
+            },
+            reasoning_rationale: `Harmonization tool run [${triggerSource}]: ${runSummary}`,
+            latency_ms: 0,
+          });
 
-            adaptedNode.harmonization_runs = [harmonizationRun, ...adaptedNode.harmonization_runs.slice(0, 20)];
-            adaptedNode.last_updated = timestamp;
-
-            traceLogger.logTrace({
-              trace_id: traceId,
-              session_id: `user_${unifiedNode.user_id}`,
-              timestamp,
-              node_name: "node_observer",
-              input_summary: {
-                initial_topics_count: topicKeys.length,
-                initial_topics: topicKeys,
-                trigger_source: triggerSource,
-              },
-              output_summary: {
-                harmonized_topics_count: Object.keys(adaptedNode.topics).length,
-                harmonized_topics: Object.keys(adaptedNode.topics),
-                actions_count: actionsTaken.length,
-                run_id: runId,
-              },
-              reasoning_rationale: `Harmonization tool run [${triggerSource}]: ${runSummary}`,
-              latency_ms: 0,
-            });
-
-            return {
-              harmonized_node: adaptedNode,
-              actions_taken: actionsTaken,
-              harmonization_run: harmonizationRun,
-              changed: true,
-            };
-          }
+          return {
+            harmonized_node: adaptedNode,
+            actions_taken: actionsTaken,
+            harmonization_run: harmonizationRun,
+            changed: actionsTaken.length > 0,
+          };
         }
       } catch (err) {
         console.warn("InterestHarmonizer: LLM tool harmonization error, falling back to heuristic cleanup:", err);
