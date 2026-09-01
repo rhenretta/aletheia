@@ -44,6 +44,7 @@ import {
 import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import DevToolsPanel from "@/components/DevToolsPanel";
 import SourceReaderModal from "@/components/SourceReaderModal";
+import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import { useSession, signIn, signOut } from "next-auth/react";
 
 function sanitizeDisplay(input?: string): string {
@@ -88,6 +89,7 @@ export default function AletheiaHome() {
   const [extractedTopics, setExtractedTopics] = useState<Array<{ topic: string; weight: number; reasoning: string }>>([]);
   const [companionTab, setCompanionTab] = useState<"chat" | "interests">("chat");
   const [mobileTab, setMobileTab] = useState<"feed" | "dialogue" | "interests">("feed");
+  const [isMobileCompanionOpen, setIsMobileCompanionOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Pipeline & Feed state
@@ -630,8 +632,8 @@ export default function AletheiaHome() {
       sources: card.sources,
     };
     setAttachedStory(storyContext);
-    setMobileTab("dialogue");
     setCompanionTab("chat");
+    setIsMobileCompanionOpen(true);
 
     // Set contextual target for devtools
     setSelectedContext({
@@ -1035,9 +1037,9 @@ export default function AletheiaHome() {
       )}
 
       {/* MAIN UNIFIED DASHBOARD: FEED (Left 62%) + AMBIENT COMPANION (Right 38%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pb-20 lg:pb-0">
         {/* LEFT COLUMN: THE PERSONALIZED EPISTEMIC FEED (7 of 12 cols) */}
-        <div className={`lg:col-span-7 space-y-6 ${mobileTab === "feed" ? "block" : "hidden lg:block"}`}>
+        <div className="lg:col-span-7 space-y-6">
           {/* Unified Epistemic Filter Command Bar */}
           <div className="glass-panel rounded-2xl p-3 sm:p-4 border border-white/10 flex flex-wrap items-center justify-between gap-3">
             {/* Left: Discovery Horizon Segmented Switcher */}
@@ -1449,11 +1451,9 @@ export default function AletheiaHome() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: AMBIENT CONVERSATIONAL COMPANION & GRAPH (5 of 12 cols) */}
+        {/* RIGHT COLUMN: AMBIENT CONVERSATIONAL COMPANION & GRAPH (5 of 12 cols, desktop only) */}
         <div
-          className={`lg:col-span-5 glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 flex flex-col h-[calc(100dvh-130px)] lg:h-[calc(100vh-140px)] min-h-[500px] lg:min-h-[640px] max-h-[850px] sticky top-4 ${
-            mobileTab !== "feed" ? "flex" : "hidden lg:flex"
-          }`}
+          className="hidden lg:flex lg:col-span-5 glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 flex-col h-[calc(100vh-140px)] min-h-[640px] max-h-[850px] sticky top-4"
         >
           {/* Header & Tab Switcher (Conversation vs Interests & Why) */}
           <div className="border-b border-white/10 pb-3 mb-3 flex-shrink-0 space-y-2">
@@ -1940,12 +1940,48 @@ export default function AletheiaHome() {
         </div>
       </div>
 
+      {/* Floating Ambient Companion Quick-Bar & Expandable Sheet for Mobile */}
+      <MobileCompanionSheet
+        isOpen={isMobileCompanionOpen}
+        onOpen={() => setIsMobileCompanionOpen(true)}
+        onClose={() => setIsMobileCompanionOpen(false)}
+        companionTab={companionTab}
+        setCompanionTab={setCompanionTab}
+        session={session}
+        signIn={signIn}
+        messages={messages}
+        chatInput={inputPrompt}
+        setChatInput={setInputPrompt}
+        isSendingChat={isSendingChat}
+        chatError={chatError}
+        handleSendMessage={handleSendMessage}
+        handleInspectChatTurn={handleInspectChatTurn}
+        chatScrollContainerRef={chatScrollContainerRef}
+        attachedStory={attachedStory}
+        setAttachedStory={setAttachedStory}
+        unifiedTopicNode={unifiedTopicNode}
+        userGraph={userGraph}
+        extractedTopics={extractedTopics}
+        totalInterestsCount={totalInterestsCount}
+        handleInspectTopic={handleInspectTopic}
+        setSelectedTopicFilter={setSelectedTopicFilter}
+        handleHarmonizeInterests={handleHarmonizeInterests}
+        isHarmonizing={isHarmonizing}
+        handleResetProfileAndSession={handleResetProfileAndSession}
+        isResettingProfile={isResettingProfile}
+        setSelectedContext={setSelectedContext}
+        setIsDevToolsOpen={setIsDevToolsOpen}
+      />
+
       {/* Mobile Fixed Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-slate-950/95 backdrop-blur-xl border-t border-white/10 px-4 py-2 flex items-center justify-around pb-safe shadow-2xl">
         <button
-          onClick={() => setMobileTab("feed")}
+          onClick={() => {
+            setIsMobileCompanionOpen(false);
+            setMobileTab("feed");
+          }}
           className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
-            mobileTab === "feed" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
+            !isMobileCompanionOpen && mobileTab === "feed" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
         >
           <div className="relative">
@@ -1961,17 +1997,19 @@ export default function AletheiaHome() {
 
         <button
           onClick={() => {
-            setMobileTab("dialogue");
             setCompanionTab("chat");
+            setIsMobileCompanionOpen(true);
           }}
           className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
-            mobileTab === "dialogue" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
+            isMobileCompanionOpen && companionTab === "chat" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
         >
           <div className="relative">
-            <MessageSquare className="w-5 h-5" />
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-500 to-violet-500 flex items-center justify-center font-bold text-white text-xs shadow-sm">
+              α
+            </div>
             {attachedStory && (
-              <span className="absolute -top-0.5 -right-1.5 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+              <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
             )}
           </div>
           <span className="text-[10px] font-mono">Dialogue</span>
@@ -1979,11 +2017,11 @@ export default function AletheiaHome() {
 
         <button
           onClick={() => {
-            setMobileTab("interests");
             setCompanionTab("interests");
+            setIsMobileCompanionOpen(true);
           }}
           className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
-            mobileTab === "interests" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
+            isMobileCompanionOpen && companionTab === "interests" ? "text-cyan-400 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
         >
           <div className="relative">
@@ -1996,6 +2034,14 @@ export default function AletheiaHome() {
           </div>
           <span className="text-[10px] font-mono">Interests</span>
         </button>
+
+        <button
+          onClick={() => setIsDevToolsOpen(true)}
+          className="flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl text-slate-400 hover:text-cyan-300"
+        >
+          <Sliders className="w-5 h-5" />
+          <span className="text-[10px] font-mono">DevTools</span>
+        </button>
       </nav>
 
       {/* Interactive Original Source Article Reader Modal with Highlighted Passages */}
@@ -2004,7 +2050,10 @@ export default function AletheiaHome() {
           source={selectedReadingSource.source}
           card={selectedReadingSource.card}
           onClose={() => setSelectedReadingSource(null)}
-          onDiscuss={(c) => handleDiscussStory(c)}
+          onDiscuss={(c) => {
+            setSelectedReadingSource(null);
+            handleDiscussStory(c);
+          }}
         />
       )}
 
