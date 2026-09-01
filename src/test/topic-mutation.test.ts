@@ -138,4 +138,60 @@ describe("TopicMutationEngine: Discrete Atomic Operations", () => {
     expect(node.topics["AI Policy"]).toBeUndefined();
     expect(node.recent_topic_diffs?.[0]?.topic_name).toBe("AI Policy");
   });
+
+  it("cumulatively evolves living topic dossier and timeline across multiple turns", () => {
+    const node = createMockNode();
+    
+    // Initial creation
+    TopicMutationEngine.executeCreateTopic(node, {
+      topic: "Tesla FSD Safety",
+      weight: 0.6,
+      what_they_care_about: "Autonomous driving disengagement rates and fleet mileage telemetry.",
+      why_they_care: "Concerns over real-world deployment safety compared to human driving baselines.",
+      living_narrative: "Focuses on verified empirical safety milestones and disengagement data in autonomous systems.",
+      curiosity_vectors: ["disengagements", "fleet data"],
+    });
+
+    const initial = node.topics["Tesla FSD Safety"];
+    expect(initial).toBeDefined();
+    expect(initial.what_they_care_about).toBe("Autonomous driving disengagement rates and fleet mileage telemetry.");
+    expect(initial.evolution_timeline?.length).toBe(1);
+
+    // Follow-up turn: evolving with edge case analysis
+    TopicMutationEngine.executeUpdateTopic(node, {
+      topic: "Tesla FSD Safety",
+      weight_delta: 0.1,
+      what_they_care_about: "Autonomous driving disengagement rates, fleet mileage telemetry, and edge-case fatality investigations.",
+      why_they_care: "Evaluates how rare edge-case fatalities and regulatory scrutiny balance against aggregate statistical safety claims.",
+      living_narrative: "Tracks empirical safety milestones, comparing aggregate fleet miles per incident against regulatory scrutiny of severe edge-case disengagements.",
+      curiosity_vectors_to_add: ["edge cases", "nhtsa investigations"],
+      evolution_insight: "Expanded focus to investigate how catastrophic edge cases are weighted by regulators vs aggregate safety numbers.",
+      evidence: "How do regulators weigh single edge cases vs aggregate stats?",
+    });
+
+    const updated = node.topics["Tesla FSD Safety"];
+    expect(updated.weight).toBe(0.7);
+    expect(updated.what_they_care_about).toContain("edge-case fatality investigations");
+    expect(updated.why_they_care).toContain("rare edge-case fatalities");
+    expect(updated.curiosity_vectors).toContain("edge cases");
+    expect(updated.curiosity_vectors).toContain("disengagements");
+    expect(updated.evolution_timeline?.length).toBe(2);
+    expect(updated.evolution_timeline?.[1].insight).toContain("Expanded focus to investigate how catastrophic edge cases");
+  });
+
+  it("sanitizes third-person conversational meta-commentary into declarative prose", () => {
+    const node = createMockNode();
+    
+    TopicMutationEngine.executeCreateTopic(node, {
+      topic: "Robotics",
+      what_they_care_about: "User's question about humanoid actuators reflects an interest in gearboxes vs direct drive.",
+      why_they_care: "The user wants to understand torque density trade-offs.",
+      living_narrative: "The user is exploring harmonic drive reliability.",
+    });
+
+    const robotTopic = node.topics["Robotics"];
+    expect(robotTopic.what_they_care_about).not.toMatch(/User's question about/i);
+    expect(robotTopic.why_they_care).not.toMatch(/The user wants to understand/i);
+    expect(robotTopic.why_they_care).toMatch(/^Seeks to understand/i);
+  });
 });

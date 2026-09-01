@@ -75,6 +75,19 @@ export type TopicMutationToolCall =
   | { rationale?: string; tool: "split_topic"; parameters: SplitTopicParams }
   | { rationale?: string; tool: "delete_topic"; parameters: DeleteTopicParams };
 
+export function sanitizeLivingProse(text?: string): string | undefined {
+  if (!text) return undefined;
+  let cleaned = text.trim();
+  // Strip conversational third-person meta-framing
+  cleaned = cleaned.replace(/^(user'?s?|the user'?s?)\s+(question|inquiry|comment|statement|query|message|interest)\s+(about|regarding|reflects|on|in)\s+/i, "");
+  cleaned = cleaned.replace(/^(the user is|user is|user)\s+(interested in|focused on|asking about|exploring)\s+/i, "Focused on ");
+  cleaned = cleaned.replace(/^(the user|user)\s+(wants to understand|seeks to understand|cares about)\s+/i, "Seeks to understand ");
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+  return cleaned;
+}
+
 export class TopicMutationEngine {
   /**
    * Creates a new topic node in the user's knowledge graph.
@@ -106,7 +119,11 @@ export class TopicMutationEngine {
           why_they_care: params.why_they_care,
           presentation_strategy: params.presentation_strategy,
           technical_depth: params.technical_depth,
+          living_narrative: params.living_narrative,
+          likes_and_angles: params.likes_and_angles,
+          dislikes_and_critiques: params.dislikes_and_critiques,
           curiosity_vectors_to_add: params.curiosity_vectors,
+          evolution_insight: params.evolution_insight,
           evidence: params.evidence,
         },
         triggerSource
@@ -124,22 +141,31 @@ export class TopicMutationEngine {
       ? params.curiosity_vectors
       : [topicName];
 
-    const substantiveWhy = params.why_they_care?.trim() || `Substantive intellectual focus on ${topicName}.`;
+    const cleanedWhat = sanitizeLivingProse(params.what_they_care_about);
+    const cleanedWhy = sanitizeLivingProse(params.why_they_care) || `Substantive intellectual focus on ${topicName}.`;
+    const cleanedNarrative = sanitizeLivingProse(params.living_narrative);
+
+    // If what_they_care_about is identical to why_they_care or missing, derive a distinct focus
+    const finalWhat = (cleanedWhat && cleanedWhat !== cleanedWhy)
+      ? cleanedWhat
+      : `Core focus on ${topicName} developments, technical architecture, and real-world implications.`;
+
+    const finalNarrative = cleanedNarrative || (cleanedWhat && cleanedWhat !== cleanedWhy ? `${cleanedWhat} ${cleanedWhy}` : cleanedWhy);
 
     const newMetadata: TopicMetadata = {
       weight: initialWeight,
-      what_they_care_about: params.what_they_care_about || params.living_narrative || undefined,
-      why_they_care: substantiveWhy,
+      what_they_care_about: finalWhat,
+      why_they_care: cleanedWhy,
       presentation_strategy: params.presentation_strategy || undefined,
       technical_depth: validDepth,
-      living_narrative: params.living_narrative || substantiveWhy,
+      living_narrative: finalNarrative,
       likes_and_angles: params.likes_and_angles || [],
       dislikes_and_critiques: params.dislikes_and_critiques || [],
       curiosity_vectors: curiosityVectors,
       evolution_timeline: [
         {
           timestamp,
-          insight: params.evolution_insight || substantiveWhy,
+          insight: sanitizeLivingProse(params.evolution_insight) || cleanedWhy,
           trigger_source: triggerSource,
           evidence: params.evidence,
         },
@@ -154,7 +180,7 @@ export class TopicMutationEngine {
       topic_name: topicName,
       timestamp,
       trigger_source: triggerSource,
-      reasoning: params.why_they_care || `Discovered new interest in ${topicName}.`,
+      reasoning: cleanedWhy || `Discovered new interest in ${topicName}.`,
       evidence: params.evidence,
       previous_state: {
         weight: 0,
@@ -181,6 +207,7 @@ export class TopicMutationEngine {
 
   /**
    * Selectively updates an existing topic node without touching other nodes.
+   * Synthesizes new user input into the living document cumulatively.
    */
   public static executeUpdateTopic(
     node: UnifiedTopicNode,
@@ -202,7 +229,9 @@ export class TopicMutationEngine {
         {
           topic: topicName,
           weight: Math.max(0.2, (params.weight_delta || 0.1) + 0.5),
+          what_they_care_about: params.what_they_care_about,
           why_they_care: params.why_they_care || `Interest in ${topicName}.`,
+          presentation_strategy: params.presentation_strategy,
           technical_depth: params.technical_depth || "practitioner",
           living_narrative: params.living_narrative,
           likes_and_angles: params.likes_and_angles,
@@ -219,6 +248,8 @@ export class TopicMutationEngine {
     const prevWeight = existing.weight;
     const prevDepth = existing.technical_depth;
     const prevWhy = existing.why_they_care;
+    const prevWhat = existing.what_they_care_about;
+    const prevNarrative = existing.living_narrative || existing.why_they_care;
     const prevVectors = existing.curiosity_vectors || [];
 
     const newWeight = Number(Math.min(1.0, Math.max(0.1, prevWeight + (params.weight_delta || 0.05))).toFixed(2));
@@ -227,17 +258,29 @@ export class TopicMutationEngine {
         ? params.technical_depth
         : prevDepth;
 
-    const newWhy = params.why_they_care?.trim() || prevWhy;
+    const cleanedWhy = sanitizeLivingProse(params.why_they_care);
+    const cleanedWhat = sanitizeLivingProse(params.what_they_care_about);
+    const cleanedNarrative = sanitizeLivingProse(params.living_narrative);
 
-    // Merge Living Narrative
-    let updatedNarrative = existing.living_narrative || existing.why_they_care;
-    if (params.living_narrative) {
-      updatedNarrative = params.living_narrative.trim();
-    } else if (params.why_they_care && !updatedNarrative.includes(newWhy)) {
-      updatedNarrative = `${updatedNarrative} ${newWhy}`.trim();
+    // Evolve why_they_care (substantive intellectual motivation)
+    const newWhy = cleanedWhy && cleanedWhy !== prevWhy ? cleanedWhy : (prevWhy || `Interest in ${topicName}.`);
+
+    // Evolve what_they_care_about (ensure not identical to why_they_care)
+    let newWhat = prevWhat;
+    if (cleanedWhat && cleanedWhat !== newWhy) {
+      newWhat = cleanedWhat;
+    } else if (!newWhat) {
+      newWhat = `Core focus on ${topicName} developments, technical architecture, and real-world implications.`;
     }
 
-    const newWhat = params.what_they_care_about || existing.what_they_care_about || updatedNarrative || undefined;
+    // Evolve living narrative (cumulative living document synthesis)
+    let updatedNarrative = prevNarrative;
+    if (cleanedNarrative && cleanedNarrative !== prevNarrative) {
+      updatedNarrative = cleanedNarrative;
+    } else if (cleanedWhy && !updatedNarrative.includes(cleanedWhy)) {
+      updatedNarrative = `${updatedNarrative} ${cleanedWhy}`.trim();
+    }
+
     const newPresentation = params.presentation_strategy || existing.presentation_strategy || undefined;
 
     let newVectors = [...prevVectors];
@@ -264,11 +307,14 @@ export class TopicMutationEngine {
 
     // Append to Evolution Timeline
     const timeline = [...(existing.evolution_timeline || [])];
-    const newInsight = params.evolution_insight || (params.why_they_care && params.why_they_care !== prevWhy ? newWhy : undefined) || (params.evidence ? `Expressed: "${params.evidence.slice(0, 80)}"` : undefined);
-    if (newInsight && !timeline.some((t) => t.insight === newInsight)) {
+    const cleanedInsight = sanitizeLivingProse(params.evolution_insight) ||
+      (cleanedWhy && cleanedWhy !== prevWhy ? cleanedWhy : undefined) ||
+      (params.evidence ? `Expressed: "${params.evidence.slice(0, 80)}"` : undefined);
+
+    if (cleanedInsight && !timeline.some((t) => t.insight === cleanedInsight)) {
       timeline.push({
         timestamp,
-        insight: newInsight,
+        insight: cleanedInsight,
         trigger_source: triggerSource,
         evidence: params.evidence,
       });

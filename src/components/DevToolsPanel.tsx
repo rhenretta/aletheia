@@ -481,20 +481,30 @@ export default function DevToolsPanel({
                             {/* Pillar 1: What the user is interested in */}
                             <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded border border-white/5 space-y-0.5">
                               <span className="text-cyan-400 font-mono text-[9px] uppercase font-bold block">
-                                1. What They Are Interested In:
+                                1. What They Are Interested In (Focus & Scope):
                               </span>
                               <p className="text-slate-200">
-                                {meta.what_they_care_about || meta.living_narrative || meta.why_they_care}
+                                {meta.what_they_care_about || `Core focus on ${topicName} developments, technical architecture, and real-world implications.`}
                               </p>
                             </div>
 
                             {/* Pillar 2: Why they care (substantive intellectual motivation) */}
                             <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded border border-white/5 space-y-0.5">
                               <span className="text-emerald-400 font-mono text-[9px] uppercase font-bold block">
-                                2. Why They Care (Intellectual Stakes):
+                                2. Why They Care (Intellectual Stakes & Worldview):
                               </span>
                               <p className="text-slate-200">{meta.why_they_care}</p>
                             </div>
+
+                            {/* Living Dossier Synthesis & Narrative */}
+                            {meta.living_narrative && meta.living_narrative !== meta.why_they_care && meta.living_narrative !== meta.what_they_care_about && (
+                              <div className="text-[11px] leading-relaxed bg-indigo-950/20 p-2 rounded border border-indigo-500/20 space-y-0.5">
+                                <span className="text-indigo-400 font-mono text-[9px] uppercase font-bold block">
+                                  Living Dossier (Cumulative Narrative Synthesis):
+                                </span>
+                                <p className="text-slate-200 text-[10.5px] leading-normal">{meta.living_narrative}</p>
+                              </div>
+                            )}
 
                             {/* Pillar 3: How best to present stories to this user */}
                             <div className="text-[11px] leading-relaxed bg-slate-900/60 p-2 rounded border border-white/5 space-y-1">
@@ -533,6 +543,31 @@ export default function DevToolsPanel({
                                 </div>
                               )}
                             </div>
+
+                            {/* Evolution History Timeline */}
+                            {meta.evolution_timeline && meta.evolution_timeline.length > 0 && (
+                              <details className="text-[10px] font-mono group bg-slate-900/40 rounded border border-white/5 p-1.5">
+                                <summary className="cursor-pointer text-slate-400 hover:text-cyan-300 font-bold flex items-center justify-between">
+                                  <span>Evolution History ({meta.evolution_timeline.length} shifts)</span>
+                                  <span className="text-[9px] text-slate-500 group-open:rotate-180 transition-transform">▼</span>
+                                </summary>
+                                <div className="mt-1.5 space-y-1 pl-1 border-l border-cyan-500/30">
+                                  {meta.evolution_timeline.slice(-5).map((entry, eIdx) => (
+                                    <div key={eIdx} className="space-y-0.2">
+                                      <div className="flex items-center gap-1.5 text-[8.5px] text-slate-500">
+                                        <span>{new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                                        {entry.trigger_source && (
+                                          <span className="px-1 py-0.1 rounded bg-slate-800 text-cyan-400">
+                                            {entry.trigger_source}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-slate-300 text-[9.5px]">{entry.insight}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
                           </div>
 
                           {meta.curiosity_vectors && meta.curiosity_vectors.length > 0 && (

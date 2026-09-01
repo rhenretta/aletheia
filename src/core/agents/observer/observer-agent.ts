@@ -56,6 +56,21 @@ export class ObserverAgent {
     // Step 1: If DeepSeek is available, perform deep psychological and motivation extraction
     if (deepseekProvider.isConfigured() && lastUserMessage.length > 3) {
       try {
+        const existingTopics = adaptedNode.topics || {};
+        const serializedDossiers = Object.entries(existingTopics).length > 0
+          ? Object.entries(existingTopics).map(([name, meta]) => `TOPIC: "${name}"
+- Weight: ${meta.weight} (${Math.round(meta.weight * 100)}%) | Technical Depth: ${meta.technical_depth}
+- 1. WHAT THEY ARE INTERESTED IN (Focus & Scope): ${meta.what_they_care_about || "(None specified yet)"}
+- 2. WHY THEY CARE (Intellectual Stakes & Worldview): ${meta.why_they_care || "(None specified yet)"}
+- 3. LIVING NARRATIVE (Cumulative Synthesis): ${meta.living_narrative || meta.why_they_care || "(None specified yet)"}
+- 4. PRESENTATION STRATEGY: ${meta.presentation_strategy || "(Standard)"}
+- Preferred Angles: ${meta.likes_and_angles?.join(", ") || "None"}
+- Anti-Preferences / Critiques: ${meta.dislikes_and_critiques?.join(", ") || "None"}
+- Curiosity Vectors: ${meta.curiosity_vectors?.join(", ") || "None"}
+- Recent Evolution Timeline:
+${(meta.evolution_timeline || []).slice(-3).map((t) => `  * [${t.timestamp}] ${t.insight}`).join("\n") || "  * (Initial creation)"}`).join("\n---\n")
+          : "None (Knowledge graph is empty)";
+
         const systemPrompt = `You are the Observer Agent in the Mind-State Memory Architecture.
 Your role is silent, empathetic, and continuous adaptation. You build and evolve a LIVING DOCUMENT for each user interest topic.
 Analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation tool calls:
@@ -64,48 +79,61 @@ Analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation t
 3. "new_boundaries": Hard boundaries or topics the user explicitly or implicitly wants to avoid.
 4. "tool_calls": Discrete atomic tool calls to mutate individual user interests one by one ("create_topic" or "update_topic").
 
-LIVING TOPIC DOSSIER MANDATE:
-Each topic is a LIVING DOCUMENT capturing THREE essential dimensions learned entirely from the individual user:
-1. WHAT THE USER IS INTERESTED IN ("what_they_care_about"): The specific areas, aspects, and dimensions the user focuses on based on what they actively discuss.
-2. WHY THEY CARE ("why_they_care"): The user's underlying motivations, concerns, or reasons for caring as revealed by their words (write substantively in active voice; never narrate conversation turns).
-3. HOW BEST TO PRESENT STORIES ("presentation_strategy"): Derived STRICTLY and EXCLUSIVELY from how the user responds to content, engages with topics, and expresses what they like, dislike, or want to see. Never use hardcoded assumptions or generic formulas. If the user has not articulated presentation preferences for this topic, leave presentation fields empty.
+LIVING TOPIC DOSSIER MANDATE & CUMULATIVE SYNTHESIS:
+Each topic is an EVER-EVOLVING LIVING DOCUMENT capturing THREE essential dimensions:
+1. WHAT THE USER IS INTERESTED IN ("what_they_care_about"): The cumulative, evolving scope of specific areas, sub-domains, technologies, and focus dimensions the user tracks over time. Integrate new aspects with prior ones.
+2. WHY THEY CARE ("why_they_care"): The user's underlying intellectual stakes, motivations, philosophical worldview, and core concerns. Deepen this with new context—do NOT lose prior context.
+3. HOW BEST TO PRESENT STORIES ("presentation_strategy"): Editorial direction derived strictly from how the user responds to content, engages with topics, and expresses what they like or dislike.
+4. LIVING NARRATIVE ("living_narrative"): A rich, multi-dimensional living synthesis of the user's overall perspective, nuance, and journey on this topic. It weaves historical context with the newest discussion.
+5. EVOLUTION INSIGHT ("evolution_insight"): A concise 1-sentence note capturing the discrete incremental shift, new question, or nuance introduced in this specific conversation.
+
+NON-OVERWRITE & SYNTHESIS RULES FOR "update_topic":
+- When a topic already exists in the graph, you MUST NOT summarize only the latest turn in isolation or overwrite the document!
+- Take the PREVIOUS LIVING DOSSIER (provided below) as the baseline and SYNTHESIZE the new user input into it.
+- "what_they_care_about" and "why_they_care" MUST be distinct and non-identical:
+  * "what_they_care_about" specifies WHAT topics, sub-fields, and dimensions they follow.
+  * "why_they_care" specifies WHY it matters intellectually/philosophically.
+- ABSOLUTE BAN ON THIRD-PERSON CONVERSATIONAL META-NARRATION:
+  * NEVER write "User's question about...", "The user asked...", "In this turn the user...", "User's query reflects...", or narrate conversational turns.
+  * Write substantive, declarative statements characterizing the user's stance and interests (e.g. "Focuses on comparative safety benchmarks between autonomous driving systems and human baselines, emphasizing empirical edge-case disengagement data over marketing claims.").
 
 DISCRETE MUTATION TOOLS:
 - "create_topic" & "update_topic":
   Parameters:
   - "topic": Canonical name of the topic.
   - "weight_delta": Numeric delta (+0.05 to +0.2).
-  - "what_they_care_about": Specific areas and focus dimensions observed from the user.
-  - "why_they_care": Bottom-line motivation summary (substantive intellectual stakes only; NO conversation meta-commentary).
-  - "presentation_strategy": Presentation guidance derived strictly from how the user engages and responds to content (or empty if not expressed).
-  - "living_narrative": A rich, evolving living dossier synthesis of the user's specific perspective, context, and nuance on this topic.
-  - "likes_and_angles": Specific dimensions, features, or angles the user values based on their expressions.
-  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences the user expressed.
+  - "what_they_care_about": Cumulative specific focus areas and sub-domains.
+  - "why_they_care": Cumulative substantive intellectual stakes and worldview.
+  - "presentation_strategy": Presentation guidance derived strictly from user feedback.
+  - "living_narrative": Rich, cumulative evolving living dossier synthesis.
+  - "likes_and_angles": Specific dimensions, features, or angles the user values.
+  - "dislikes_and_critiques": Specific critiques, pet peeves, or anti-preferences.
   - "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical"
   - "curiosity_vectors": Sub-themes explored.
-  - "evolution_insight": 1-sentence insight describing what was learned or how their perspective shifted in this conversation.
+  - "evolution_insight": 1-sentence insight describing what was learned or how their perspective evolved in this turn.
   - "evidence": Verbatim quote from user.
 
 IRONCLAD GUARDRAILS & NEGATIVE CONSTRAINTS:
 - NEVER extract topics, interests, or sensitivities from statements, greetings, suggestions, or analogies made by the ASSISTANT / ALETHEIA.
 - NEVER infer user interests from the existence or framing of the application.
-- NEVER narrate conversation turns in "why_they_care" or "living_narrative".
 - If the user has only asked an open-ended conversational prompt (e.g. "What should we talk about", "Hello", "Tell me the news"), "tool_calls" MUST BE EMPTY ([]).
 - ONLY add a topic if the user actively introduced it or articulated substantive curiosity/opinions about it.
 - The "evidence" field MUST contain the exact verbatim substring from the USER showing their explicit statement.
 
-Existing Topics in Graph: ${Object.keys(adaptedNode.topics || {}).join(", ") || "None"}
+=== EXISTING LIVING TOPIC DOSSIERS IN KNOWLEDGE GRAPH ===
+${serializedDossiers}
+
 Current Emotional Trajectory: "${adaptedNode.psychological_profile?.emotional_trajectory || "Open and exploratory"}"
 
 Output strict JSON:
 {
-  "reasoning_summary": "In-depth cognitive evaluation of the user's explicit interests, emotional tone, communication boundaries, and worldview...",
+  "reasoning_summary": "In-depth cognitive evaluation synthesizing prior living dossiers with new user thoughts...",
   "updated_emotional_trajectory": string,
   "new_sensitivities": string[],
   "new_boundaries": string[],
   "tool_calls": [
     {
-      "rationale": "Clear rationale explaining what the user stated and why this specific knowledge graph topic mutation is required",
+      "rationale": "Clear rationale explaining how the living document was cumulatively evolved or created",
       "tool": "create_topic" | "update_topic",
       "parameters": {
         "topic": string,
@@ -131,7 +159,7 @@ Output strict JSON:
           .slice(-12)
           .join("\n");
 
-        const prompt = `Evaluate ONLY these user messages for genuine topic interests and mindset:\n\n${userOnlyDialogue}`;
+        const prompt = `Evaluate these user messages to cumulatively evolve the living topic dossiers:\n\n${userOnlyDialogue}`;
 
         rawSystemPrompt = systemPrompt;
         rawUserPrompt = prompt;
