@@ -36,12 +36,19 @@ export class PostgresStore {
     const databaseUrl = process.env.DATABASE_URL;
     if (databaseUrl) {
       try {
+        const isRemoteDb =
+          databaseUrl.includes("amazonaws.com") ||
+          databaseUrl.includes("rds") ||
+          !databaseUrl.includes("localhost");
+
         this.pool = new Pool({
           connectionString: databaseUrl,
           max: 20,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 2000,
+          connectionTimeoutMillis: 5000,
+          ssl: isRemoteDb ? { rejectUnauthorized: false } : undefined,
         });
+        console.log("PostgresStore: Initialized database pool (SSL:", isRemoteDb, ")");
       } catch (err) {
         console.warn("PostgresStore: Could not initialize pool:", err);
       }
@@ -53,6 +60,10 @@ export class PostgresStore {
       PostgresStore.instance = new PostgresStore();
     }
     return PostgresStore.instance;
+  }
+
+  public isPostgresConnected(): boolean {
+    return this.isConnected;
   }
 
   private ensureDataDirectory(): void {

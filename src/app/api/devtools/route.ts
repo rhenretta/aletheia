@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
+    postgres_connected: postgresStore.isPostgresConnected(),
     total_traces: combinedTraces.length,
     ai_calls: aiCalls,
     traces: combinedTraces,
