@@ -1,13 +1,12 @@
 import {
   UnifiedTopicNode,
-  TechnicalDepth,
   TopicMetadata,
   HarmonizationAction,
   HarmonizationRun,
-  TopicUpdateDiff,
 } from "../../types/contracts";
 import { deepseekProvider } from "../../llm/deepseek-provider";
 import { traceLogger } from "../../observability/trace-logger";
+import { TopicMutationEngine } from "./topic-mutation-engine";
 
 export interface HarmonizationResult {
   harmonized_node: UnifiedTopicNode;
@@ -18,8 +17,8 @@ export interface HarmonizationResult {
 
 export class InterestHarmonizer {
   /**
-   * Evaluates the active interest graph, merging redundant/near-duplicate topics,
-   * splitting amalgamated compound topics, and standardizing canonical topic entities.
+   * Evaluates the active interest graph and executes DISCRETE atomic mutation tools
+   * (merge_topics, split_topic, delete_topic, update_topic) one by one.
    * Produces an immutable, glass-box HarmonizationRun audit trail for user inspection.
    */
   public static async harmonize(
@@ -47,7 +46,7 @@ export class InterestHarmonizer {
     const runId = `run_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const traceId = `trace_harm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-    // Step 1: DeepSeek semantic reasoning if available
+    // Step 1: DeepSeek discrete tool calling if available
     if (deepseekProvider.isConfigured()) {
       try {
         const topicsFormatted = Object.entries(originalTopics).map(([name, meta]) => ({
@@ -59,40 +58,39 @@ export class InterestHarmonizer {
         }));
 
         const systemPrompt = `You are the Knowledge Graph Harmonizer for Aletheia's Mind-State Memory Architecture.
-Your role is to evaluate a user's active interest graph, and clean it up by:
-1. MERGING ONLY near-duplicate, overlapping, or fragmented sub-topics that represent the exact same core entity (e.g. "SpaceX Starship" + "Starship Rocket Launch" -> "SpaceX Starship").
-2. SPLITTING compound, overloaded, or multi-domain amalgamations into distinct focused nodes.
-3. PRESERVING ALL standalone, distinct, and specialized topics untouched.
+Your role is to evaluate a user's active interest graph and emit DISCRETE MUTATION TOOL CALLS to clean it up.
+You NEVER recreate or return the full graph. You ONLY emit specific tool calls for nodes that need merging, splitting, updating, or deletion.
 
-CRITICAL PRESERVATION RULES:
-- NEVER DROP, OMIT, OR SUMMARIZE AWAY DISTINCT USER INTERESTS.
-- If the user has 10, 20, or 50 distinct topics, you MUST return all 10, 20, or 50 topics in "harmonized_topics".
-- Different or orthogonal domains (e.g. "AI and Economic Policy", "Commercial Spaceflight", "Geopolitics of Iran", "Quantum Computing") MUST REMAIN SEPARATE. NEVER merge distinct fields into a generic bucket.
-- Provide explicit, clear "rationale" explaining why any topics were combined, split, or modified.
-- Maintain accurate technical depth ("introductory", "practitioner", "expert", "deep_technical").
-- Output strict JSON:
+AVAILABLE MUTATION TOOLS:
+1. "merge_topics": Merge two or more near-duplicate/overlapping entities into one canonical entity.
+   parameters: { "source_topics": string[], "resulting_topic": string, "why_they_care": string, "technical_depth": string, "curiosity_vectors": string[], "rationale": string }
+
+2. "split_topic": Split a compound/multi-domain topic into distinct focused nodes.
+   parameters: { "source_topic": string, "resulting_topics": [{ "topic": string, "weight": number, "why_they_care": string, "technical_depth": string, "curiosity_vectors": string[] }], "rationale": string }
+
+3. "delete_topic": Prune an obsolete or invalid topic.
+   parameters: { "topic": string, "rationale": string }
+
+4. "update_topic": Update metadata or technical depth on an existing topic.
+   parameters: { "topic": string, "weight_delta": number, "why_they_care": string, "technical_depth": string, "curiosity_vectors_to_add": string[], "rationale": string }
+
+CRITICAL RULES:
+- ONLY emit tool calls for topics that genuinely require merging or splitting.
+- Standalone, distinct topics (e.g. "AI Policy", "Commercial Spaceflight", "Iran Geopolitics") MUST BE LEFT ALONE. If no merge/split is needed, "tool_calls" MUST be empty ([]).
+- DO NOT invent new topics that were never in the user's graph.
+
+Output strict JSON:
 {
-  "actions": [
+  "tool_calls": [
     {
-      "type": "merge" | "split" | "normalize" | "delete" | "edit",
-      "source_topics": ["Old Topic 1", "Old Topic 2"],
-      "resulting_topics": ["Harmonized Topic"],
-      "rationale": "Clear explanation of why this action occurred"
+      "tool": "merge_topics" | "split_topic" | "delete_topic" | "update_topic",
+      "parameters": { ... }
     }
   ],
-  "harmonized_topics": [
-    {
-      "name": "Canonical Topic Name",
-      "weight": number (0.1 to 1.0),
-      "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
-      "why_they_care": "Consolidated user motivation",
-      "curiosity_vectors": ["vector1", "vector2"]
-    }
-  ],
-  "summary": "High-level 1-2 sentence overview of the harmonization run"
+  "summary": "1-2 sentence overview of structural changes (or 'No structural adjustments needed')"
 }`;
 
-        const prompt = `Evaluate and harmonize these current user topics:\n${JSON.stringify(topicsFormatted, null, 2)}`;
+        const prompt = `Evaluate and emit discrete mutation tool calls for these active topics:\n${JSON.stringify(topicsFormatted, null, 2)}`;
 
         const result = await deepseekProvider.generateCompletion(prompt, {
           systemPrompt,
@@ -102,87 +100,42 @@ CRITICAL PRESERVATION RULES:
         const cleanJson = result.text.replace(/```json\n?|\n?```/g, "").trim();
         const parsed = JSON.parse(cleanJson);
 
-        if (Array.isArray(parsed.harmonized_topics) && parsed.harmonized_topics.length > 0) {
-          const newTopicsMap: Record<string, TopicMetadata> = {};
+        if (Array.isArray(parsed.tool_calls) && parsed.tool_calls.length > 0) {
+          for (const tc of parsed.tool_calls) {
+            const p = tc.parameters || tc;
 
-          for (const ht of parsed.harmonized_topics) {
-            if (!ht.name || typeof ht.name !== "string") continue;
-
-            const validDepth: TechnicalDepth = ["introductory", "practitioner", "expert", "deep_technical"].includes(ht.technical_depth)
-              ? ht.technical_depth
-              : "practitioner";
-
-            newTopicsMap[ht.name] = {
-              weight: Number(Math.min(1.0, Math.max(0.1, ht.weight || 0.6)).toFixed(2)),
-              why_they_care: ht.why_they_care || "Consolidated interest.",
-              technical_depth: validDepth,
-              curiosity_vectors: Array.isArray(ht.curiosity_vectors) ? ht.curiosity_vectors : [ht.name],
-              last_discussed_at: new Date().toISOString(),
-            };
-          }
-
-          if (Object.keys(newTopicsMap).length > 0) {
-            adaptedNode.topics = newTopicsMap;
-            if (Array.isArray(parsed.actions)) {
-              for (const act of parsed.actions) {
-                const beforeState: Record<string, any> = {};
-                for (const src of act.source_topics || []) {
-                  if (originalTopics[src]) beforeState[src] = originalTopics[src];
-                }
-                const afterState: Record<string, any> = {};
-                for (const res of act.resulting_topics || []) {
-                  if (newTopicsMap[res]) afterState[res] = newTopicsMap[res];
-                }
-
+            if (tc.tool === "merge_topics") {
+              const res = TopicMutationEngine.executeMergeTopics(adaptedNode, p);
+              if (res.changed && res.action) {
+                actionsTaken.push(res.action);
+              }
+            } else if (tc.tool === "split_topic") {
+              const res = TopicMutationEngine.executeSplitTopic(adaptedNode, p);
+              if (res.changed && res.action) {
+                actionsTaken.push(res.action);
+              }
+            } else if (tc.tool === "delete_topic") {
+              const res = TopicMutationEngine.executeDeleteTopic(adaptedNode, p);
+              if (res.changed && res.action) {
+                actionsTaken.push(res.action);
+              }
+            } else if (tc.tool === "update_topic") {
+              const res = TopicMutationEngine.executeUpdateTopic(adaptedNode, p, "interest_harmonizer");
+              if (res.changed) {
                 actionsTaken.push({
-                  type: act.type || "normalize",
-                  source_topics: act.source_topics || [],
-                  resulting_topics: act.resulting_topics || [],
-                  rationale: act.rationale || "Knowledge graph harmonization.",
-                  before_state: Object.keys(beforeState).length > 0 ? beforeState : undefined,
-                  after_state: Object.keys(afterState).length > 0 ? afterState : undefined,
+                  type: "edit",
+                  source_topics: [p.topic],
+                  resulting_topics: [p.topic],
+                  rationale: p.rationale || `Updated topic ${p.topic}.`,
                 });
               }
             }
+          }
 
-            // Generate structured topic update diffs for full transparency
-            for (const act of actionsTaken) {
-              for (const src of act.source_topics) {
-                const prev = originalTopics[src];
-                const resName = act.resulting_topics[0];
-                const next = newTopicsMap[resName];
-
-                if (prev) {
-                  const diff: TopicUpdateDiff = {
-                    topic_name: src,
-                    timestamp,
-                    trigger_source: "interest_harmonizer",
-                    reasoning: act.rationale,
-                    evidence: `${act.type.toUpperCase()}: ${act.source_topics.join(", ")} -> ${act.resulting_topics.join(", ")}`,
-                    previous_state: {
-                      weight: prev.weight,
-                      technical_depth: prev.technical_depth,
-                      why_they_care: prev.why_they_care,
-                      curiosity_vectors: prev.curiosity_vectors || [],
-                    },
-                    current_state: {
-                      weight: next ? next.weight : 0,
-                      technical_depth: next ? next.technical_depth : prev.technical_depth,
-                      why_they_care: next ? next.why_they_care : "Harmonized into new canonical node.",
-                      curiosity_vectors: next ? next.curiosity_vectors || [] : [],
-                    },
-                    weight_delta: next ? Number((next.weight - prev.weight).toFixed(2)) : -prev.weight,
-                    depth_changed: next ? prev.technical_depth !== next.technical_depth : false,
-                    why_changed: next ? prev.why_they_care !== next.why_they_care : true,
-                  };
-                  adaptedNode.recent_topic_diffs = [diff, ...adaptedNode.recent_topic_diffs.slice(0, 30)];
-                }
-              }
-            }
-
+          if (actionsTaken.length > 0) {
             const runSummary =
               parsed.summary ||
-              `Harmonized ${topicKeys.length} topics into ${Object.keys(newTopicsMap).length} canonical nodes via ${actionsTaken.length} actions.`;
+              `Executed ${actionsTaken.length} discrete graph mutation tool actions on ${topicKeys.length} topics.`;
 
             const harmonizationRun: HarmonizationRun = {
               run_id: runId,
@@ -192,7 +145,7 @@ CRITICAL PRESERVATION RULES:
               actions: actionsTaken,
               trace_id: traceId,
               topics_before_count: topicKeys.length,
-              topics_after_count: Object.keys(newTopicsMap).length,
+              topics_after_count: Object.keys(adaptedNode.topics).length,
             };
 
             adaptedNode.harmonization_runs = [harmonizationRun, ...adaptedNode.harmonization_runs.slice(0, 20)];
@@ -209,12 +162,12 @@ CRITICAL PRESERVATION RULES:
                 trigger_source: triggerSource,
               },
               output_summary: {
-                harmonized_topics_count: Object.keys(newTopicsMap).length,
-                harmonized_topics: Object.keys(newTopicsMap),
+                harmonized_topics_count: Object.keys(adaptedNode.topics).length,
+                harmonized_topics: Object.keys(adaptedNode.topics),
                 actions_count: actionsTaken.length,
                 run_id: runId,
               },
-              reasoning_rationale: `Harmonization run [${triggerSource}]: ${runSummary}`,
+              reasoning_rationale: `Harmonization tool run [${triggerSource}]: ${runSummary}`,
               latency_ms: 0,
             });
 
@@ -227,11 +180,11 @@ CRITICAL PRESERVATION RULES:
           }
         }
       } catch (err) {
-        console.warn("InterestHarmonizer: LLM harmonization failed, falling back to heuristic cleanup:", err);
+        console.warn("InterestHarmonizer: LLM tool harmonization error, falling back to heuristic cleanup:", err);
       }
     }
 
-    // Step 2: Fallback heuristic clustering
+    // Step 2: Fallback heuristic clustering (only merges strict duplicate subphrases)
     return this.heuristicHarmonize(adaptedNode, triggerSource);
   }
 

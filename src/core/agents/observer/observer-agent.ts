@@ -9,6 +9,7 @@ import { traceLogger } from "../../observability/trace-logger";
 import { deepseekProvider } from "../../llm/deepseek-provider";
 import { postgresStore } from "../../storage/postgres-store";
 import { InterestHarmonizer } from "./interest-harmonizer";
+import { TopicMutationEngine } from "./topic-mutation-engine";
 
 export interface ObserverAdaptationResult {
   adapted_node: UnifiedTopicNode;
@@ -56,17 +57,21 @@ export class ObserverAgent {
     if (deepseekProvider.isConfigured() && lastUserMessage.length > 3) {
       try {
         const systemPrompt = `You are the Observer Agent in the Mind-State Memory Architecture.
-Your role is silent, empathetic, and continuous adaptation. You analyze EXCLUSIVELY the USER's conversational inputs to infer:
+Your role is silent, empathetic, and continuous adaptation. You analyze EXCLUSIVELY the USER's conversational inputs to emit discrete mutation tool calls:
 1. "updated_emotional_trajectory": The user's updated psychological state and mindset revealed by their words.
 2. "new_sensitivities": Subtle sensitivities, pet peeves, or communication preferences revealed EXCLUSIVELY by the user.
 3. "new_boundaries": Hard boundaries or topics the user explicitly or implicitly wants to avoid.
-4. "topic_updates": Substantive real-world topics the user explicitly discussed or inquired about, with "why_they_care" motivation, "curiosity_vectors" (keywords), "technical_depth" ("introductory" | "practitioner" | "expert" | "deep_technical"), and "evidence" (verbatim quote from user).
+4. "tool_calls": Discrete atomic tool calls to mutate individual user interests one by one ("create_topic" or "update_topic").
+
+DISCRETE MUTATION TOOLS:
+- "create_topic": Call when the user introduces a brand-new substantive interest or topic.
+- "update_topic": Call when the user continues or deepens discussion on an existing topic.
 
 IRONCLAD GUARDRAILS & NEGATIVE CONSTRAINTS:
 - NEVER extract topics, interests, or sensitivities from statements, greetings, suggestions, or analogies made by the ASSISTANT / ALETHEIA.
-- NEVER infer user interests from the existence or framing of the application (e.g. NEVER infer "Epistemology", "Cognitive Psychology", "Decision-making", or "Philosophy" merely because the app is an epistemic companion or discusses mindset adaptation).
-- If the user has only asked an open-ended conversational prompt (e.g. "What should we talk about", "Hello", "Hi", "Tell me the news"), "topic_updates" MUST BE EMPTY ([]).
-- ONLY add a topic if the user actively introduced it or articulated substantive curiosity/opinions about it (e.g., "AI is a good topic... best path to UBI and we should be taxing it" -> "AI and Economic Policy").
+- NEVER infer user interests from the existence or framing of the application.
+- If the user has only asked an open-ended conversational prompt (e.g. "What should we talk about", "Hello", "Tell me the news"), "tool_calls" MUST BE EMPTY ([]).
+- ONLY add a topic if the user actively introduced it or articulated substantive curiosity/opinions about it.
 - The "evidence" field MUST contain the exact verbatim substring from the USER showing their explicit statement.
 
 Existing Topics in Graph: ${Object.keys(adaptedNode.topics || {}).join(", ") || "None"}
@@ -77,14 +82,17 @@ Output strict JSON:
   "updated_emotional_trajectory": string,
   "new_sensitivities": string[],
   "new_boundaries": string[],
-  "topic_updates": [
+  "tool_calls": [
     {
-      "topic": string,
-      "weight_delta": number,
-      "why_they_care": string,
-      "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
-      "curiosity_vectors": string[],
-      "evidence": string
+      "tool": "create_topic" | "update_topic",
+      "parameters": {
+        "topic": string,
+        "weight_delta": number,
+        "why_they_care": string,
+        "technical_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
+        "curiosity_vectors": string[],
+        "evidence": string
+      }
     }
   ],
   "reasoning_summary": string
@@ -150,100 +158,95 @@ Output strict JSON:
           }
         }
 
-        // Apply topic updates and compute structured Diffs
-        if (Array.isArray(parsed.topic_updates)) {
-          const combinedUserText = recentUserMessages.join(" ").toLowerCase();
+        // Execute discrete topic mutation tool calls
+        const toolCalls: any[] = Array.isArray(parsed.tool_calls)
+          ? parsed.tool_calls
+          : Array.isArray(parsed.topic_updates)
+          ? parsed.topic_updates.map((tu: any) => ({
+              tool: adaptedNode.topics?.[tu.topic] ? "update_topic" : "create_topic",
+              parameters: tu,
+            }))
+          : [];
 
-          for (const tu of parsed.topic_updates) {
-            if (!tu.topic || typeof tu.topic !== "string") continue;
+        const combinedUserText = recentUserMessages.join(" ").toLowerCase();
 
-            const lowerTopic = tu.topic.toLowerCase();
-            const lowerWhy = (tu.why_they_care || "").toLowerCase();
+        for (const tc of toolCalls) {
+          const params = tc.parameters || tc;
+          const topicName = params.topic;
+          if (!topicName || typeof topicName !== "string") continue;
 
-            // Reject meta-application / system hallucinations
-            if (
-              lowerWhy.includes("epistemic companion") ||
-              lowerWhy.includes("using this app") ||
-              lowerWhy.includes("engaging with an epistemic") ||
-              lowerWhy.includes("context that emphasizes") ||
-              lowerWhy.includes("personalized adaptation") ||
-              lowerWhy.includes("mind-state") ||
-              lowerTopic === "epistemology" ||
-              lowerTopic.includes("nature of knowledge") ||
-              lowerTopic.includes("psychology of decision-making") ||
-              lowerTopic.includes("personalized adaptation")
-            ) {
-              // Only allow if user literally used these specific words in their message
-              if (!combinedUserText.includes(lowerTopic)) {
-                continue;
-              }
-            }
+          const lowerTopic = topicName.toLowerCase();
+          const lowerWhy = (params.why_they_care || "").toLowerCase();
 
-            // Ensure the user actually said something substantive related to this topic
-            const evidence = (tu.evidence || "").toLowerCase().trim();
-            const hasDirectEvidence =
-              (evidence.length >= 3 && combinedUserText.includes(evidence)) ||
-              combinedUserText.includes(lowerTopic) ||
-              (tu.curiosity_vectors || []).some((v: string) => combinedUserText.includes(v.toLowerCase()));
+          // Reject meta-application / system hallucinations
+          if (
+            lowerWhy.includes("epistemic companion") ||
+            lowerWhy.includes("using this app") ||
+            lowerWhy.includes("engaging with an epistemic") ||
+            lowerWhy.includes("context that emphasizes") ||
+            lowerWhy.includes("personalized adaptation") ||
+            lowerWhy.includes("mind-state") ||
+            lowerTopic === "epistemology" ||
+            lowerTopic.includes("nature of knowledge") ||
+            lowerTopic.includes("psychology of decision-making") ||
+            lowerTopic.includes("personalized adaptation")
+          ) {
+            if (!combinedUserText.includes(lowerTopic)) continue;
+          }
 
-            if (!hasDirectEvidence && !adaptedNode.topics[tu.topic]) {
-              continue;
-            }
+          // Ensure evidence/substantive user grounding
+          const evidence = (params.evidence || "").toLowerCase().trim();
+          const hasDirectEvidence =
+            (evidence.length >= 3 && combinedUserText.includes(evidence)) ||
+            combinedUserText.includes(lowerTopic) ||
+            (params.curiosity_vectors || []).some((v: string) => combinedUserText.includes(v.toLowerCase()));
 
-            const existingTopic = adaptedNode.topics[tu.topic];
-            const prevWeight = existingTopic?.weight || 0.5;
-            const prevDepth: TechnicalDepth = existingTopic?.technical_depth || "practitioner";
-            const prevWhy = existingTopic?.why_they_care || "General interest and exploration.";
-            const prevVectors = existingTopic?.curiosity_vectors || [];
+          if (!hasDirectEvidence && !adaptedNode.topics?.[topicName]) {
+            continue;
+          }
 
-            const newWeight = Number(Math.min(1.0, Math.max(0.1, prevWeight + (tu.weight_delta || 0.1))).toFixed(2));
-            const validDepth: TechnicalDepth = ["introductory", "practitioner", "expert", "deep_technical"].includes(tu.technical_depth)
-              ? tu.technical_depth
-              : prevDepth;
-            const newWhy = tu.why_they_care || prevWhy;
-            const newVectors = Array.from(new Set([...prevVectors, ...(tu.curiosity_vectors || [])]));
-
-            adaptedNode.topics[tu.topic] = {
-              weight: newWeight,
-              why_they_care: newWhy,
-              technical_depth: validDepth,
-              curiosity_vectors: newVectors,
-              last_discussed_at: new Date().toISOString(),
-            };
-
-            const diff: TopicUpdateDiff = {
-              topic_name: tu.topic,
-              timestamp: new Date().toISOString(),
-              trigger_source: "observer_agent",
-              reasoning: tu.evidence || parsed.reasoning_summary || "Conversational intent and depth adaptation.",
-              evidence: tu.evidence || lastUserMessage.slice(0, 80),
-              previous_state: {
-                weight: prevWeight,
-                technical_depth: prevDepth,
-                why_they_care: prevWhy,
-                curiosity_vectors: prevVectors,
+          if (tc.tool === "create_topic" || !adaptedNode.topics?.[topicName]) {
+            const res = TopicMutationEngine.executeCreateTopic(
+              adaptedNode,
+              {
+                topic: topicName,
+                weight: params.weight || 0.6,
+                why_they_care: params.why_they_care,
+                technical_depth: params.technical_depth,
+                curiosity_vectors: params.curiosity_vectors,
+                evidence: params.evidence || lastUserMessage.slice(0, 80),
               },
-              current_state: {
-                weight: newWeight,
-                technical_depth: validDepth,
-                why_they_care: newWhy,
-                curiosity_vectors: newVectors,
+              "observer_agent"
+            );
+            if (res.changed && res.diff) {
+              topicDiffs.push(res.diff);
+              adaptationsMade.push({
+                category: "why_they_care",
+                description: `Created new interest node "${topicName}" via tool call create_topic.`,
+                evidence: params.evidence || lastUserMessage.slice(0, 80),
+              });
+            }
+          } else {
+            const res = TopicMutationEngine.executeUpdateTopic(
+              adaptedNode,
+              {
+                topic: topicName,
+                weight_delta: params.weight_delta || 0.05,
+                why_they_care: params.why_they_care,
+                technical_depth: params.technical_depth,
+                curiosity_vectors_to_add: params.curiosity_vectors,
+                evidence: params.evidence || lastUserMessage.slice(0, 80),
               },
-              weight_delta: Number((newWeight - prevWeight).toFixed(2)),
-              depth_changed: prevDepth !== validDepth,
-              why_changed: prevWhy !== newWhy,
-              vectors_added: newVectors.filter((v) => !prevVectors.includes(v)),
-              vectors_removed: prevVectors.filter((v) => !newVectors.includes(v)),
-            };
-
-            topicDiffs.push(diff);
-            adaptedNode.recent_topic_diffs = [diff, ...(adaptedNode.recent_topic_diffs || []).slice(0, 25)];
-
-            adaptationsMade.push({
-              category: "why_they_care",
-              description: `Updated topic "${tu.topic}" (Weight: ${prevWeight} → ${newWeight}, Depth: ${prevDepth} → ${validDepth})`,
-              evidence: tu.evidence || lastUserMessage.slice(0, 80),
-            });
+              "observer_agent"
+            );
+            if (res.changed && res.diff) {
+              topicDiffs.push(res.diff);
+              adaptationsMade.push({
+                category: "why_they_care",
+                description: `Updated interest "${topicName}" via tool call update_topic (Weight Δ: ${res.diff.weight_delta}).`,
+                evidence: params.evidence || lastUserMessage.slice(0, 80),
+              });
+            }
           }
         }
       } catch (err) {
