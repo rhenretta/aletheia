@@ -105,11 +105,18 @@ export class PostgresStore {
     }
   }
 
+  private async ensureInitialized(): Promise<boolean> {
+    if (!this.pool) return false;
+    if (this.isConnected && this.schemaInitialized) return true;
+    return await this.initializeSchema();
+  }
+
   /**
    * Initializes the PostgreSQL database schema from schema.sql
    */
   public async initializeSchema(): Promise<boolean> {
-    if (!this.pool || this.schemaInitialized) return false;
+    if (!this.pool) return false;
+    if (this.isConnected && this.schemaInitialized) return true;
 
     try {
       const client = await this.pool.connect();
@@ -146,6 +153,8 @@ export class PostgresStore {
               historical_anchors JSONB NOT NULL DEFAULT '[]'::jsonb,
               interest_intersections JSONB NOT NULL DEFAULT '[]'::jsonb,
               adjacent_curiosity_frontiers JSONB NOT NULL DEFAULT '[]'::jsonb,
+              recent_topic_diffs JSONB NOT NULL DEFAULT '[]'::jsonb,
+              harmonization_runs JSONB NOT NULL DEFAULT '[]'::jsonb,
               dwell_history JSONB NOT NULL DEFAULT '[]'::jsonb,
               last_updated TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -175,6 +184,7 @@ export class PostgresStore {
 
   // --- Unified Topic Nodes (The Mind-State Single Source of Truth) ---
   public async getUnifiedTopicNode(userId: string = "usr_default"): Promise<UnifiedTopicNode> {
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -186,15 +196,39 @@ export class PostgresStore {
           const row = res.rows[0];
           const node: UnifiedTopicNode = {
             user_id: row.user_id,
-            topics: row.topics || {},
-            psychological_profile: row.psychological_profile || {},
-            discovery_parameters: row.discovery_parameters || {},
-            historical_anchors: row.historical_anchors || [],
-            interest_intersections: row.interest_intersections || [],
-            adjacent_curiosity_frontiers: row.adjacent_curiosity_frontiers || [],
-            recent_topic_diffs: row.recent_topic_diffs || [],
-            harmonization_runs: row.harmonization_runs || [],
-            dwell_history: row.dwell_history || [],
+            topics: typeof row.topics === "string" ? JSON.parse(row.topics) : row.topics || {},
+            psychological_profile:
+              typeof row.psychological_profile === "string"
+                ? JSON.parse(row.psychological_profile)
+                : row.psychological_profile || {},
+            discovery_parameters:
+              typeof row.discovery_parameters === "string"
+                ? JSON.parse(row.discovery_parameters)
+                : row.discovery_parameters || {},
+            historical_anchors:
+              typeof row.historical_anchors === "string"
+                ? JSON.parse(row.historical_anchors)
+                : row.historical_anchors || [],
+            interest_intersections:
+              typeof row.interest_intersections === "string"
+                ? JSON.parse(row.interest_intersections)
+                : row.interest_intersections || [],
+            adjacent_curiosity_frontiers:
+              typeof row.adjacent_curiosity_frontiers === "string"
+                ? JSON.parse(row.adjacent_curiosity_frontiers)
+                : row.adjacent_curiosity_frontiers || [],
+            recent_topic_diffs:
+              typeof row.recent_topic_diffs === "string"
+                ? JSON.parse(row.recent_topic_diffs)
+                : row.recent_topic_diffs || [],
+            harmonization_runs:
+              typeof row.harmonization_runs === "string"
+                ? JSON.parse(row.harmonization_runs)
+                : row.harmonization_runs || [],
+            dwell_history:
+              typeof row.dwell_history === "string"
+                ? JSON.parse(row.dwell_history)
+                : row.dwell_history || [],
             last_updated: row.last_updated?.toISOString() || new Date().toISOString(),
           };
           this.memoryTopicNodes.set(userId, node);
@@ -215,6 +249,7 @@ export class PostgresStore {
   }
 
   public async saveUnifiedTopicNode(node: UnifiedTopicNode): Promise<void> {
+    await this.ensureInitialized();
     this.memoryTopicNodes.set(node.user_id, node);
     this.saveToDisk();
 
@@ -275,7 +310,7 @@ export class PostgresStore {
   }
 
   public async getAllUnifiedTopicNodes(): Promise<UnifiedTopicNode[]> {
-    await this.initializeSchema();
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -333,6 +368,7 @@ export class PostgresStore {
 
   // --- User Knowledge Graphs ---
   public async getUserGraph(userId: string): Promise<UserKnowledgeGraph | undefined> {
+    await this.ensureInitialized();
     let graph: UserKnowledgeGraph | undefined;
 
     if (this.pool && this.isConnected) {
@@ -346,10 +382,10 @@ export class PostgresStore {
           const row = res.rows[0];
           graph = {
             user_id: row.user_id,
-            topic_weights: row.topic_weights || {},
+            topic_weights: typeof row.topic_weights === "string" ? JSON.parse(row.topic_weights) : row.topic_weights || {},
             cognitive_load_state: row.cognitive_load_state,
-            historical_anchors: row.historical_anchors || [],
-            dwell_history: row.dwell_history || [],
+            historical_anchors: typeof row.historical_anchors === "string" ? JSON.parse(row.historical_anchors) : row.historical_anchors || [],
+            dwell_history: typeof row.dwell_history === "string" ? JSON.parse(row.dwell_history) : row.dwell_history || [],
             last_updated: row.last_updated?.toISOString() || new Date().toISOString(),
           };
         }
@@ -387,6 +423,7 @@ export class PostgresStore {
   }
 
   public async saveUserGraph(graph: UserKnowledgeGraph): Promise<void> {
+    await this.ensureInitialized();
     this.memoryUserGraphs.set(graph.user_id, graph);
     this.saveToDisk();
 
@@ -418,6 +455,7 @@ export class PostgresStore {
 
   // --- Chat Session Persistence ---
   public async getChatSession(userId: string): Promise<{ messages: any[]; extracted_topics: any[] } | undefined> {
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -426,8 +464,8 @@ export class PostgresStore {
         );
         if (res.rows.length > 0) {
           return {
-            messages: res.rows[0].messages,
-            extracted_topics: res.rows[0].extracted_topics,
+            messages: typeof res.rows[0].messages === "string" ? JSON.parse(res.rows[0].messages) : res.rows[0].messages,
+            extracted_topics: typeof res.rows[0].extracted_topics === "string" ? JSON.parse(res.rows[0].extracted_topics) : res.rows[0].extracted_topics,
           };
         }
       } catch (err) {
@@ -438,6 +476,7 @@ export class PostgresStore {
   }
 
   public async saveChatSession(userId: string, messages: any[], extractedTopics: any[]): Promise<void> {
+    await this.ensureInitialized();
     // Accumulate extracted topics across conversational history
     let existing = this.memoryChatSessions.get(userId);
     if (!existing && this.pool && this.isConnected) {
@@ -473,6 +512,7 @@ export class PostgresStore {
   }
 
   public async clearSession(userId: string): Promise<void> {
+    await this.ensureInitialized();
     this.memoryChatSessions.delete(userId);
     this.memoryUserGraphs.delete(userId);
     this.memoryTopicNodes.delete(userId);
@@ -491,6 +531,7 @@ export class PostgresStore {
 
   // --- Pure Fact Objects ---
   public async getFact(eventId: string): Promise<PureFactObject | undefined> {
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -503,10 +544,10 @@ export class PostgresStore {
           return {
             event_id: row.event_id,
             topic: row.topic,
-            verified_entities: row.verified_entities,
-            timeline: row.timeline,
-            agreed_facts: row.agreed_facts,
-            disputed_claims: row.disputed_claims,
+            verified_entities: typeof row.verified_entities === "string" ? JSON.parse(row.verified_entities) : row.verified_entities,
+            timeline: typeof row.timeline === "string" ? JSON.parse(row.timeline) : row.timeline,
+            agreed_facts: typeof row.agreed_facts === "string" ? JSON.parse(row.agreed_facts) : row.agreed_facts,
+            disputed_claims: typeof row.disputed_claims === "string" ? JSON.parse(row.disputed_claims) : row.disputed_claims,
             adjective_density_score: row.adjective_density_score,
             sanitized_timestamp: row.sanitized_timestamp?.toISOString() || new Date().toISOString(),
           };
@@ -519,6 +560,7 @@ export class PostgresStore {
   }
 
   public async saveFact(fact: PureFactObject): Promise<void> {
+    await this.ensureInitialized();
     this.memoryFactCache.set(fact.event_id, fact);
     this.saveToDisk();
 
@@ -553,6 +595,7 @@ export class PostgresStore {
   }
 
   public async getAllFacts(): Promise<PureFactObject[]> {
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -562,10 +605,10 @@ export class PostgresStore {
         return res.rows.map((row) => ({
           event_id: row.event_id,
           topic: row.topic,
-          verified_entities: row.verified_entities,
-          timeline: row.timeline,
-          agreed_facts: row.agreed_facts,
-          disputed_claims: row.disputed_claims,
+          verified_entities: typeof row.verified_entities === "string" ? JSON.parse(row.verified_entities) : row.verified_entities,
+          timeline: typeof row.timeline === "string" ? JSON.parse(row.timeline) : row.timeline,
+          agreed_facts: typeof row.agreed_facts === "string" ? JSON.parse(row.agreed_facts) : row.agreed_facts,
+          disputed_claims: typeof row.disputed_claims === "string" ? JSON.parse(row.disputed_claims) : row.disputed_claims,
           adjective_density_score: row.adjective_density_score,
           sanitized_timestamp: row.sanitized_timestamp?.toISOString() || new Date().toISOString(),
         }));
@@ -578,6 +621,7 @@ export class PostgresStore {
 
   // --- Telemetry ---
   public async logTelemetry(telemetry: BehavioralTelemetry): Promise<void> {
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(
@@ -601,6 +645,7 @@ export class PostgresStore {
 
   // --- Traces ---
   public async logTrace(trace: AgentTraceLog): Promise<void> {
+    await this.ensureInitialized();
     this.memoryTraces.push(trace);
     if (this.memoryTraces.length > 200) {
       this.memoryTraces.shift();
@@ -631,6 +676,7 @@ export class PostgresStore {
   }
 
   public async getTraces(limit: number = 50): Promise<AgentTraceLog[]> {
+    await this.ensureInitialized();
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
@@ -642,12 +688,12 @@ export class PostgresStore {
           trace_id: row.trace_id,
           session_id: row.session_id,
           node_name: row.node_name,
-          input_summary: row.input_summary,
-          output_summary: row.output_summary,
+          input_summary: typeof row.input_summary === "string" ? JSON.parse(row.input_summary) : row.input_summary,
+          output_summary: typeof row.output_summary === "string" ? JSON.parse(row.output_summary) : row.output_summary,
           reasoning_rationale: row.reasoning_rationale,
           latency_ms: row.latency_ms,
           llm_tokens_used: row.llm_tokens_used,
-          metadata: row.metadata,
+          metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata || {},
           timestamp: row.timestamp?.toISOString() || new Date().toISOString(),
         }));
       } catch (err) {
