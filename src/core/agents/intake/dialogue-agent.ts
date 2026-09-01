@@ -267,8 +267,16 @@ ${contextFraming.empath_instructions}`;
 ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
       : "";
 
+    const currentFeedContext =
+      currentStories && currentStories.length > 0
+        ? `\nCURRENT FILTERED FEED STORIES IN USER'S VIEW (${currentStories.length} articles):
+${currentStories.slice(0, 5).map((s, i) => `${i + 1}. [${s.topic}] "${s.headline}"
+Summary: ${s.summary}
+${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.join(" | ")}` : ""}`).join("\n\n")}`
+        : "";
+
     const formattedHistory = history.map((m) => `${m.role === "assistant" ? "ALETHEIA" : "USER"}: ${m.content}`).join("\n\n");
-    let prompt = `${knownContext}${storyContext}\n\nConversation History:\n${formattedHistory}`;
+    let prompt = `${knownContext}${storyContext}${currentFeedContext}\n\nConversation History:\n${formattedHistory}`;
 
     const extractContextualSubject = (
       userMsg: string,
@@ -323,23 +331,100 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
       return "";
     };
 
-    // Step 2: Handle Proactive Live Grounding
-    const isTemporalOrStatusInquiry =
-      /\b(when|latest|status|next|flight|launch|schedule|update|current|happened|recent|progress|test|what will it look like|upcoming|timeline|date)\b/i.test(lastUserMessage) &&
-      lastUserMessage.length > 3;
+    // Two-Stage Evaluation: First check local filtered articles, then search if insufficient
+    const evaluateNeedsLiveSearch = (): { needsLiveSearch: boolean; searchReason?: string } => {
+      const cleanMsg = lastUserMessage.toLowerCase().trim();
 
-    if (isTemporalOrStatusInquiry || attachedStory) {
+      // Check if inquiry asks for current/future/real-time updates
+      const isTemporalOrRealTimeInquiry =
+        /\b(when|latest|status|next|upcoming|schedule|today|recent|progress|has there been any update|what happened since|what is new|breaking|timeline|date)\b/i.test(cleanMsg);
+
+      // Check if user is asking to verify or fact-check a claim against reality
+      const isFactCheckInquiry =
+        /\b(is that true|is this true|is it true|claim|claims|accurate|really|verify|fact check|orbital|catch|true or false)\b/i.test(cleanMsg);
+
+      // 1. If an attached story is present:
+      if (attachedStory) {
+        let storyAgeDays = 0;
+        if (attachedStory.published_at) {
+          const pub = new Date(attachedStory.published_at);
+          if (!isNaN(pub.getTime())) {
+            storyAgeDays = Math.round((now.getTime() - pub.getTime()) / (1000 * 60 * 60 * 24));
+          }
+        }
+
+        // If the user is asking about the article's own written contents and doesn't ask for latest real-time status:
+        const isPurelyAboutArticleText =
+          /\b(summarize|summary|what does the article say|explain this article|who wrote|what does it mean|explain the headline|takeaway|takeaways|author)\b/i.test(cleanMsg) &&
+          !isTemporalOrRealTimeInquiry;
+
+        if (isPurelyAboutArticleText) {
+          return { needsLiveSearch: false, searchReason: "Question can be answered directly from the attached story text." };
+        }
+
+        // If the article is historical (>7 days old) AND the user asks for real-time status, next launch, or veracity:
+        if (storyAgeDays > 7 && (isTemporalOrRealTimeInquiry || isFactCheckInquiry)) {
+          return {
+            needsLiveSearch: true,
+            searchReason: `Attached article was published ${storyAgeDays} days ago and user asks about current status/veracity.`,
+          };
+        }
+
+        // If user asks for real-time status or fact checking beyond article text:
+        if (isTemporalOrRealTimeInquiry || isFactCheckInquiry) {
+          return {
+            needsLiveSearch: true,
+            searchReason: "Inquiry requires verifying real-time status or validating claims beyond the article.",
+          };
+        }
+
+        // Otherwise, answer directly from attached story
+        return { needsLiveSearch: false, searchReason: "Answerable from attached story." };
+      }
+
+      // 2. If no attached story, check if local filtered feed stories answer the inquiry:
+      if (currentStories && currentStories.length > 0) {
+        const matchingFeedStory = currentStories.find((s) => {
+          const text = `${s.headline} ${s.summary} ${s.topic}`.toLowerCase();
+          const words = cleanMsg.split(/\s+/).filter((w) => w.length > 3);
+          const matchCount = words.filter((w) => text.includes(w)).length;
+          return matchCount >= 2;
+        });
+
+        if (matchingFeedStory && !isTemporalOrRealTimeInquiry) {
+          return {
+            needsLiveSearch: false,
+            searchReason: `Answerable from local filtered feed article: "${matchingFeedStory.headline}"`,
+          };
+        }
+      }
+
+      // 3. If temporal/status inquiry and local context is not sufficient, trigger live search:
+      if (isTemporalOrRealTimeInquiry || isFactCheckInquiry || cleanMsg.length > 15) {
+        return {
+          needsLiveSearch: true,
+          searchReason: "Requires real-time wire verification or exceeds local feed coverage.",
+        };
+      }
+
+      return { needsLiveSearch: false, searchReason: "General conversation / concept discussion." };
+    };
+
+    const { needsLiveSearch, searchReason } = evaluateNeedsLiveSearch();
+
+    // Step 2: Handle Proactive Live Grounding (Only when local context is insufficient)
+    if (needsLiveSearch) {
       const activeSubject = extractContextualSubject(lastUserMessage, history, unifiedNode, attachedStory);
       const cleanTerms = lastUserMessage
         .replace(/[?.,!;:"()]/g, " ")
-        .replace(/\b(when|can|we|expect|the|next|and|what|will|it|look|like|is|there|any|update|on|status|of|happening|with|tell|me|about)\b/gi, " ")
+        .replace(/\b(when|can|we|expect|the|next|and|what|will|it|look|like|is|there|any|update|on|status|of|happening|with|tell|me|about|re:)\b/gi, " ")
         .replace(/\s+/g, " ")
         .trim();
 
       const year = now.getFullYear();
       let targetedQuery = [activeSubject, cleanTerms, String(year)].filter(Boolean).join(" ").trim();
       if (!targetedQuery || targetedQuery.length < 5) {
-        targetedQuery = activeSubject ? `${activeSubject} latest launch schedule ${year}` : `${lastUserMessage} ${year}`;
+        targetedQuery = activeSubject ? `${activeSubject} latest news updates ${year}` : `${lastUserMessage} ${year}`;
       }
 
       yield { type: "tool_start", tool_name: "search_internet", query: targetedQuery };
@@ -359,7 +444,7 @@ ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
         executedTools.push({
           tool_name: "search_internet",
           query: targetedQuery,
-          results_summary: `Retrieved ${liveArticles.length} live sources.`,
+          results_summary: `Retrieved ${liveArticles.length} live sources (${searchReason}).`,
           items_retrieved: liveArticles.length,
           sources: eventSources,
         });
@@ -381,8 +466,7 @@ URL: ${a.source_url}`).join("\n\n")}
 CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
 - Current real-world date: ${currentDateStr} (Year: ${year}).
 - Ground your response EXCLUSIVELY and FACTUALLY in the live search results above.
-- NEVER rely on obsolete pre-2026 training knowledge (e.g., Flight 5 occurred in 2024; upcoming flights are in 2026).
-- Detail the exact upcoming mission/flight profile, testing status, and timeline from the live search results above.`;
+- If the user is asking about an attached article's claim, explicitly compare that claim with the live search results above and clarify whether it reflects historical plans or the latest current status.`;
         }
       } catch (err) {
         console.warn("Live search error:", err);
@@ -408,7 +492,7 @@ CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
     }
 
     // Step 4: Handle tool call if requested by model
-    if (parsed.tool_call && !isTemporalOrStatusInquiry) {
+    if (parsed.tool_call && !needsLiveSearch) {
        // logic for second-stage tool execution omitted for brevity, similar to Step 2
     }
 
