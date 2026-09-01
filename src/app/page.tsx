@@ -159,14 +159,7 @@ export default function AletheiaHome() {
 
   // Rehydrate existing persisted session & knowledge graph on mount or when auth user switches
   useEffect(() => {
-    // Reset state for new user / guest
-    setMessages([defaultWelcomeMessage]);
-    setUserGraph(null);
-    setUnifiedTopicNode(null);
-    setExtractedTopics([]);
-    setPipelineResult(null);
-    setAttachedStory(null);
-    setSelectedContext(null);
+    if (authStatus === "loading") return;
 
     if (effectiveUserId && effectiveUserId !== "usr_guest") {
       try {
@@ -180,6 +173,15 @@ export default function AletheiaHome() {
           if (parsed.pipelineResult) setPipelineResult(parsed.pipelineResult);
         }
       } catch (e) {}
+    } else {
+      // Guest view
+      setMessages([defaultWelcomeMessage]);
+      setUserGraph(null);
+      setUnifiedTopicNode(null);
+      setExtractedTopics([]);
+      setPipelineResult(null);
+      setAttachedStory(null);
+      setSelectedContext(null);
     }
 
     const loadSession = async () => {
@@ -187,20 +189,17 @@ export default function AletheiaHome() {
         const res = await fetch(`/api/session?userId=${encodeURIComponent(effectiveUserId)}`);
         const data = await res.json();
         if (data.success) {
-          if (data.is_authenticated) {
-            if (data.messages && data.messages.length > 0) {
-              setMessages(data.messages);
-            }
-            if (data.unified_topic_node) setUnifiedTopicNode(data.unified_topic_node);
-            if (data.user_graph) setUserGraph(data.user_graph);
-            if (data.extracted_topics && data.extracted_topics.length > 0) setExtractedTopics(data.extracted_topics);
-          } else {
-            // Unauthenticated Guest: ensure clean slate
-            setMessages([defaultWelcomeMessage]);
-            setUserGraph(null);
-            setUnifiedTopicNode(null);
-            setExtractedTopics([]);
-            setPipelineResult(null);
+          if (data.unified_topic_node && Object.keys(data.unified_topic_node.topics || {}).length > 0) {
+            setUnifiedTopicNode(data.unified_topic_node);
+          }
+          if (data.user_graph) {
+            setUserGraph(data.user_graph);
+          }
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          }
+          if (data.extracted_topics && data.extracted_topics.length > 0) {
+            setExtractedTopics(data.extracted_topics);
           }
         }
       } catch (err) {
@@ -208,7 +207,7 @@ export default function AletheiaHome() {
       }
     };
     loadSession();
-  }, [effectiveUserId]);
+  }, [effectiveUserId, authStatus]);
 
   // Save to browser localStorage whenever state changes (only for authenticated users)
   useEffect(() => {

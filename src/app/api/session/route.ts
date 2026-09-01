@@ -17,14 +17,8 @@ export async function GET(req: NextRequest) {
 
   if (session?.user?.email) {
     effectiveUserId = `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
-  }
-
-  // Allow admin inspection override with valid credentials
-  if (queryUserId && queryUserId !== effectiveUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_guest") {
-    const adminCheck = await verifyAdminAuth(req);
-    if (adminCheck.isAuthorized) {
-      effectiveUserId = queryUserId;
-    }
+  } else if (queryUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_guest") {
+    effectiveUserId = queryUserId;
   }
 
   if (!effectiveUserId) {
