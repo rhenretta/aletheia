@@ -136,4 +136,27 @@ describe("Semantic Matcher & Concept Relevance Engine", () => {
     expect(filtered[1].event_id).toBe("evt_2"); // Second highest (FAA Starbase authorization)
     expect(filtered.find((c) => c.event_id === "evt_3")).toBeUndefined(); // Biotech excluded
   });
+
+  it("prioritizes fresh unseen stories over previously seen/passed-over stories", () => {
+    const cards = [starshipCard, regulatoryCard];
+    
+    // Simulate user having already seen starshipCard (evt_1) 3 times recently
+    const mockSeenState = {
+      seen_story_ids: {
+        evt_1: { last_seen_at: new Date().toISOString(), impressions: 3 },
+      },
+      seen_topics: {
+        "commercial aerospace": { last_seen_at: new Date().toISOString(), impressions: 3 },
+      },
+    };
+
+    const filtered = filterFeedBySemanticAffinity(cards, "all", mockUserNode, "all", mockSeenState);
+
+    // Unseen regulatoryCard (evt_2) must surface ahead of previously seen starshipCard (evt_1)
+    expect(filtered.length).toBe(2);
+    expect(filtered[0].event_id).toBe("evt_2");
+    expect(filtered[0].is_fresh).toBe(true);
+    expect(filtered[1].event_id).toBe("evt_1");
+    expect(filtered[1].is_fresh).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 import { SynthesizedEventCard, UnifiedTopicNode, EventSourceArticle, TopicEvolutionEntry } from "../types/contracts";
-import { calculateSemanticAffinity } from "./semantic-matcher";
+import { calculateSemanticAffinity, SeenInteractionState } from "./semantic-matcher";
 
 export interface TopicBriefHighlight {
   event_id: string;
@@ -25,20 +25,29 @@ export interface BriefNarrativeSentence {
 export interface TopicBrief {
   topic: string;
   weight: number;
-  technical_depth?: string;
-  why_they_care?: string;
+  technical_depth: string;
+  why_they_care: string;
   living_narrative?: string;
   likes_and_angles?: string[];
   dislikes_and_critiques?: string[];
-  curiosity_vectors?: string[];
-  evolution_timeline?: TopicEvolutionEntry[];
+  curiosity_vectors: string[];
+  evolution_timeline: Array<{ timestamp: string; insight: string; trigger_source?: string; evidence?: string }>;
   last_updated: string;
   time_ago_label: string;
   velocity_status: "breaking" | "active" | "recent" | "steady" | "dormant";
   velocity_label: string;
   story_count: number;
+  unseen_count?: number;
   stories: SynthesizedEventCard[];
-  key_highlights: TopicBriefHighlight[];
+  key_highlights: Array<{
+    event_id: string;
+    headline: string;
+    summary: string;
+    recency_label: string;
+    facts: string[];
+    sources: EventSourceArticle[];
+    is_fresh?: boolean;
+  }>;
   narrative_sentences: BriefNarrativeSentence[];
   narrative_full_text: string;
   all_sources: EventSourceArticle[];
@@ -169,7 +178,8 @@ export function synthesizeBriefNarrative(
  */
 export function buildTopicBriefs(
   cards: SynthesizedEventCard[] = [],
-  userNode?: UnifiedTopicNode | null
+  userNode?: UnifiedTopicNode | null,
+  seenState?: SeenInteractionState
 ): TopicBrief[] {
   const userTopics = userNode?.topics || {};
   const topicMap = new Map<string, SynthesizedEventCard[]>();
@@ -228,6 +238,10 @@ export function buildTopicBriefs(
       return timeB - timeA;
     });
 
+    // Step B2: Count unseen stories in this topic
+    const unseenCards = sortedCards.filter((c) => !seenState?.seen_story_ids?.[c.event_id]);
+    const unseenCount = unseenCards.length;
+
     const latestPubTime = sortedCards[0]?.published_at
       ? new Date(sortedCards[0].published_at).getTime()
       : topicMeta?.last_discussed_at
@@ -266,7 +280,7 @@ export function buildTopicBriefs(
     }
 
     // Step C: Build deduplicated development highlights
-    const keyHighlights: TopicBriefHighlight[] = sortedCards.slice(0, 4).map((card) => ({
+    const keyHighlights = sortedCards.slice(0, 4).map((card) => ({
       event_id: card.event_id,
       headline: card.headline,
       summary: card.summary,
@@ -275,6 +289,7 @@ export function buildTopicBriefs(
       published_at: card.published_at || new Date().toISOString(),
       image_url: card.image_url,
       sources: card.sources || [],
+      is_fresh: !seenState?.seen_story_ids?.[card.event_id],
     }));
 
     // Step D: Synthesize narrative update with sentence-level story links
@@ -309,6 +324,7 @@ export function buildTopicBriefs(
       velocity_status: velocityStatus,
       velocity_label: velocityLabel,
       story_count: sortedCards.length,
+      unseen_count: unseenCount,
       stories: sortedCards,
       key_highlights: keyHighlights,
       narrative_sentences: narrativeSentences,
@@ -318,14 +334,20 @@ export function buildTopicBriefs(
   }
 
   // Sort briefs:
-  // 1. Topics with breaking/active stories first
-  // 2. Then by user interest weight descending
-  // 3. Then by story count descending
+  // 1. Topics with fresh UNSEEN stories come first
+  // 2. Breaking/Active velocity
+  // 3. User interest weight
   return briefs.sort((a, b) => {
+    // Priority 1: Unseen story presence
+    const unseenDiff = (b.unseen_count || 0) - (a.unseen_count || 0);
+    if (Math.abs(unseenDiff) >= 1) return unseenDiff;
+
+    // Priority 2: Velocity
     const velocityRank = { breaking: 5, active: 4, recent: 3, steady: 2, dormant: 1 };
     const rankDiff = velocityRank[b.velocity_status] - velocityRank[a.velocity_status];
     if (rankDiff !== 0) return rankDiff;
 
+    // Priority 3: Weight
     const weightDiff = b.weight - a.weight;
     if (Math.abs(weightDiff) > 0.1) return weightDiff;
 

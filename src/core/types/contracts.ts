@@ -547,6 +547,8 @@ export interface SynthesizedEventCard {
   is_exploration?: boolean;
   anchor_concept?: string;
   image_url?: string;
+  is_fresh?: boolean;
+  freshness_score?: number;
   widget_data?: {
     chart_type: "delta_bar" | "timeline" | "source_distribution" | "entity_network";
     data_points: Array<{ label: string; value: number; category: string }>;
@@ -571,6 +573,8 @@ export const SynthesizedEventCardSchema = z.object({
   is_exploration: z.boolean().optional(),
   anchor_concept: z.string().optional(),
   image_url: z.string().optional(),
+  is_fresh: z.boolean().optional(),
+  freshness_score: z.number().optional(),
   widget_data: z
     .object({
       chart_type: z.enum(["delta_bar", "timeline", "source_distribution", "entity_network"]),

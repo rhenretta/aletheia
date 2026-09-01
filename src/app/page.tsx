@@ -49,7 +49,7 @@ import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import DevToolsPanel from "@/components/DevToolsPanel";
 import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
-import { filterFeedBySemanticAffinity } from "@/core/matching/semantic-matcher";
+import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { useSession, signIn, signOut } from "next-auth/react";
 
@@ -237,6 +237,7 @@ export default function AletheiaHome() {
   }, [messages, unifiedTopicNode, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
 
   // Derived accurate count of all tracked interests across Unified Topic Node, User Graph, and extracted topics
+  // Derived accurate count of all tracked interests across Unified Topic Node, User Graph, and extracted topics
   const totalInterestsCount = (() => {
     const set = new Set<string>();
     if (unifiedTopicNode?.topics) {
@@ -250,6 +251,106 @@ export default function AletheiaHome() {
     });
     return set.size;
   })();
+
+  // -------------------------------------------------------------
+  // Freshness & Seen Story / Topic Recency Tracking
+  // -------------------------------------------------------------
+  const [seenState, setSeenState] = useState<SeenInteractionState>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem(`aletheia_seen_state_${effectiveUserId}`);
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return { seen_story_ids: {}, seen_topics: {} };
+  });
+
+  const markStoriesAsSeen = React.useCallback(
+    (storyIds: string[], topicNames?: string[]) => {
+      if (!storyIds || storyIds.length === 0) return;
+      const nowIso = new Date().toISOString();
+
+      setSeenState((prev) => {
+        const nextSeenStories = { ...(prev.seen_story_ids || {}) };
+        const nextSeenTopics = { ...(prev.seen_topics || {}) };
+
+        storyIds.forEach((id) => {
+          const current = nextSeenStories[id];
+          nextSeenStories[id] = {
+            last_seen_at: nowIso,
+            impressions: (current?.impressions || 0) + 1,
+          };
+        });
+
+        if (topicNames) {
+          topicNames.forEach((t) => {
+            const lower = t.toLowerCase();
+            const currentT = nextSeenTopics[lower];
+            nextSeenTopics[lower] = {
+              last_seen_at: nowIso,
+              impressions: (currentT?.impressions || 0) + 1,
+            };
+          });
+        }
+
+        const nextState = {
+          seen_story_ids: nextSeenStories,
+          seen_topics: nextSeenTopics,
+        };
+
+        try {
+          localStorage.setItem(`aletheia_seen_state_${effectiveUserId}`, JSON.stringify(nextState));
+        } catch (e) {}
+
+        return nextState;
+      });
+    },
+    [effectiveUserId]
+  );
+
+  // Passive IntersectionObserver: Automatically records impressions when cards scroll through the viewport
+  useEffect(() => {
+    if (typeof window === "undefined" || !("IntersectionObserver" in window)) return;
+
+    const observedElements = new Set<Element>();
+    const timerMap = new Map<string, NodeJS.Timeout>();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const storyId = entry.target.getAttribute("data-story-id");
+          const topicName = entry.target.getAttribute("data-story-topic");
+          if (!storyId) return;
+
+          if (entry.isIntersecting) {
+            // If card remains visible in viewport for > 1000ms, mark as seen
+            const timer = setTimeout(() => {
+              markStoriesAsSeen([storyId], topicName ? [topicName] : undefined);
+            }, 1000);
+            timerMap.set(storyId, timer);
+          } else {
+            const existingTimer = timerMap.get(storyId);
+            if (existingTimer) {
+              clearTimeout(existingTimer);
+              timerMap.delete(storyId);
+            }
+          }
+        });
+      },
+      { threshold: 0.4 }
+    );
+
+    const elements = document.querySelectorAll("[data-story-id]");
+    elements.forEach((el) => {
+      observer.observe(el);
+      observedElements.add(el);
+    });
+
+    return () => {
+      observer.disconnect();
+      timerMap.forEach((t) => clearTimeout(t));
+    };
+  }, [pipelineResult, markStoriesAsSeen]);
 
   // Deletes only generated news content from state and storage (keeps chat & interests intact)
   const handleClearFeedContent = () => {
@@ -794,7 +895,7 @@ export default function AletheiaHome() {
     if (selectedTopicFilter === "all" && aiFeedFilter && aiFeedFilter.is_active !== false) {
       const topicToFilter = aiFeedFilter.topic;
       if (topicToFilter && topicToFilter !== "all") {
-        const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter);
+        const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter, seenState);
         if (semanticallyFiltered.length > 0) {
           return semanticallyFiltered;
         }
@@ -804,13 +905,13 @@ export default function AletheiaHome() {
       }
     }
 
-    // 2. Multi-Vector Semantic Affinity Filtering & Neural Graph Ranking
-    return filterFeedBySemanticAffinity(pool, selectedTopicFilter, unifiedTopicNode, selectedCategoryFilter);
-  }, [feedCards, selectedTopicFilter, selectedCategoryFilter, aiFeedFilter, unifiedTopicNode]);
+    // 2. Multi-Vector Semantic Affinity Filtering, Neural Graph Ranking & Freshness Recency Decay
+    return filterFeedBySemanticAffinity(pool, selectedTopicFilter, unifiedTopicNode, selectedCategoryFilter, seenState);
+  }, [feedCards, selectedTopicFilter, selectedCategoryFilter, aiFeedFilter, unifiedTopicNode, seenState]);
 
   const topicBriefs = React.useMemo(() => {
-    return buildTopicBriefs(feedCards, unifiedTopicNode);
-  }, [feedCards, unifiedTopicNode]);
+    return buildTopicBriefs(feedCards, unifiedTopicNode, seenState);
+  }, [feedCards, unifiedTopicNode, seenState]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
@@ -1644,6 +1745,8 @@ export default function AletheiaHome() {
                 return (
                   <article
                     key={card.event_id}
+                    data-story-id={card.event_id}
+                    data-story-topic={card.topic}
                     className={`glass-panel rounded-2xl p-4 sm:p-6 border transition-all duration-300 ${
                       isAttached
                         ? "border-cyan-500/60 shadow-2xl shadow-cyan-950/40 ring-1 ring-cyan-500/30"
@@ -1653,6 +1756,12 @@ export default function AletheiaHome() {
                     {/* Top Metadata Row: Topic Badge, Time Ago, Sources, & Action Buttons */}
                     <div className="flex flex-wrap items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-white/5">
                       <div className="flex items-center gap-2">
+                        {card.is_fresh && (
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold flex items-center gap-1 shadow-sm">
+                            <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
+                            Fresh
+                          </span>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

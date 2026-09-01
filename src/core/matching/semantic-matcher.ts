@@ -245,23 +245,85 @@ export function calculateSemanticAffinity(
   };
 }
 
+export interface SeenInteractionState {
+  seen_story_ids?: Record<string, { last_seen_at: string; impressions: number }>;
+  seen_topics?: Record<string, { last_seen_at: string; impressions: number }>;
+}
+
+export interface FreshnessMetadata {
+  freshness_score: number;
+  is_fresh: boolean;
+  impression_count: number;
+  hours_since_seen?: number;
+}
+
 /**
- * Filter and rank a list of feed cards by Semantic Affinity to the target topic
+ * Calculates freshness score for an individual story card based on publication time and user impression history.
+ */
+export function calculateFreshnessScore(
+  card: SynthesizedEventCard,
+  seenState?: SeenInteractionState
+): FreshnessMetadata {
+  const publishedAt = card.published_at ? new Date(card.published_at).getTime() : Date.now();
+  const hoursSincePublished = Math.max(0, (Date.now() - publishedAt) / (1000 * 60 * 60));
+  
+  // Publication recency score (decays over 72 hours)
+  const publicationScore = Math.max(0, 1 - hoursSincePublished / 72);
+
+  const seenInfo = seenState?.seen_story_ids?.[card.event_id];
+  const topicSeenInfo = card.topic ? seenState?.seen_topics?.[card.topic.toLowerCase()] : undefined;
+
+  if (!seenInfo) {
+    // Unseen story: Gets maximum freshness boost!
+    const topicPenalty = topicSeenInfo ? Math.min(0.25, (topicSeenInfo.impressions || 0) * 0.03) : 0;
+    const finalScore = Number((1.2 + publicationScore * 0.5 - topicPenalty).toFixed(3));
+    return {
+      freshness_score: finalScore,
+      is_fresh: true,
+      impression_count: 0,
+    };
+  }
+
+  // Seen story: calculate decay based on impressions and recency
+  const lastSeenAt = new Date(seenInfo.last_seen_at).getTime();
+  const hoursSinceSeen = Math.max(0, (Date.now() - lastSeenAt) / (1000 * 60 * 60));
+  const impressions = seenInfo.impressions || 1;
+
+  // Seen penalty is highest immediately after seeing and scales with impressions
+  const seenDecay = Math.min(1.0, hoursSinceSeen / 48); // 0.0 right after seen, 1.0 after 48h
+  const impressionPenalty = Math.min(0.9, impressions * 0.3);
+  
+  const finalScore = Number(((publicationScore * 0.4) + (seenDecay * 0.3) - impressionPenalty).toFixed(3));
+
+  return {
+    freshness_score: finalScore,
+    is_fresh: false,
+    impression_count: impressions,
+    hours_since_seen: hoursSinceSeen,
+  };
+}
+
+/**
+ * Filter and rank a list of feed cards by Semantic Affinity and Freshness / Recency
  */
 export function filterFeedBySemanticAffinity(
   cards: SynthesizedEventCard[],
   targetTopic: string,
   userNode?: UnifiedTopicNode | null,
-  categoryFilter: string = "all"
-): Array<SynthesizedEventCard & { semantic_score: number; semantic_match_reason?: string }> {
+  categoryFilter: string = "all",
+  seenState?: SeenInteractionState
+): Array<SynthesizedEventCard & { semantic_score: number; freshness_score: number; is_fresh: boolean; semantic_match_reason?: string }> {
   if (!cards || cards.length === 0) return [];
 
   return cards
     .map((card) => {
       const match = calculateSemanticAffinity(card, targetTopic, userNode);
+      const freshness = calculateFreshnessScore(card, seenState);
       return {
         ...card,
         semantic_score: match.score,
+        freshness_score: freshness.freshness_score,
+        is_fresh: freshness.is_fresh,
         semantic_match_reason: match.match_rationale,
         _is_semantic_match: match.is_match,
       };
@@ -286,10 +348,14 @@ export function filterFeedBySemanticAffinity(
       return true;
     })
     .sort((a, b) => {
-      // If a specific topic is selected, sort by semantic relevance descending
+      // Sort priority:
+      // 1. If filtering by specific topic: combine freshness and semantic score
       if (targetTopic !== "all") {
-        return b.semantic_score - a.semantic_score;
+        const scoreA = a.freshness_score * 0.6 + a.semantic_score * 0.4;
+        const scoreB = b.freshness_score * 0.6 + b.semantic_score * 0.4;
+        return scoreB - scoreA;
       }
-      return 0; // Maintain default synthesized order for "all"
+      // 2. General feed: Sort by freshness so unseen stories always surface first
+      return b.freshness_score - a.freshness_score;
     });
 }
