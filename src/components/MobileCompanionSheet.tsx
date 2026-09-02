@@ -61,6 +61,7 @@ interface MobileCompanionSheetProps {
   setIsDevToolsOpen: (open: boolean) => void;
   isReadOnlyMode?: boolean;
   viewingAsUser?: any;
+  isAdmin?: boolean;
 }
 
 export default function MobileCompanionSheet({
@@ -95,6 +96,7 @@ export default function MobileCompanionSheet({
   setIsDevToolsOpen,
   isReadOnlyMode = false,
   viewingAsUser,
+  isAdmin = false,
 }: MobileCompanionSheetProps) {
   const [isStoryExpanded, setIsStoryExpanded] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -405,18 +407,20 @@ export default function MobileCompanionSheet({
                               {msg.content}
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2 pl-1 pt-0.5">
-                              <button
-                                onClick={() => {
-                                  handleInspectChatTurn(msg);
-                                  setIsDevToolsOpen(true);
-                                }}
-                                className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/80 px-2 py-0.5 rounded-lg border border-cyan-500/40 flex items-center gap-1 transition"
-                              >
-                                <Brain className="w-3 h-3 text-cyan-400" />
-                                <span>Inspect Context</span>
-                              </button>
-                            </div>
+                            {isAdmin && (
+                              <div className="flex flex-wrap items-center gap-2 pl-1 pt-0.5">
+                                <button
+                                  onClick={() => {
+                                    handleInspectChatTurn(msg);
+                                    setIsDevToolsOpen(true);
+                                  }}
+                                  className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/80 px-2 py-0.5 rounded-lg border border-cyan-500/40 flex items-center gap-1 transition"
+                                >
+                                  <Brain className="w-3 h-3 text-cyan-400" />
+                                  <span>Inspect Context</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="max-w-[88%] p-3.5 rounded-2xl leading-relaxed bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-tr-none shadow-lg shadow-cyan-900/20">
@@ -517,14 +521,16 @@ export default function MobileCompanionSheet({
                         <Sparkles className={`w-3 h-3 text-cyan-400 ${isHarmonizing ? "animate-spin" : ""}`} />
                         <span>{isHarmonizing ? "Harmonizing..." : "Harmonize"}</span>
                       </button>
-                      <button
-                        onClick={() => handleResetProfileAndSession()}
-                        disabled={isResettingProfile}
-                        className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        <span>Reset</span>
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleResetProfileAndSession()}
+                          disabled={isResettingProfile}
+                          className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -709,21 +715,23 @@ export default function MobileCompanionSheet({
                             )}
 
                             <div className="pt-1 flex items-center justify-between border-t border-white/5">
-                              <button
-                                onClick={() => {
-                                  handleInspectTopic({
-                                    topic,
-                                    weight: data.weight,
-                                    reasoning: data.living_narrative || data.why_they_care,
-                                    technical_depth: data.technical_depth as any,
-                                  });
-                                  setIsDevToolsOpen(true);
-                                }}
-                                className="text-[10px] font-mono text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1"
-                              >
-                                <Sliders className="w-2.5 h-2.5 text-cyan-400" />
-                                <span>Inspect Node</span>
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => {
+                                    handleInspectTopic({
+                                      topic,
+                                      weight: data.weight,
+                                      reasoning: data.living_narrative || data.why_they_care,
+                                      technical_depth: data.technical_depth as any,
+                                    });
+                                    setIsDevToolsOpen(true);
+                                  }}
+                                  className="text-[10px] font-mono text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1"
+                                >
+                                  <Sliders className="w-2.5 h-2.5 text-cyan-400" />
+                                  <span>Inspect Node</span>
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => {
@@ -782,18 +790,20 @@ export default function MobileCompanionSheet({
                             >
                               {run.trigger_source === "background_observer" ? "Background" : "Manual"}
                             </span>
-                            <button
-                              onClick={() => {
-                                setSelectedContext({
-                                  type: "harmonization_run",
-                                  run,
-                                });
-                                setIsDevToolsOpen(true);
-                              }}
-                              className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100"
-                            >
-                              Inspect →
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => {
+                                  setSelectedContext({
+                                    type: "harmonization_run",
+                                    run,
+                                  });
+                                  setIsDevToolsOpen(true);
+                                }}
+                                className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100"
+                              >
+                                Inspect →
+                              </button>
+                            )}
                           </div>
                           <p className="text-slate-200 text-xs">{run.summary}</p>
                         </div>

@@ -53,6 +53,7 @@ import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import UserManagerModal from "@/components/UserManagerModal";
 import ReadOnlyBanner from "@/components/ReadOnlyBanner";
+import UserMenu from "@/components/UserMenu";
 import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -1013,142 +1014,50 @@ export default function AletheiaHome() {
         </div>
 
         {/* Desktop Global Controls */}
-        <div className="hidden lg:flex items-center gap-2.5">
-          <a
-            href="https://ciclops.io"
-            target="_blank"
-            rel="noreferrer"
-            className="px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-white/10 text-xs font-mono text-slate-300 hover:text-white flex items-center gap-1.5 transition"
-            title="Switch to ciclops.io AI Resume Generator"
-          >
-            <Compass className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="font-semibold">ciclops.io</span>
-            <ExternalLink className="w-3 h-3 text-slate-500" />
-          </a>
-
+        <div className="hidden lg:flex items-center gap-3">
           <button
             onClick={() => handleFindNewsClean()}
             disabled={isCollectingNews}
-            className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center gap-2 transition disabled:opacity-40"
+            className="px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center gap-2 transition disabled:opacity-40 shadow-sm"
             title="Fetches fresh news across your active interests"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isCollectingNews ? "animate-spin text-cyan-400" : ""}`} />
             <span>{isCollectingNews ? "Fetching News..." : "Refresh News"}</span>
           </button>
 
-          <button
-            onClick={() => handleClearFeedContent()}
-            disabled={isCollectingNews}
-            className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-white/10 text-xs transition"
-            title="Clear the current news feed"
-          >
-            Clear Feed
-          </button>
-
-          <button
-            onClick={() => handleResetProfileAndSession()}
-            disabled={isResettingProfile}
-            className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 border border-white/10 hover:border-rose-500/30 text-xs flex items-center gap-1.5 transition disabled:opacity-40"
-            title="Clear your profile, learned topics, chat memory, and start from scratch"
-          >
-            <RotateCcw className={`w-3.5 h-3.5 ${isResettingProfile ? "animate-spin text-rose-400" : ""}`} />
-            <span>{isResettingProfile ? "Resetting..." : "Reset Profile"}</span>
-          </button>
-
-          {/* Admin User Manager Button */}
-          {isAdmin && (
-            <button
-              onClick={() => setIsUserManagerOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-2 border bg-slate-900 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/10 hover:border-cyan-500/60 transition shadow-sm"
-              title="Open User Manager to configure user levels, inspect usage metrics, and view site perspectives"
-            >
-              <Users className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Users</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40">
-                Admin
-              </span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setIsDevToolsOpen(!isDevToolsOpen)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-2 border transition ${
-              isDevToolsOpen
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                : "bg-slate-900 text-slate-300 border-white/10 hover:border-cyan-500/30"
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5 text-amber-400" />
-            <span>DevTools {selectedContext ? `[${selectedContext.type}]` : ""}</span>
-          </button>
-
-          {/* Google OAuth Single Sign-On / Profile */}
           {authStatus === "loading" ? (
             <div className="w-24 h-8 rounded-xl bg-slate-900 animate-pulse border border-white/5" />
-          ) : session?.user ? (
-            <div className="flex items-center gap-2 bg-slate-900/90 border border-white/10 p-1.5 pl-2.5 rounded-xl text-xs font-mono">
-              {session.user.image ? (
-                <img
-                  src={session.user.image}
-                  alt={session.user.name || "User"}
-                  className="w-5 h-5 rounded-full border border-white/20"
-                />
-              ) : (
-                <User className="w-4 h-4 text-cyan-400" />
-              )}
-              <span className="text-slate-200 font-medium max-w-[130px] truncate">
-                {session.user.name || session.user.email}
-              </span>
-              <button
-                onClick={async () => {
-                  try {
-                    Object.keys(localStorage).forEach((key) => {
-                      if (key.startsWith("aletheia_")) {
-                        localStorage.removeItem(key);
-                      }
-                    });
-                  } catch (e) {}
-                  setMessages([defaultWelcomeMessage]);
-                  setUserGraph(null);
-                  setUnifiedTopicNode(null);
-                  setExtractedTopics([]);
-                  setPipelineResult(null);
-                  setAttachedStory(null);
-                  setSelectedContext(null);
-                  await signOut();
-                }}
-                className="px-2 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-[10px] text-rose-300 transition"
-                title="Sign out of ciclops.io"
-              >
-                Sign Out
-              </button>
-            </div>
           ) : (
-            <button
-              onClick={() => signIn("google", { callbackUrl: "/" })}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/20 transition"
-              title="Sign in with your ciclops.io Google Account"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>Sign In</span>
-            </button>
+            <UserMenu
+              session={session}
+              isAdmin={isAdmin}
+              onOpenDevTools={() => setIsDevToolsOpen(!isDevToolsOpen)}
+              isDevToolsOpen={isDevToolsOpen}
+              selectedContext={selectedContext}
+              onClearFeed={handleClearFeedContent}
+              onResetProfile={handleResetProfileAndSession}
+              isResettingProfile={isResettingProfile}
+              onOpenUserManager={() => setIsUserManagerOpen(true)}
+              onSignOut={async () => {
+                try {
+                  Object.keys(localStorage).forEach((key) => {
+                    if (key.startsWith("aletheia_")) {
+                      localStorage.removeItem(key);
+                    }
+                  });
+                } catch (e) {}
+                setMessages([defaultWelcomeMessage]);
+                setUserGraph(null);
+                setUnifiedTopicNode(null);
+                setExtractedTopics([]);
+                setPipelineResult(null);
+                setAttachedStory(null);
+                setSelectedContext(null);
+                await signOut();
+              }}
+              onSignIn={() => signIn("google", { callbackUrl: "/" })}
+              isCollectingNews={isCollectingNews}
+            />
           )}
         </div>
 
@@ -1253,23 +1162,6 @@ export default function AletheiaHome() {
 
               {/* Navigation & Actions */}
               <div className="space-y-2 text-xs">
-                {isAdmin && (
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      setIsUserManagerOpen(true);
-                    }}
-                    className="w-full py-2.5 px-3 rounded-xl bg-slate-900 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-950/40 text-xs font-mono font-semibold flex items-center justify-between transition shadow-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-cyan-400" />
-                      <span>User Manager</span>
-                    </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
-                      Admin
-                    </span>
-                  </button>
-                )}
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
@@ -1280,40 +1172,6 @@ export default function AletheiaHome() {
                 >
                   <RefreshCw className={`w-4 h-4 ${isCollectingNews ? "animate-spin text-cyan-400" : ""}`} />
                   <span>{isCollectingNews ? "Fetching News..." : "Refresh News Feed"}</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    handleClearFeedContent();
-                  }}
-                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 flex items-center gap-2.5 transition text-left"
-                >
-                  <Filter className="w-4 h-4 text-slate-400" />
-                  <span>Clear Feed Stories</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    handleResetProfileAndSession();
-                  }}
-                  disabled={isResettingProfile}
-                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-rose-300 border border-rose-500/20 flex items-center gap-2.5 transition text-left"
-                >
-                  <RotateCcw className={`w-4 h-4 ${isResettingProfile ? "animate-spin" : ""}`} />
-                  <span>Reset Profile & Memory</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsDevToolsOpen(true);
-                  }}
-                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-amber-950/40 text-amber-300 border border-amber-500/20 flex items-center gap-2.5 transition text-left"
-                >
-                  <Terminal className="w-4 h-4 text-amber-400" />
-                  <span>Inspect System DevTools</span>
                 </button>
 
                 <a
@@ -1328,6 +1186,66 @@ export default function AletheiaHome() {
                   </div>
                   <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                 </a>
+
+                {/* Admin-Only Controls */}
+                {isAdmin && (
+                  <div className="pt-2 mt-2 border-t border-white/10 space-y-2">
+                    <div className="px-1 text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                      <Terminal className="w-3 h-3 text-cyan-400" />
+                      <span>Admin Controls</span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setIsUserManagerOpen(true);
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-950/40 text-xs font-mono font-semibold flex items-center justify-between transition shadow-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-cyan-400" />
+                        <span>User Manager</span>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                        Admin
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setIsDevToolsOpen(true);
+                      }}
+                      className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-amber-950/40 text-amber-300 border border-amber-500/20 flex items-center gap-2.5 transition text-left"
+                    >
+                      <Terminal className="w-4 h-4 text-amber-400" />
+                      <span>Inspect System DevTools</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        handleClearFeedContent();
+                      }}
+                      className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 flex items-center gap-2.5 transition text-left"
+                    >
+                      <Filter className="w-4 h-4 text-slate-400" />
+                      <span>Clear Feed Stories</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        handleResetProfileAndSession();
+                      }}
+                      disabled={isResettingProfile}
+                      className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 text-rose-300 border border-rose-500/20 flex items-center gap-2.5 transition text-left"
+                    >
+                      <RotateCcw className={`w-4 h-4 ${isResettingProfile ? "animate-spin" : ""}`} />
+                      <span>Reset Profile & Memory</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1929,21 +1847,23 @@ export default function AletheiaHome() {
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>{isAttached ? "Active in Chat" : "Discuss with Aletheia"}</span>
                         </button>
-                        <button
-                          onClick={() => {
-                            setSelectedContext({
-                              type: "story_card",
-                              event_id: card.event_id,
-                              topic: card.topic,
-                              card,
-                            });
-                            setIsDevToolsOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-white/10 transition"
-                          title="Inspect Agent Reasoning in DevTools"
-                        >
-                          <Terminal className="w-3.5 h-3.5" />
-                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              setSelectedContext({
+                                type: "story_card",
+                                event_id: card.event_id,
+                                topic: card.topic,
+                                card,
+                              });
+                              setIsDevToolsOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-white/10 transition"
+                            title="Inspect Agent Reasoning in DevTools"
+                          >
+                            <Terminal className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -2620,15 +2540,17 @@ export default function AletheiaHome() {
                         <Sparkles className={`w-3 h-3 text-cyan-400 ${isHarmonizing ? "animate-spin" : ""}`} />
                         <span>{isHarmonizing ? "Harmonizing..." : "Harmonize"}</span>
                       </button>
-                      <button
-                        onClick={() => handleResetProfileAndSession()}
-                        disabled={isResettingProfile}
-                        className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
-                        title="Clear interests and start from scratch"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        <span>Reset</span>
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleResetProfileAndSession()}
+                          disabled={isResettingProfile}
+                          className="text-[10px] font-mono text-rose-400 hover:text-rose-300 flex items-center gap-1 transition"
+                          title="Clear interests and start from scratch"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2914,19 +2836,21 @@ export default function AletheiaHome() {
                               </span>
                             </div>
 
-                            <button
-                              onClick={() => {
-                                setSelectedContext({
-                                  type: "harmonization_run",
-                                  run,
-                                });
-                                setIsDevToolsOpen(true);
-                              }}
-                              className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900 px-2 py-0.5 rounded border border-cyan-500/30 transition flex items-center gap-1"
-                            >
-                              <span>Inspect Run</span>
-                              <span>→</span>
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => {
+                                  setSelectedContext({
+                                    type: "harmonization_run",
+                                    run,
+                                  });
+                                  setIsDevToolsOpen(true);
+                                }}
+                                className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/70 hover:bg-cyan-900 px-2 py-0.5 rounded border border-cyan-500/30 transition flex items-center gap-1"
+                              >
+                                <span>Inspect Run</span>
+                                <span>→</span>
+                              </button>
+                            )}
                           </div>
 
                           <p className="text-slate-200 text-xs leading-relaxed">{run.summary}</p>
@@ -2998,6 +2922,7 @@ export default function AletheiaHome() {
         setIsDevToolsOpen={setIsDevToolsOpen}
         isReadOnlyMode={isReadOnlyMode}
         viewingAsUser={viewingAsUser}
+        isAdmin={isAdmin}
       />
 
       {/* Mobile Fixed Bottom Navigation Bar */}
@@ -3060,16 +2985,6 @@ export default function AletheiaHome() {
             )}
           </div>
           <span className="text-[10px] font-mono">Interests</span>
-        </button>
-
-        <button
-          onClick={() => setIsDevToolsOpen(!isDevToolsOpen)}
-          className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
-            isDevToolsOpen ? "text-amber-400 font-bold" : "text-slate-400 hover:text-cyan-300"
-          }`}
-        >
-          <Sliders className="w-5 h-5" />
-          <span className="text-[10px] font-mono">DevTools</span>
         </button>
       </nav>
 
