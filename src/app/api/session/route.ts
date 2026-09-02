@@ -8,7 +8,12 @@ import { verifyAdminAuth } from "@/core/auth/admin-guard";
 import { isReadOnlyRequest, readOnlyForbiddenResponse } from "@/core/auth/read-only-guard";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    session = null;
+  }
   const queryUserId = req.nextUrl.searchParams.get("userId");
   const viewAsUserId = req.nextUrl.searchParams.get("viewAs") || req.headers.get("x-view-as-user");
 
@@ -16,12 +21,32 @@ export async function GET(req: NextRequest) {
   let isViewingAsOther = false;
 
   // Handle "View site as another user" (Impersonation in read-only mode)
-  if (viewAsUserId && viewAsUserId.startsWith("usr_")) {
+  if (viewAsUserId) {
     const adminCheck = await verifyAdminAuth(req);
-    if (adminCheck.isAuthorized) {
-      effectiveUserId = viewAsUserId;
-      isViewingAsOther = true;
+    if (!adminCheck.isAuthorized) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized: Administrator privileges required to view site as another user.",
+        },
+        { status: 403 }
+      );
     }
+
+    // Resolve target user by ID, email, or canonical prefix
+    const targetUser =
+      (await postgresStore.getUser(viewAsUserId)) ||
+      (await postgresStore.getUserByEmail(viewAsUserId)) ||
+      (viewAsUserId.startsWith("usr_")
+        ? undefined
+        : await postgresStore.getUser(`usr_${viewAsUserId.replace(/[^a-zA-Z0-9]/g, "_")}`));
+
+    effectiveUserId =
+      targetUser?.id ||
+      (viewAsUserId.startsWith("usr_")
+        ? viewAsUserId
+        : `usr_${viewAsUserId.replace(/[^a-zA-Z0-9]/g, "_")}`);
+    isViewingAsOther = true;
   }
 
   if (!effectiveUserId) {
@@ -62,7 +87,9 @@ export async function GET(req: NextRequest) {
   const chatSession = await postgresStore.getChatSession(effectiveUserId);
   const userGraph = await postgresStore.getUserGraph(effectiveUserId);
   const facts = await postgresStore.getAllFacts();
-  const dbUser = await postgresStore.getUser(effectiveUserId);
+  const dbUser =
+    (await postgresStore.getUser(effectiveUserId)) ||
+    (effectiveUserId.includes("@") ? await postgresStore.getUserByEmail(effectiveUserId) : undefined);
   const usage = await postgresStore.getUserUsage(effectiveUserId);
 
   return NextResponse.json({
@@ -77,6 +104,13 @@ export async function GET(req: NextRequest) {
           image: dbUser.image,
           role: dbUser.role,
           id: dbUser.id,
+        }
+      : isViewingAsOther
+      ? {
+          name: effectiveUserId.replace(/^usr_/, "").replace(/_/g, " "),
+          email: effectiveUserId.includes("@") ? effectiveUserId : undefined,
+          role: "user",
+          id: effectiveUserId,
         }
       : session?.user || null,
     usage: usage || null,

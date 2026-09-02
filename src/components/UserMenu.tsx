@@ -13,12 +13,15 @@ import {
   ExternalLink,
   Compass,
   Shield,
+  EyeOff,
 } from "lucide-react";
-import { ContextualSelection } from "@/core/types/contracts";
+import { ContextualSelection, AppUser } from "@/core/types/contracts";
 
 export interface UserMenuProps {
   session: any;
   isAdmin: boolean;
+  viewingUser?: AppUser | null;
+  onExitViewMode?: () => void;
   onOpenDevTools: () => void;
   isDevToolsOpen: boolean;
   selectedContext: ContextualSelection | null;
@@ -34,6 +37,8 @@ export interface UserMenuProps {
 export default function UserMenu({
   session,
   isAdmin,
+  viewingUser,
+  onExitViewMode,
   onOpenDevTools,
   isDevToolsOpen,
   selectedContext,
@@ -72,9 +77,16 @@ export default function UserMenu({
     };
   }, [isOpen]);
 
-  const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "Guest";
-  const userEmail = session?.user?.email || (isAdmin ? "Development Mode" : "Signed out");
-  const userImage = session?.user?.image;
+  const userName = viewingUser
+    ? viewingUser.name || viewingUser.email?.split("@")[0] || "User"
+    : session?.user?.name || session?.user?.email?.split("@")[0] || "Guest";
+
+  const userEmail = viewingUser
+    ? viewingUser.email
+    : session?.user?.email || (isAdmin ? "Development Mode" : "Signed out");
+
+  const userImage = viewingUser ? viewingUser.image : session?.user?.image;
+  const isViewingOtherUser = Boolean(viewingUser);
 
   return (
     <div className="relative" ref={menuRef}>
@@ -84,11 +96,13 @@ export default function UserMenu({
         className={`flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border text-xs font-mono transition shadow-sm select-none ${
           isOpen
             ? "bg-slate-800 border-cyan-500/50 text-white shadow-cyan-500/10"
+            : isViewingOtherUser
+            ? "bg-amber-950/40 hover:bg-amber-900/40 border-amber-500/40 text-amber-200 hover:text-white"
             : "bg-slate-900/90 hover:bg-slate-800/90 border-white/10 text-slate-200 hover:text-white hover:border-white/20"
         }`}
         aria-haspopup="true"
         aria-expanded={isOpen}
-        title="User menu & controls"
+        title={isViewingOtherUser ? `Viewing site perspective of ${userName}` : "User menu & controls"}
       >
         {userImage ? (
           <img
@@ -106,11 +120,15 @@ export default function UserMenu({
           {userName}
         </span>
 
-        {isAdmin && (
+        {isViewingOtherUser ? (
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-500/40 font-semibold tracking-wide">
+            Viewing
+          </span>
+        ) : isAdmin ? (
           <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold tracking-wide">
             Admin
           </span>
-        )}
+        ) : null}
 
         <ChevronDown
           className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
@@ -132,7 +150,7 @@ export default function UserMenu({
                   className="w-9 h-9 rounded-full border border-white/20 object-cover flex-shrink-0"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-slate-800/90 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 shadow-inner">
+                <div className={`w-9 h-9 rounded-full ${isViewingOtherUser ? "bg-amber-950/60 border-amber-500/30 text-amber-300" : "bg-slate-800/90 border-cyan-500/30 text-cyan-400"} border flex items-center justify-center flex-shrink-0 shadow-inner`}>
                   <User className="w-4 h-4" />
                 </div>
               )}
@@ -148,15 +166,39 @@ export default function UserMenu({
                 <p className="text-[11px] text-slate-400 truncate">{userEmail}</p>
               </div>
             </div>
-            {isAdmin && (
+
+            {isViewingOtherUser ? (
+              <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-amber-400">
+                <span>PERSPECTIVE</span>
+                <span className="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-500/30 uppercase">
+                  {viewingUser?.role || "user"} (Read-Only)
+                </span>
+              </div>
+            ) : isAdmin ? (
               <div className="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-cyan-400">
                 <span>ROLE</span>
                 <span className="px-1.5 py-0.2 rounded bg-cyan-950/80 border border-cyan-500/30">
                   Administrator
                 </span>
               </div>
-            )}
+            ) : null}
           </div>
+
+          {/* Exit View Mode Button if currently impersonating */}
+          {isViewingOtherUser && onExitViewMode && (
+            <div className="py-1.5">
+              <button
+                onClick={() => {
+                  onExitViewMode();
+                  setIsOpen(false);
+                }}
+                className="w-full px-3 py-2 rounded-xl text-xs font-mono flex items-center gap-2.5 text-amber-300 hover:text-amber-200 bg-amber-950/30 hover:bg-amber-900/40 border border-amber-500/30 transition shadow-sm"
+              >
+                <EyeOff className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span className="font-semibold">Exit View Mode</span>
+              </button>
+            </div>
+          )}
 
           {/* Admin Tools Section */}
           {isAdmin && (

@@ -33,6 +33,7 @@ import {
   Zap,
   FileText,
   Users,
+  EyeOff,
 } from "lucide-react";
 import {
   NewsStateContext,
@@ -76,7 +77,15 @@ function sanitizeDisplay(input?: string): string {
 
 export default function AletheiaHome() {
   const { data: session, status: authStatus } = useSession();
-  const [viewingAsUser, setViewingAsUser] = useState<AppUser | null>(null);
+  const [viewingAsUser, setViewingAsUser] = useState<AppUser | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = sessionStorage.getItem("aletheia_view_as_user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isUserManagerOpen, setIsUserManagerOpen] = useState(false);
   const [guestExplore, setGuestExplore] = useState(false);
 
@@ -92,7 +101,19 @@ export default function AletheiaHome() {
     (session?.user as any)?.role === "ADMIN" ||
     process.env.NODE_ENV !== "production";
 
+  const isEffectiveAdmin = isAdmin && !viewingAsUser;
+
   const handleViewAsUser = (targetUser: AppUser) => {
+    // Clean slate immediately so existing in-memory state never bleeds into viewed user
+    setMessages([defaultWelcomeMessage]);
+    setUserGraph(null);
+    setUnifiedTopicNode(null);
+    setExtractedTopics([]);
+    setPipelineResult(null);
+    setAttachedStory(null);
+    setSelectedContext(null);
+    setIsDevToolsOpen(false);
+
     setViewingAsUser(targetUser);
     try {
       sessionStorage.setItem("aletheia_view_as_user", JSON.stringify(targetUser));
@@ -100,20 +121,20 @@ export default function AletheiaHome() {
   };
 
   const handleExitViewMode = () => {
+    // Clean slate before returning to admin's real session
+    setMessages([defaultWelcomeMessage]);
+    setUserGraph(null);
+    setUnifiedTopicNode(null);
+    setExtractedTopics([]);
+    setPipelineResult(null);
+    setAttachedStory(null);
+    setSelectedContext(null);
+
     setViewingAsUser(null);
     try {
       sessionStorage.removeItem("aletheia_view_as_user");
     } catch {}
   };
-
-  useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem("aletheia_view_as_user");
-      if (stored) {
-        setViewingAsUser(JSON.parse(stored));
-      }
-    } catch {}
-  }, []);
 
   const defaultWelcomeMessage: ChatMessage = {
     id: "welcome-msg",
@@ -248,22 +269,22 @@ export default function AletheiaHome() {
         if (data.success) {
           if (data.unified_topic_node && Object.keys(data.unified_topic_node.topics || {}).length > 0) {
             setUnifiedTopicNode(data.unified_topic_node);
-          } else if (viewingAsUser) {
+          } else {
             setUnifiedTopicNode(data.unified_topic_node || null);
           }
-          if (data.user_graph) {
+          if (data.user_graph && Object.keys(data.user_graph.topic_weights || {}).length > 0) {
             setUserGraph(data.user_graph);
-          } else if (viewingAsUser) {
-            setUserGraph(null);
+          } else {
+            setUserGraph(data.user_graph || null);
           }
           if (data.messages && data.messages.length > 0) {
             setMessages(data.messages);
-          } else if (viewingAsUser) {
+          } else {
             setMessages([defaultWelcomeMessage]);
           }
           if (data.extracted_topics && data.extracted_topics.length > 0) {
             setExtractedTopics(data.extracted_topics);
-          } else if (viewingAsUser) {
+          } else {
             setExtractedTopics([]);
           }
         }
@@ -274,9 +295,11 @@ export default function AletheiaHome() {
     loadSession();
   }, [effectiveUserId, authStatus, viewingAsUser]);
 
-  // Save to browser localStorage whenever state changes (only for authenticated users)
+  // Save to browser localStorage whenever state changes (only for authenticated users, NEVER in read-only / view-as mode)
   useEffect(() => {
     if (
+      !isReadOnlyMode &&
+      !viewingAsUser &&
       effectiveUserId !== "usr_guest" &&
       (messages.length > 1 ||
         extractedTopics.length > 0 ||
@@ -298,7 +321,7 @@ export default function AletheiaHome() {
         );
       } catch (e) {}
     }
-  }, [messages, unifiedTopicNode, userGraph, extractedTopics, pipelineResult, effectiveUserId]);
+  }, [messages, unifiedTopicNode, userGraph, extractedTopics, pipelineResult, effectiveUserId, isReadOnlyMode, viewingAsUser]);
 
   // Derived accurate count of all tracked interests from Unified Topic Node (authoritative source)
   const totalInterestsCount = Object.keys(unifiedTopicNode?.topics || {}).length;
@@ -1077,14 +1100,16 @@ export default function AletheiaHome() {
 
           <UserMenu
             session={session}
-            isAdmin={isAdmin}
+            isAdmin={isEffectiveAdmin}
+            viewingUser={viewingAsUser}
+            onExitViewMode={handleExitViewMode}
             onOpenDevTools={() => setIsDevToolsOpen(!isDevToolsOpen)}
             isDevToolsOpen={isDevToolsOpen}
-              selectedContext={selectedContext}
-              onClearFeed={handleClearFeedContent}
-              onResetProfile={handleResetProfileAndSession}
-              isResettingProfile={isResettingProfile}
-              onOpenUserManager={() => setIsUserManagerOpen(true)}
+            selectedContext={selectedContext}
+            onClearFeed={handleClearFeedContent}
+            onResetProfile={handleResetProfileAndSession}
+            isResettingProfile={isResettingProfile}
+            onOpenUserManager={() => setIsUserManagerOpen(true)}
               onSignOut={async () => {
                 try {
                   Object.keys(localStorage).forEach((key) => {
@@ -1233,8 +1258,22 @@ export default function AletheiaHome() {
                   <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                 </a>
 
+                {/* Exit View Mode Button if impersonating */}
+                {viewingAsUser && (
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      handleExitViewMode();
+                    }}
+                    className="w-full p-2.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-500/30 flex items-center gap-2.5 font-medium transition text-left"
+                  >
+                    <EyeOff className="w-4 h-4 text-amber-400" />
+                    <span>Exit View Mode</span>
+                  </button>
+                )}
+
                 {/* Admin-Only Controls */}
-                {isAdmin && (
+                {isEffectiveAdmin && (
                   <div className="pt-2 mt-2 border-t border-white/10 space-y-2">
                     <div className="px-1 text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
                       <Terminal className="w-3 h-3 text-cyan-400" />
@@ -1893,7 +1932,7 @@ export default function AletheiaHome() {
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>{isAttached ? "Active in Chat" : "Discuss with Aletheia"}</span>
                         </button>
-                        {isAdmin && (
+                        {isEffectiveAdmin && (
                           <button
                             onClick={() => {
                               setSelectedContext({
@@ -2586,7 +2625,7 @@ export default function AletheiaHome() {
                         <Sparkles className={`w-3 h-3 text-cyan-400 ${isHarmonizing ? "animate-spin" : ""}`} />
                         <span>{isHarmonizing ? "Harmonizing..." : "Harmonize"}</span>
                       </button>
-                      {isAdmin && (
+                      {isEffectiveAdmin && (
                         <button
                           onClick={() => handleResetProfileAndSession()}
                           disabled={isResettingProfile}
@@ -2882,7 +2921,7 @@ export default function AletheiaHome() {
                               </span>
                             </div>
 
-                            {isAdmin && (
+                            {isEffectiveAdmin && (
                               <button
                                 onClick={() => {
                                   setSelectedContext({
@@ -2968,7 +3007,7 @@ export default function AletheiaHome() {
         setIsDevToolsOpen={setIsDevToolsOpen}
         isReadOnlyMode={isReadOnlyMode}
         viewingAsUser={viewingAsUser}
-        isAdmin={isAdmin}
+        isAdmin={isEffectiveAdmin}
       />
 
       {/* Mobile Fixed Bottom Navigation Bar */}
@@ -3047,17 +3086,19 @@ export default function AletheiaHome() {
         />
       )}
 
-      {/* Global Contextually Aware DevTools Drawer */}
-      <DevToolsPanel
-        isOpen={isDevToolsOpen}
-        onToggle={() => setIsDevToolsOpen(!isDevToolsOpen)}
-        userGraph={userGraph}
-        unifiedTopicNode={unifiedTopicNode}
-        refreshTrigger={devToolsTrigger}
-        selectedContext={selectedContext}
-        onSelectContext={setSelectedContext}
-        isCollectingNews={isCollectingNews}
-      />
+      {/* Global Contextually Aware DevTools Drawer - strictly admin only, never when viewing as regular user */}
+      {isAdmin && !viewingAsUser && (
+        <DevToolsPanel
+          isOpen={isDevToolsOpen}
+          onToggle={() => setIsDevToolsOpen(!isDevToolsOpen)}
+          userGraph={userGraph}
+          unifiedTopicNode={unifiedTopicNode}
+          refreshTrigger={devToolsTrigger}
+          selectedContext={selectedContext}
+          onSelectContext={setSelectedContext}
+          isCollectingNews={isCollectingNews}
+        />
+      )}
 
       {/* Admin User Manager Modal */}
       <UserManagerModal

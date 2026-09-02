@@ -32,7 +32,12 @@ export async function verifyAdminAuth(req: NextRequest): Promise<AdminAuthResult
   }
 
   // 2. Check Authenticated NextAuth Session
-  const session = await getServerSession(authOptions);
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    session = null;
+  }
   if (session?.user?.email) {
     const email = session.user.email.toLowerCase();
     const effectiveUserId = (session.user as any).id || `usr_${email.replace(/[^a-zA-Z0-9]/g, "_")}`;
@@ -43,7 +48,12 @@ export async function verifyAdminAuth(req: NextRequest): Promise<AdminAuthResult
     }
 
     // Check database directly in case session has not reloaded
-    const dbUser = await postgresStore.getUser(effectiveUserId);
+    const canonicalId = `usr_${email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    const dbUser =
+      (await postgresStore.getUser(effectiveUserId)) ||
+      (await postgresStore.getUser(canonicalId)) ||
+      (await postgresStore.getUserByEmail(email));
+
     if (dbUser?.role === "admin") {
       return { isAuthorized: true, userId: effectiveUserId };
     }

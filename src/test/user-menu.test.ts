@@ -50,4 +50,23 @@ describe("UserMenu & Minimalist Header Layout", () => {
     expect(bottomNavSection).toContain("Interests");
     expect(bottomNavSection).not.toContain("DevTools");
   });
+
+  it("ensures UserMenu supports viewingUser perspective and Exit View Mode button", () => {
+    const userMenuPath = path.resolve(__dirname, "../components/UserMenu.tsx");
+    const content = fs.readFileSync(userMenuPath, "utf-8");
+
+    expect(content).toContain("viewingUser?: AppUser | null;");
+    expect(content).toContain("onExitViewMode?: () => void;");
+    expect(content).toContain("Exit View Mode");
+    expect(content).toContain("Viewing");
+  });
+
+  it("ensures DevToolsPanel in page.tsx is strictly guarded with isAdmin && !viewingAsUser", () => {
+    const pagePath = path.resolve(__dirname, "../app/page.tsx");
+    const content = fs.readFileSync(pagePath, "utf-8");
+
+    expect(content).toContain("{isAdmin && !viewingAsUser && (");
+    expect(content).toContain("<DevToolsPanel");
+  });
 });
+
