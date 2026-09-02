@@ -18,8 +18,10 @@ export class StripeService {
   private liveStripe: Stripe | null = null;
   private testStripe: Stripe | null = null;
   private isTestMode: boolean = true;
-  private cachedPriceId: string | null = null;
-  private cachedCouponId: string | null = null;
+  private cachedLivePriceId: string | null = null;
+  private cachedTestPriceId: string | null = null;
+  private cachedLiveCouponId: string | null = null;
+  private cachedTestCouponId: string | null = null;
 
   constructor() {
     const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -78,6 +80,7 @@ export class StripeService {
 
   /**
    * Retrieves or creates the recurring $15/month subscription price and $10-off first-month coupon.
+   * Isolates live and test modes to prevent cross-environment price ID collisions.
    */
   public async getOrCreatePriceAndCoupon(forceTestMode?: boolean): Promise<{ priceId: string; couponId: string }> {
     const client = this.getClient(forceTestMode);
@@ -85,8 +88,13 @@ export class StripeService {
       return { priceId: "price_mock_15usd_month", couponId: "coupon_mock_10usd_off" };
     }
 
+    const isTest = Boolean(forceTestMode || (this.testStripe && client === this.testStripe));
+
     // 1. Resolve Price
-    let priceId = process.env.STRIPE_PRICE_ID || this.cachedPriceId;
+    let priceId = isTest
+      ? process.env.STRIPE_TEST_PRICE_ID || this.cachedTestPriceId
+      : process.env.STRIPE_PRICE_ID || this.cachedLivePriceId;
+
     if (!priceId) {
       try {
         const prices = await client.prices.list({
@@ -122,18 +130,26 @@ export class StripeService {
           });
           priceId = newPrice.id;
         }
-        this.cachedPriceId = priceId;
+
+        if (isTest) {
+          this.cachedTestPriceId = priceId;
+        } else {
+          this.cachedLivePriceId = priceId;
+        }
       } catch (err) {
         console.warn("StripeService: Could not auto-resolve Stripe price, using fallback:", err);
-        priceId = "price_aletheia_sub_15";
+        priceId = isTest ? "price_aletheia_test_15" : "price_aletheia_sub_15";
       }
     }
 
     // 2. Resolve $10 Off First Month Coupon
-    let couponId = process.env.STRIPE_COUPON_ID || this.cachedCouponId;
+    let couponId = isTest
+      ? process.env.STRIPE_TEST_COUPON_ID || this.cachedTestCouponId
+      : process.env.STRIPE_COUPON_ID || this.cachedLiveCouponId;
+
     if (!couponId) {
       try {
-        const couponName = "aletheia_first_month_10_off";
+        const couponName = isTest ? "aletheia_test_first_month_10_off" : "aletheia_first_month_10_off";
         try {
           const existingCoupon = await client.coupons.retrieve(couponName);
           couponId = existingCoupon.id;
@@ -147,10 +163,15 @@ export class StripeService {
           });
           couponId = createdCoupon.id;
         }
-        this.cachedCouponId = couponId;
+
+        if (isTest) {
+          this.cachedTestCouponId = couponId;
+        } else {
+          this.cachedLiveCouponId = couponId;
+        }
       } catch (err) {
         console.warn("StripeService: Could not auto-resolve Stripe coupon:", err);
-        couponId = "aletheia_first_month_10_off";
+        couponId = isTest ? "aletheia_test_first_month_10_off" : "aletheia_first_month_10_off";
       }
     }
 
