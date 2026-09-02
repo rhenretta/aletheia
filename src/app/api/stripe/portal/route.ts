@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     const session = await getServerSession(authOptions);
     const body = await req.json().catch(() => ({}));
-    const { userId } = body as { userId?: string };
+    const { userId, isTestMode } = body as { userId?: string; isTestMode?: boolean };
 
     const effectiveUserId =
       session?.user?.email
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
     const result = await stripeService.createPortalSession({
       user,
       returnUrl: origin,
+      isTestMode: Boolean(isTestMode),
     });
 
     return NextResponse.json({

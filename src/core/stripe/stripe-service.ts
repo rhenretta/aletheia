@@ -400,9 +400,10 @@ export class StripeService {
   public async createPortalSession(params: {
     user: AppUser;
     returnUrl: string;
+    isTestMode?: boolean;
   }): Promise<PortalSessionResult> {
-    const { user, returnUrl } = params;
-    const client = this.getClient();
+    const { user, returnUrl, isTestMode } = params;
+    const client = this.getClient(isTestMode);
 
     if (!client) {
       if (process.env.NODE_ENV === "test") {
@@ -411,10 +412,14 @@ export class StripeService {
           isMock: true,
         };
       }
-      throw new Error("Stripe billing portal is not configured. Please set STRIPE_SECRET_KEY in server environment.");
+      throw new Error(
+        isTestMode
+          ? "Stripe test mode is not configured. Please set STRIPE_TEST_SECRET_KEY in server environment."
+          : "Stripe billing portal is not configured. Please set STRIPE_SECRET_KEY in server environment."
+      );
     }
 
-    const customerId = await this.getOrCreateCustomer(user);
+    const customerId = await this.getOrCreateCustomer(user, isTestMode);
     if (!customerId) {
       throw new Error("No active Stripe subscription or customer record found for this account.");
     }
