@@ -160,11 +160,19 @@ export default function AletheiaHome() {
       url.searchParams.delete("subscription");
       url.searchParams.delete("session_id");
       url.searchParams.delete("mock");
+      url.searchParams.delete("test_mode");
       window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
     } else if (subParam === "canceled") {
       setSubscriptionToast("Subscription checkout canceled.");
       url.searchParams.delete("subscription");
       window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    }
+
+    // Clean up Stripe portal return param (portal=mock from local dev)
+    if (url.searchParams.has("portal")) {
+      url.searchParams.delete("portal");
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+      fetchUserUsage();
     }
   }, [effectiveUserId, fetchUserUsage]);
 
@@ -1172,7 +1180,7 @@ export default function AletheiaHome() {
           <div className="flex items-center gap-2.5">
             <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
             <span>
-              Approaching monthly free compute quota (<strong>${userLimitStatus.currentCost.toFixed(2)}</strong> / ${userLimitStatus.limit.toFixed(2)}). Upgrade to Subscriber for 6x compute allowance ($3.00/mo).
+              Approaching monthly free compute quota (<strong>${(userLimitStatus.currentCost ?? 0).toFixed(2)}</strong> / ${(userLimitStatus.limit ?? 0.5).toFixed(2)}). Upgrade to Subscriber for 6x compute allowance ($3.00/mo).
             </span>
           </div>
           <div className="flex items-center gap-2">

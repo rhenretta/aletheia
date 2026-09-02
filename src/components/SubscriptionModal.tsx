@@ -288,7 +288,7 @@ export default function SubscriptionModal({
             <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-3">
               <Flame className="w-5 h-5 text-amber-400 flex-shrink-0" />
               <div>
-                <strong>Free Monthly Limit Reached:</strong> You have consumed ${limitStatus.currentCost.toFixed(2)} of your $0.50 free epistemic compute quota. Upgrade to unlock $3.00/mo allowance (6x capacity) and uninterrupted deep analysis.
+                <strong>Free Monthly Limit Reached:</strong> You have consumed ${(limitStatus.currentCost ?? 0).toFixed(2)} of your $0.50 free epistemic compute quota. Upgrade to unlock $3.00/mo allowance (6x capacity) and uninterrupted deep analysis.
               </div>
             </div>
           )}

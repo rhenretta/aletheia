@@ -215,7 +215,7 @@ export default function UserMenu({
                   <div className="flex items-center justify-between text-[10px] font-mono">
                     <span className="text-slate-400">Monthly Compute</span>
                     <span className="text-slate-200 font-bold">
-                      ${limitStatus.currentCost.toFixed(2)} / ${limitStatus.limit.toFixed(2)}
+                      ${(limitStatus.currentCost ?? 0).toFixed(2)} / ${(limitStatus.limit ?? 0.5).toFixed(2)}
                       <span className="text-slate-400 font-normal ml-1">
                         ({limitStatus.percentUsed}%)
                       </span>
