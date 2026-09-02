@@ -87,19 +87,7 @@ export default function SubscriptionModal({
 
       const data = await res.json();
       if (data.success && data.checkoutUrl) {
-        if (data.isMock) {
-          // If running in local mock mode, sync and notify
-          await fetch("/api/stripe/sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId: data.sessionId, userId: user?.id }),
-          });
-          if (onSuccess) onSuccess();
-          onClose();
-          window.location.reload();
-        } else {
-          window.location.href = data.checkoutUrl;
-        }
+        window.location.href = data.checkoutUrl;
       } else {
         setError(data.error || "Failed to initialize checkout session");
       }

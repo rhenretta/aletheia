@@ -138,3 +138,27 @@ variable "admin_emails" {
   type        = string
   default     = "admin@ciclops.io"
 }
+
+# --- Stripe Monetization Secrets ---
+
+variable "stripe_secret_key" {
+  description = "Stripe Live Secret Key (sk_live_...)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "stripe_test_secret_key" {
+  description = "Stripe Test Secret Key for admin sandbox testing (sk_test_...)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "stripe_webhook_secret" {
+  description = "Stripe Webhook Signing Secret (whsec_...)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+

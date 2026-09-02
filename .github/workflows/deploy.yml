@@ -119,6 +119,9 @@ jobs:
           TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
           TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           TF_VAR_admin_emails: ${{ secrets.ADMIN_EMAILS }}
+          TF_VAR_stripe_secret_key: ${{ secrets.STRIPE_SECRET_KEY }}
+          TF_VAR_stripe_test_secret_key: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          TF_VAR_stripe_webhook_secret: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           echo "📦 Applying Full Terraform Infrastructure..."
           terraform apply -auto-approve

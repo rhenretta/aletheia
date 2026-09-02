@@ -231,6 +231,18 @@ resource "aws_ecs_task_definition" "app" {
         {
           name      = "GOOGLE_CLIENT_SECRET"
           valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "STRIPE_SECRET_KEY"
+          valueFrom = aws_ssm_parameter.stripe_secret_key.arn
+        },
+        {
+          name      = "STRIPE_TEST_SECRET_KEY"
+          valueFrom = aws_ssm_parameter.stripe_test_secret_key.arn
+        },
+        {
+          name      = "STRIPE_WEBHOOK_SECRET"
+          valueFrom = aws_ssm_parameter.stripe_webhook_secret.arn
         }
       ]
 

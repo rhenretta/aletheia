@@ -212,13 +212,20 @@ export class StripeService {
     const client = this.getClient(testMode);
 
     if (!client) {
-      // Graceful local development / test mock checkout flow
-      const mockSessionId = `mock_cs_${Date.now()}`;
-      return {
-        checkoutUrl: `${originUrl}?subscription=success&session_id=${mockSessionId}&mock=true${testMode ? "&test_mode=true" : ""}`,
-        sessionId: mockSessionId,
-        isMock: true,
-      };
+      // Only allow mock checkout during automated unit test runs
+      if (process.env.NODE_ENV === "test") {
+        const mockSessionId = `mock_cs_${Date.now()}`;
+        return {
+          checkoutUrl: `${originUrl}?subscription=success&session_id=${mockSessionId}&mock=true${testMode ? "&test_mode=true" : ""}`,
+          sessionId: mockSessionId,
+          isMock: true,
+        };
+      }
+      throw new Error(
+        testMode
+          ? "Stripe test mode is not configured. Please configure STRIPE_TEST_SECRET_KEY on the server."
+          : "Stripe payments are not configured on this server. Please configure STRIPE_SECRET_KEY."
+      );
     }
 
     const customerId = await this.getOrCreateCustomer(user, testMode);
@@ -266,8 +273,8 @@ export class StripeService {
   }
 
   /**
-   * Processes a simulated Stripe test card payment (e.g. 4242 4242 4242 4242) for admins.
-   * Simulates standard Stripe test card responses (decline on ...0002, expired on ...0115, etc.)
+   * Processes an admin test payment using test credit card numbers.
+   * Simulates full Stripe charge lifecycle and updates user quota to $3.00/mo subscriber.
    */
   public async processTestPayment(params: {
     userId: string;
@@ -276,15 +283,16 @@ export class StripeService {
     cvc?: string;
   }): Promise<{
     success: boolean;
-    user?: AppUser;
+    user?: AppUser | null;
     error?: string;
+    message?: string;
     customerId?: string;
     subscriptionId?: string;
   }> {
-    const { userId, cardNumber } = params;
-    const cleanCard = (cardNumber || "").replace(/\s|-/g, "");
+    const { userId, cardNumber, expDate, cvc } = params;
+    const cleanCard = cardNumber.replace(/\s+/g, "");
 
-    // Check for standard Stripe simulator card test cases:
+    // Built-in Stripe test card responses simulation
     if (cleanCard.endsWith("0002")) {
       return {
         success: false,
@@ -352,11 +360,18 @@ export class StripeService {
     const { user, returnUrl } = params;
     const client = this.getClient();
 
-    if (!client || !user.stripe_customer_id) {
-      return {
-        portalUrl: `${returnUrl}?portal=mock`,
-        isMock: true,
-      };
+    if (!client) {
+      if (process.env.NODE_ENV === "test") {
+        return {
+          portalUrl: `${returnUrl}?portal=mock`,
+          isMock: true,
+        };
+      }
+      throw new Error("Stripe billing portal is not configured. Please set STRIPE_SECRET_KEY in server environment.");
+    }
+
+    if (!user.stripe_customer_id) {
+      throw new Error("No active Stripe subscription or customer record found for this account.");
     }
 
     const portal = await client.billingPortal.sessions.create({
@@ -378,19 +393,50 @@ export class StripeService {
     userId: string,
     sessionId: string
   ): Promise<AppUser | null> {
-    if (!this.stripe || sessionId.startsWith("mock_")) {
-      // Mock activation
-      return await postgresStore.updateUserSubscription(userId, {
-        tier: "subscriber",
-        subscriptionStatus: "active",
-        subscriptionPeriodEnd: new Date(Date.now() + 30 * 86400000).toISOString(),
-      });
+    if (sessionId.startsWith("mock_")) {
+      if (process.env.NODE_ENV === "test") {
+        // Unit test mock activation only
+        return await postgresStore.updateUserSubscription(userId, {
+          tier: "subscriber",
+          subscriptionStatus: "active",
+          subscriptionPeriodEnd: new Date(Date.now() + 30 * 86400000).toISOString(),
+        });
+      }
+      throw new Error("Mock checkout sessions are disabled in this environment.");
+    }
+
+    const client = this.getClient();
+    if (!client && !this.testStripe) {
+      throw new Error("Stripe client is not configured.");
     }
 
     try {
-      const session = await this.stripe.checkout.sessions.retrieve(sessionId, {
-        expand: ["subscription"],
-      });
+      let session: Stripe.Checkout.Session | null = null;
+      if (client) {
+        try {
+          session = await client.checkout.sessions.retrieve(sessionId, {
+            expand: ["subscription"],
+          });
+        } catch {
+          // If primary client failed to find session, fallback to testStripe if available
+        }
+      }
+
+      if (!session && this.testStripe) {
+        session = await this.testStripe.checkout.sessions.retrieve(sessionId, {
+          expand: ["subscription"],
+        });
+      }
+
+      if (!session) {
+        throw new Error(`Unable to locate Stripe checkout session ${sessionId}`);
+      }
+
+      // Verify payment was actually completed or paid by customer
+      if (session.status !== "complete" && session.payment_status !== "paid") {
+        console.warn(`Stripe session ${sessionId} payment not verified (status: ${session.status}, payment_status: ${session.payment_status})`);
+        return null;
+      }
 
       const customerId =
         typeof session.customer === "string" ? session.customer : session.customer?.id;
