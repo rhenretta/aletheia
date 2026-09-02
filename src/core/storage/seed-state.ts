@@ -1563,7 +1563,7 @@ export const SEED_DATA_STATE = {
         {
           "id": "welcome-msg",
           "role": "assistant",
-          "content": "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
+          "content": "Welcome to Aletheia! Think of me as your personal, noise-free news partner.\n\nYour feed on the left starts as a clean slate because it's built entirely around you. As we talk, I'll search trusted global wires to bring you clear, verified stories on whatever you're interested in—without any clickbait, panic, or spin.\n\nWhat's something you've heard about recently that caught your attention, or a topic you've been wondering about? Tell me what's on your mind and we'll dig into the real story.",
           "timestamp": "2026-09-01T20:33:49.285Z"
         },
         {

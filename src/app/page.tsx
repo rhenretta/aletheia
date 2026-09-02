@@ -204,7 +204,7 @@ export default function AletheiaHome() {
     id: "welcome-msg",
     role: "assistant",
     content:
-      "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
+      "Welcome to Aletheia! Think of me as your personal, noise-free news partner.\n\nYour feed on the left starts as a clean slate because it's built entirely around you. As we talk, I'll search trusted global wires to bring you clear, verified stories on whatever you're interested in—without any clickbait, panic, or spin.\n\nWhat's something you've heard about recently that caught your attention, or a topic you've been wondering about? Tell me what's on your mind and we'll dig into the real story.",
     timestamp: new Date().toISOString(),
   };
 
@@ -637,7 +637,7 @@ export default function AletheiaHome() {
         id: "welcome-msg",
         role: "assistant" as const,
         content:
-          "Welcome to Aletheia. I'm your personalized epistemic companion built on the Mind-State Memory Architecture.\n\nExplore your curated news feed on the left, or discuss any story directly with me. As we talk, the Context Agent calibrates tone and safeguards, the Discovery Agent filters out sensationalist fluff, and the Observer Agent silently adapts to your evolving mindset.",
+          "Welcome to Aletheia! Think of me as your personal, noise-free news partner.\n\nYour feed on the left starts as a clean slate because it's built entirely around you. As we talk, I'll search trusted global wires to bring you clear, verified stories on whatever you're interested in—without any clickbait, panic, or spin.\n\nWhat's something you've heard about recently that caught your attention, or a topic you've been wondering about? Tell me what's on your mind and we'll dig into the real story.",
         timestamp: new Date().toISOString(),
       };
 
@@ -1956,14 +1956,18 @@ export default function AletheiaHome() {
                   <ShieldCheck className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
                   <div className="text-sm font-semibold text-slate-200">
                     {feedCards.length === 0
-                      ? "Feed Cleared"
+                      ? totalInterestsCount === 0
+                        ? "Welcome to Your Noise-Free News Stream"
+                        : "Feed Cleared"
                       : aiFeedFilter && aiFeedFilter.is_active !== false
                       ? `No stories currently in feed matching "${aiFeedFilter.topic}".`
                       : `No stories found for "${selectedTopicFilter}".`}
                   </div>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
                     {feedCards.length === 0
-                      ? `Your news stream is empty. Your conversation history and ${totalInterestsCount} tracked interests are preserved.`
+                      ? totalInterestsCount === 0
+                        ? "Your feed builds around what you care about. Start chatting with Aletheia on the right to discover verified stories, or click Refresh News to pull top global events."
+                        : `Your news stream is empty. Your conversation history and ${totalInterestsCount} tracked interests are preserved.`
                       : aiFeedFilter && aiFeedFilter.is_active !== false
                       ? "Click 'Show All Stories' to return to your complete news feed, or refresh news to fetch stories."
                       : "Try clearing your topic filter or selecting All Topics from the dropdown."}
@@ -2633,30 +2637,33 @@ export default function AletheiaHome() {
                               </span>
                             )}
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 pl-1 pt-0.5">
-                            <button
-                              onClick={() => handleInspectChatTurn(msg)}
-                              className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 flex items-center gap-1.5 transition font-semibold shadow-sm"
-                              title="Inspect Context Envelope and Agentic Flow for this Message"
-                            >
-                              <Brain className="w-3 h-3 text-cyan-400" />
-                              <span>Inspect Context & Flow</span>
-                              {msg.context_generated?.calibrated_depth && (
-                                <span className="px-1.5 py-0.2 rounded bg-cyan-900/80 text-cyan-200 text-[9px] uppercase border border-cyan-400/30">
-                                  {msg.context_generated.calibrated_depth}
-                                </span>
-                              )}
-                            </button>
 
-                            <button
-                              onClick={() => handleInspectChatTurn(msg)}
-                              className="text-[10px] font-mono text-teal-300 hover:text-teal-100 bg-teal-950/60 hover:bg-teal-900/80 px-2.5 py-1 rounded-lg border border-teal-500/40 flex items-center gap-1.5 transition font-semibold shadow-sm"
-                              title="View exact raw prompt, system prompt, and live search context sent to LLM"
-                            >
-                              <FileText className="w-3 h-3 text-teal-400" />
-                              <span>View Raw Prompt</span>
-                            </button>
-                          </div>
+                          {msg.id !== "welcome-msg" && (
+                            <div className="flex flex-wrap items-center gap-2 pl-1 pt-0.5">
+                              <button
+                                onClick={() => handleInspectChatTurn(msg)}
+                                className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 flex items-center gap-1.5 transition font-semibold shadow-sm"
+                                title="Inspect Context Envelope and Agentic Flow for this Message"
+                              >
+                                <Brain className="w-3 h-3 text-cyan-400" />
+                                <span>Inspect Context & Flow</span>
+                                {msg.context_generated?.calibrated_depth && (
+                                  <span className="px-1.5 py-0.2 rounded bg-cyan-900/80 text-cyan-200 text-[9px] uppercase border border-cyan-400/30">
+                                    {msg.context_generated.calibrated_depth}
+                                  </span>
+                                )}
+                              </button>
+
+                              <button
+                                onClick={() => handleInspectChatTurn(msg)}
+                                className="text-[10px] font-mono text-teal-300 hover:text-teal-100 bg-teal-950/60 hover:bg-teal-900/80 px-2.5 py-1 rounded-lg border border-teal-500/40 flex items-center gap-1.5 transition font-semibold shadow-sm"
+                                title="View exact raw prompt, system prompt, and live search context sent to LLM"
+                              >
+                                <FileText className="w-3 h-3 text-teal-400" />
+                                <span>View Raw Prompt</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="max-w-[88%] p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-tr-none shadow-lg shadow-cyan-900/20">
