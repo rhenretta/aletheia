@@ -71,17 +71,19 @@ export default function SubscriptionModal({
     } catch {}
   };
 
-  const handleCheckout = async (forceTestMode?: boolean, skipDiscount?: boolean) => {
+  const handleCheckout = async (options?: { testMode?: boolean; skipDiscount?: boolean }) => {
     setLoading(true);
     setError(null);
     try {
+      const activeTestMode = options?.testMode !== undefined ? options.testMode : isTestMode;
+      const activeSkipDiscount = options?.skipDiscount !== undefined ? options.skipDiscount : isLapsed;
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user?.id,
-          testMode: forceTestMode ?? isTestMode,
-          skipDiscount: skipDiscount ?? isLapsed,
+          testMode: activeTestMode,
+          skipDiscount: activeSkipDiscount,
         }),
       });
 
@@ -91,7 +93,7 @@ export default function SubscriptionModal({
       } else {
         setError(data.error || "Failed to initialize checkout session");
       }
-    } catch (err) {
+    } catch {
       setError("Network connection error. Please try again.");
     } finally {
       setLoading(false);
@@ -431,7 +433,7 @@ export default function SubscriptionModal({
                   ) : isLapsed ? (
                     // Returning subscriber — coupon already used, go straight to portal or new checkout at $15
                     <button
-                      onClick={() => handleCheckout(false)}
+                      onClick={() => handleCheckout({ testMode: isTestMode, skipDiscount: true })}
                       disabled={loading}
                       className="w-full py-3 rounded-xl bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 hover:from-slate-600 hover:to-slate-600 text-white text-xs font-mono font-bold flex items-center justify-center gap-2 border border-cyan-500/30 shadow-md transition transform active:scale-95 disabled:opacity-50"
                     >
@@ -440,14 +442,16 @@ export default function SubscriptionModal({
                       ) : (
                         <>
                           <RotateCcw className="w-4 h-4 text-cyan-400" />
-                          <span>Reactivate — $15/month</span>
+                          <span>
+                            {isTestMode ? "Reactivate (Stripe Test Mode)" : "Reactivate — $15/month"}
+                          </span>
                           <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
                         </>
                       )}
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleCheckout(false)}
+                      onClick={() => handleCheckout({ testMode: isTestMode, skipDiscount: false })}
                       disabled={loading}
                       className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-400 to-indigo-600 hover:from-cyan-400 hover:via-teal-300 hover:to-indigo-500 text-slate-950 text-xs font-mono font-bold flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 transition transform active:scale-95 disabled:opacity-50"
                     >
@@ -456,7 +460,11 @@ export default function SubscriptionModal({
                       ) : (
                         <>
                           <CreditCard className="w-4 h-4" />
-                          <span>Subscribe Now — $5 First Month</span>
+                          <span>
+                            {isTestMode
+                              ? "Subscribe with Test Card (Test Mode)"
+                              : "Subscribe Now — $5 First Month"}
+                          </span>
                           <ArrowRight className="w-3.5 h-3.5" />
                         </>
                       )}
