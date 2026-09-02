@@ -333,5 +333,33 @@ describe("Monetization, Stripe Integration & Tiered Usage Limits", () => {
       expect(result).toBeDefined();
       expect(result.checkoutUrl).toContain("test_mode=true");
     });
+
+    it("automatically reconciles and demotes lapsed subscriptions back to free tier", async () => {
+      const lapsedUserId = `usr_lapsed_${timestamp}`;
+      await postgresStore.getOrCreateUser({
+        id: lapsedUserId,
+        email: `lapsed_${timestamp}@example.com`,
+        name: "Lapsed User",
+        role: "user",
+      });
+
+      // Set user as subscriber whose period ended yesterday
+      const yesterday = new Date(Date.now() - 86400000).toISOString();
+      await postgresStore.updateUserSubscription(lapsedUserId, {
+        tier: "subscriber",
+        subscriptionStatus: "active",
+        subscriptionPeriodEnd: yesterday,
+      });
+
+      // Calling getUser should automatically reconcile the lapse
+      const user = await postgresStore.getUser(lapsedUserId);
+      expect(user?.tier).toBe("free");
+      expect(user?.subscription_status).toBe("past_due");
+
+      // checkUsageLimit should enforce the $0.50 free cap
+      const limitStatus = await postgresStore.checkUsageLimit(lapsedUserId);
+      expect(limitStatus.tier).toBe("free");
+      expect(limitStatus.limit).toBe(0.5);
+    });
   });
 });

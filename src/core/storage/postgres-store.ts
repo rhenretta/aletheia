@@ -1175,13 +1175,14 @@ export class PostgresStore {
             last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
           };
           this.memoryUsers.set(user.id, user);
-          return user;
+          return this.reconcileSubscriptionState(user);
         }
       } catch (err) {
         console.warn("PostgresStore: Error querying user:", err);
       }
     }
-    return this.memoryUsers.get(userId);
+    const memUser = this.memoryUsers.get(userId);
+    return memUser ? this.reconcileSubscriptionState(memUser) : undefined;
   }
 
   public async getUserByEmail(email: string): Promise<AppUser | undefined> {
@@ -1211,7 +1212,7 @@ export class PostgresStore {
             last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
           };
           this.memoryUsers.set(user.id, user);
-          return user;
+          return this.reconcileSubscriptionState(user);
         }
       } catch (err) {
         console.warn("PostgresStore: Error querying user by email:", err);
@@ -1219,10 +1220,40 @@ export class PostgresStore {
     }
     for (const u of this.memoryUsers.values()) {
       if (u.email.toLowerCase().trim() === normalized) {
-        return u;
+        return this.reconcileSubscriptionState(u);
       }
     }
     return undefined;
+  }
+
+  /**
+   * Reconciles subscription status: If a subscriber's period has expired or is canceled/unpaid/past_due,
+   * demotes them back to the free tier and persists the change.
+   */
+  private reconcileSubscriptionState(user: AppUser): AppUser {
+    if (user.tier === "subscriber") {
+      const isPastEnd =
+        user.subscription_period_end &&
+        Date.parse(user.subscription_period_end) < Date.now();
+      const isLapsedStatus =
+        user.subscription_status === "canceled" ||
+        user.subscription_status === "past_due";
+
+      if (isPastEnd || isLapsedStatus) {
+        user.tier = "free";
+        if (user.subscription_status === "active") {
+          user.subscription_status = "past_due";
+        }
+        if (this.pool && this.isConnected) {
+          this.pool.query(
+            `UPDATE app_users SET tier = $1, subscription_status = $2 WHERE id = $3`,
+            ["free", user.subscription_status, user.id]
+          ).catch((err) => console.warn("PostgresStore: Error persisting subscription lapse:", err));
+        }
+        this.memoryUsers.set(user.id, user);
+      }
+    }
+    return user;
   }
 
   public async getAllUsers(): Promise<AppUser[]> {
