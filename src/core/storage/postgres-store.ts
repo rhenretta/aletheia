@@ -1149,6 +1149,24 @@ export class PostgresStore {
     return newUser;
   }
 
+  private mapUserRow(row: any): AppUser {
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      image: row.image,
+      role: row.role as UserRole,
+      status: row.status,
+      tier: (row.tier as UserTier) || "free",
+      stripe_customer_id: row.stripe_customer_id || undefined,
+      stripe_subscription_id: row.stripe_subscription_id || undefined,
+      subscription_status: (row.subscription_status as SubscriptionStatus) || "none",
+      subscription_period_end: row.subscription_period_end ? new Date(row.subscription_period_end).toISOString() : undefined,
+      created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+      last_active_at: row.last_active_at ? new Date(row.last_active_at).toISOString() : new Date().toISOString(),
+    };
+  }
+
   public async getUser(userId: string): Promise<AppUser | undefined> {
     await this.ensureInitialized();
     if (this.pool && this.isConnected) {
@@ -1158,22 +1176,7 @@ export class PostgresStore {
           [userId]
         );
         if (res.rows.length > 0) {
-          const row = res.rows[0];
-          const user: AppUser = {
-            id: row.id,
-            email: row.email,
-            name: row.name,
-            image: row.image,
-            role: row.role as UserRole,
-            status: row.status,
-            tier: (row.tier as UserTier) || "free",
-            stripe_customer_id: row.stripe_customer_id || undefined,
-            stripe_subscription_id: row.stripe_subscription_id || undefined,
-            subscription_status: (row.subscription_status as SubscriptionStatus) || "none",
-            subscription_period_end: row.subscription_period_end?.toISOString() || undefined,
-            created_at: row.created_at?.toISOString() || new Date().toISOString(),
-            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
-          };
+          const user = this.mapUserRow(res.rows[0]);
           this.memoryUsers.set(user.id, user);
           return this.reconcileSubscriptionState(user);
         }
@@ -1181,8 +1184,43 @@ export class PostgresStore {
         console.warn("PostgresStore: Error querying user:", err);
       }
     }
+
     const memUser = this.memoryUsers.get(userId);
-    return memUser ? this.reconcileSubscriptionState(memUser) : undefined;
+    if (memUser) {
+      return this.reconcileSubscriptionState(memUser);
+    }
+
+    // Fallback: Check if userId is an email address
+    if (userId.includes("@")) {
+      const userByEmail = await this.getUserByEmail(userId);
+      if (userByEmail) return userByEmail;
+    }
+
+    // Fallback: Check if userId is an email slug (usr_name_domain_com)
+    if (userId.startsWith("usr_")) {
+      const emailSlug = userId.replace(/^usr_/, "").toLowerCase();
+      for (const u of this.memoryUsers.values()) {
+        if (u.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_") === emailSlug) {
+          return this.reconcileSubscriptionState(u);
+        }
+      }
+      if (this.pool && this.isConnected) {
+        try {
+          const res = await this.pool.query(
+            `SELECT id, email, name, image, role, status, tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, created_at, last_active_at FROM app_users`
+          );
+          for (const row of res.rows) {
+            const mapped = this.mapUserRow(row);
+            if (mapped.email.toLowerCase().replace(/[^a-zA-Z0-9]/g, "_") === emailSlug) {
+              this.memoryUsers.set(mapped.id, mapped);
+              return this.reconcileSubscriptionState(mapped);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    return undefined;
   }
 
   public async getUserByEmail(email: string): Promise<AppUser | undefined> {
@@ -1195,22 +1233,7 @@ export class PostgresStore {
           [normalized]
         );
         if (res.rows.length > 0) {
-          const row = res.rows[0];
-          const user: AppUser = {
-            id: row.id,
-            email: row.email,
-            name: row.name,
-            image: row.image,
-            role: row.role as UserRole,
-            status: row.status,
-            tier: (row.tier as UserTier) || "free",
-            stripe_customer_id: row.stripe_customer_id || undefined,
-            stripe_subscription_id: row.stripe_subscription_id || undefined,
-            subscription_status: (row.subscription_status as SubscriptionStatus) || "none",
-            subscription_period_end: row.subscription_period_end?.toISOString() || undefined,
-            created_at: row.created_at?.toISOString() || new Date().toISOString(),
-            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
-          };
+          const user = this.mapUserRow(res.rows[0]);
           this.memoryUsers.set(user.id, user);
           return this.reconcileSubscriptionState(user);
         }
@@ -1295,16 +1318,21 @@ export class PostgresStore {
     await this.ensureInitialized();
     let user = await this.getUser(userId);
     if (!user) {
-      user = await this.getOrCreateUser({ id: userId, email: `${userId}@ciclops.io`, role });
+      if (userId.includes("@")) {
+        user = await this.getUserByEmail(userId);
+      }
+    }
+    if (!user) {
+      throw new Error(`Cannot update user role: user ${userId} not found.`);
     }
 
     user.role = role;
-    this.memoryUsers.set(userId, user);
+    this.memoryUsers.set(user.id, user);
     this.saveToDisk();
 
     if (this.pool && this.isConnected) {
       try {
-        await this.pool.query(`UPDATE app_users SET role = $1 WHERE id = $2`, [role, userId]);
+        await this.pool.query(`UPDATE app_users SET role = $1 WHERE id = $2`, [role, user.id]);
       } catch (err) {
         console.warn("PostgresStore: Error updating user role:", err);
       }
@@ -1317,16 +1345,21 @@ export class PostgresStore {
     await this.ensureInitialized();
     let user = await this.getUser(userId);
     if (!user) {
-      user = await this.getOrCreateUser({ id: userId, email: `${userId}@ciclops.io`, tier });
+      if (userId.includes("@")) {
+        user = await this.getUserByEmail(userId);
+      }
+    }
+    if (!user) {
+      throw new Error(`Cannot update user tier: user ${userId} not found.`);
     }
 
     user.tier = tier;
-    this.memoryUsers.set(userId, user);
+    this.memoryUsers.set(user.id, user);
     this.saveToDisk();
 
     if (this.pool && this.isConnected) {
       try {
-        await this.pool.query(`UPDATE app_users SET tier = $1 WHERE id = $2`, [tier, userId]);
+        await this.pool.query(`UPDATE app_users SET tier = $1 WHERE id = $2`, [tier, user.id]);
       } catch (err) {
         console.warn("PostgresStore: Error updating user tier:", err);
       }
@@ -1348,7 +1381,12 @@ export class PostgresStore {
     await this.ensureInitialized();
     let user = await this.getUser(userId);
     if (!user) {
-      user = await this.getOrCreateUser({ id: userId, email: `${userId}@ciclops.io` });
+      if (userId.includes("@")) {
+        user = await this.getUserByEmail(userId);
+      }
+    }
+    if (!user) {
+      throw new Error(`Cannot update user subscription: user ${userId} not found.`);
     }
 
     if (sub.tier !== undefined) user.tier = sub.tier;
@@ -1357,7 +1395,7 @@ export class PostgresStore {
     if (sub.subscriptionStatus !== undefined) user.subscription_status = sub.subscriptionStatus;
     if (sub.subscriptionPeriodEnd !== undefined) user.subscription_period_end = sub.subscriptionPeriodEnd;
 
-    this.memoryUsers.set(userId, user);
+    this.memoryUsers.set(user.id, user);
     this.saveToDisk();
 
     if (this.pool && this.isConnected) {
@@ -1370,7 +1408,7 @@ export class PostgresStore {
             user.stripe_subscription_id || null,
             user.subscription_status || "none",
             user.subscription_period_end || null,
-            userId,
+            user.id,
           ]
         );
       } catch (err) {
@@ -1379,6 +1417,42 @@ export class PostgresStore {
     }
 
     return user;
+  }
+
+  /**
+   * Permanently deletes a user and cascades deletion to their sessions, graphs, and usage metrics.
+   */
+  public async deleteUser(userId: string): Promise<boolean> {
+    await this.ensureInitialized();
+    const user = await this.getUser(userId);
+    if (!user) {
+      return false;
+    }
+
+    const effectiveId = user.id;
+
+    // Remove from in-memory cache
+    this.memoryUsers.delete(effectiveId);
+    this.memoryUserUsage.delete(effectiveId);
+    this.memoryUserGraphs.delete(effectiveId);
+    this.memoryTopicNodes.delete(effectiveId);
+    this.memoryChatSessions.delete(effectiveId);
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(`DELETE FROM chat_sessions WHERE user_id = $1`, [effectiveId]);
+        await this.pool.query(`DELETE FROM user_knowledge_graphs WHERE user_id = $1`, [effectiveId]);
+        await this.pool.query(`DELETE FROM unified_topic_nodes WHERE user_id = $1`, [effectiveId]);
+        await this.pool.query(`DELETE FROM user_usage_metrics WHERE user_id = $1`, [effectiveId]);
+        await this.pool.query(`DELETE FROM app_users WHERE id = $1`, [effectiveId]);
+      } catch (err) {
+        console.error("PostgresStore: Error deleting user from database:", err);
+        throw err;
+      }
+    }
+
+    return true;
   }
 
   // --- User Usage Tracking & Compute Cost Accounting ---

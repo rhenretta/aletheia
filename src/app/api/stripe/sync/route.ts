@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/core/auth/auth-options";
+import { postgresStore } from "@/core/storage/postgres-store";
 import { stripeService } from "@/core/stripe/stripe-service";
 import { isReadOnlyRequest, readOnlyForbiddenResponse } from "@/core/auth/read-only-guard";
 
@@ -14,12 +15,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { sessionId, userId } = body as { sessionId?: string; userId?: string };
 
-    const effectiveUserId =
-      session?.user?.email
-        ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
-        : userId && userId.startsWith("usr_") && userId !== "usr_guest"
-        ? userId
-        : null;
+    const userEmail = session?.user?.email?.toLowerCase();
+    let effectiveUserId: string | null = null;
+    if (userEmail) {
+      const existing = await postgresStore.getUserByEmail(userEmail);
+      effectiveUserId =
+        existing?.id ||
+        (session?.user as any)?.id ||
+        `usr_${userEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    } else if (userId && userId.startsWith("usr_") && userId !== "usr_guest") {
+      effectiveUserId = userId;
+    }
 
     if (!effectiveUserId) {
       return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });

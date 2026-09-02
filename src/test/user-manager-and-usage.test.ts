@@ -152,4 +152,38 @@ describe("User Levels, User Manager & Usage Tracking System", () => {
       expect(json.error).toContain("Read-only mode active: Chat interactions are not permitted");
     });
   });
+
+  describe("4. User Deletion & Canonical ID Resolution", () => {
+    it("looks up users by email slug fallback if ID is derived from email", async () => {
+      const uniqueEmail = `test_fallback_${Date.now()}@example.com`;
+      const created = await postgresStore.getOrCreateUser({
+        id: `google_numeric_id_${Date.now()}`,
+        email: uniqueEmail,
+        name: "Fallback Test",
+      });
+
+      // Querying with derived slug should resolve to the original user
+      const slugId = `usr_${uniqueEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const found = await postgresStore.getUser(slugId);
+      expect(found).toBeDefined();
+      expect(found?.email).toBe(uniqueEmail);
+      expect(found?.id).toBe(created.id);
+    });
+
+    it("deletes user and cleans up their records", async () => {
+      const uniqueEmail = `delete_me_${Date.now()}@example.com`;
+      const created = await postgresStore.getOrCreateUser({
+        id: `usr_to_delete_${Date.now()}`,
+        email: uniqueEmail,
+        name: "Delete Me",
+      });
+
+      const deleted = await postgresStore.deleteUser(created.id);
+      expect(deleted).toBe(true);
+
+      const lookupAfter = await postgresStore.getUser(created.id);
+      expect(lookupAfter).toBeUndefined();
+    });
+  });
 });
+

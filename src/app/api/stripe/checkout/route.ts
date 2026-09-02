@@ -26,13 +26,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const effectiveUserId = `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    const userEmail = session.user.email.toLowerCase();
+    const existing = await postgresStore.getUserByEmail(userEmail);
+    const effectiveUserId =
+      existing?.id ||
+      (session.user as any)?.id ||
+      `usr_${userEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
     // Get or create the user record — never hard-fail if the row isn't in the DB yet
     const user = await postgresStore.getOrCreateUser({
       id: effectiveUserId,
-      email: session.user.email,
-      name: session.user.name || session.user.email.split("@")[0],
+      email: userEmail,
+      name: session.user.name || userEmail.split("@")[0],
       image: session.user.image || undefined,
     });
 

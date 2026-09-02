@@ -93,9 +93,11 @@ export default function AletheiaHome() {
   const [isUserManagerOpen, setIsUserManagerOpen] = useState(false);
   const [guestExplore, setGuestExplore] = useState(false);
 
-  const actualUserId = session?.user?.email
-    ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
-    : "usr_guest";
+  const actualUserId =
+    (session?.user as any)?.id ||
+    (session?.user?.email
+      ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
+      : "usr_guest");
 
   const isReadOnlyMode = Boolean(viewingAsUser);
   const effectiveUserId = viewingAsUser ? viewingAsUser.id : actualUserId;

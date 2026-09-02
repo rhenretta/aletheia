@@ -37,3 +37,46 @@ export async function GET(
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await verifyAdminAuth(req);
+  if (!auth.isAuthorized) {
+    return NextResponse.json(
+      { success: false, error: auth.error || "Administrator privileges required." },
+      { status: 401 }
+    );
+  }
+
+  try {
+    const userId = params.id;
+    const user = await postgresStore.getUser(userId);
+    if (!user) {
+      return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
+    }
+
+    // Safety guard: prevent admin from accidentally deleting their own active account
+    if (auth.userId && (user.id === auth.userId || (user.email && auth.userId.toLowerCase().includes(user.email.toLowerCase())))) {
+      return NextResponse.json(
+        { success: false, error: "Cannot delete your own active administrator account." },
+        { status: 400 }
+      );
+    }
+
+    const deleted = await postgresStore.deleteUser(user.id);
+    if (!deleted) {
+      return NextResponse.json({ success: false, error: "User could not be deleted" }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `User ${user.email} (${user.id}) successfully deleted.`,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to delete user";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+

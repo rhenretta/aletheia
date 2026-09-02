@@ -94,7 +94,6 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id || `usr_${user.email?.replace(/[^a-zA-Z0-9]/g, "_") || "anon"}`;
         token.name = user.name;
         token.email = user.email;
         token.picture = user.image;
@@ -107,8 +106,12 @@ export const authOptions: NextAuthOptions = {
           const isAdminByEnv = adminEmails.includes(userEmail);
           const initialRole = isAdminByEnv ? "admin" : "user";
 
+          // Lookup existing user by email to ensure ID consistency across logins
+          const existingUser = await postgresStore.getUserByEmail(userEmail);
+          const canonicalId = existingUser?.id || `usr_${userEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
           const appUser = await postgresStore.getOrCreateUser({
-            id: (token.id as string) || `usr_${userEmail.replace(/[^a-zA-Z0-9]/g, "_")}`,
+            id: canonicalId,
             email: userEmail,
             name: (token.name as string) || user?.name || undefined,
             image: (token.picture as string) || user?.image || undefined,
@@ -121,6 +124,7 @@ export const authOptions: NextAuthOptions = {
             appUser.role = "admin";
           }
 
+          token.id = appUser.id;
           token.role = appUser.role;
 
           if (user) {
@@ -132,6 +136,7 @@ export const authOptions: NextAuthOptions = {
         } catch (err) {
           console.warn("authOptions: Error syncing user with store:", err);
           const adminEmails = getAdminEmails();
+          token.id = token.id || `usr_${userEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
           token.role = adminEmails.includes(userEmail) ? "admin" : "user";
         }
       }

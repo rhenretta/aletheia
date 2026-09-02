@@ -20,6 +20,7 @@ import {
   ExternalLink,
   DollarSign,
   CreditCard,
+  Trash2,
 } from "lucide-react";
 import { AppUser, UserRole, UserTier, UserUsageMetrics } from "@/core/types/contracts";
 
@@ -46,6 +47,7 @@ export default function UserManagerModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user" | "subscriber">("all");
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [selectedUserForEvents, setSelectedUserForEvents] = useState<EnrichedUser | null>(null);
 
   const fetchUsers = async () => {
@@ -72,26 +74,50 @@ export default function UserManagerModal({
     }
   }, [isOpen]);
 
-  const handleRoleChange = async (userId: string, newRole: UserRole) => {
+  const handleRoleChange = async (userId: string, role: UserRole) => {
     setUpdatingUserId(userId);
+    setError(null);
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, role: newRole }),
+        body: JSON.stringify({ userId, role }),
       });
       const data = await res.json();
       if (data.success && data.user) {
-        setUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
-        );
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...data.user } : u)));
       } else {
-        alert(data.error || "Failed to update user role");
+        setError(data.error || "Failed to update user role");
       }
-    } catch (err) {
-      alert("Failed to update user role due to a network error");
+    } catch {
+      setError("Network error updating role");
     } finally {
       setUpdatingUserId(null);
+    }
+  };
+
+  const handleDeleteUser = async (userToDelete: EnrichedUser) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to permanently delete user "${userToDelete.name || userToDelete.email}" (${userToDelete.id})?\n\nThis will remove their account record, knowledge graphs, mind-state memory, and usage metrics.`
+    );
+    if (!confirmDelete) return;
+
+    setDeletingUserId(userToDelete.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${userToDelete.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUsers((prev) => prev.filter((u) => u.id !== userToDelete.id));
+      } else {
+        setError(data.error || "Failed to delete user");
+      }
+    } catch {
+      setError("Network error deleting user");
+    } finally {
+      setDeletingUserId(null);
     }
   };
 
@@ -476,6 +502,18 @@ export default function UserManagerModal({
                       >
                         <Activity className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* Delete User */}
+                      {user.id !== currentUserId && (
+                        <button
+                          onClick={() => handleDeleteUser(user)}
+                          disabled={deletingUserId === user.id}
+                          className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-400 hover:text-rose-300 transition disabled:opacity-50"
+                          title={`Permanently delete user ${user.name || user.email}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
