@@ -211,20 +211,6 @@ export default function SubscriptionModal({
 
         {/* Modal Body */}
         <div className="p-6 sm:p-8 space-y-6">
-          {/* Admin Test Mode Banner */}
-          {isTestMode && (
-            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs font-mono flex items-center justify-between gap-3 animate-in fade-in">
-              <div className="flex items-center gap-2.5">
-                <FlaskConical className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <span>
-                  <strong>Admin Stripe Test Mode Active:</strong> You can subscribe using test credit cards without real charges.
-                </span>
-              </div>
-              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                SANDBOX
-              </span>
-            </div>
-          )}
 
           {/* Hero Callout / First Month Promo — or Reactivation callout for lapsed */}
           {isLapsed ? (
@@ -301,19 +287,6 @@ export default function SubscriptionModal({
                 >
                   Continue Reading
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* Test Mode Hint — shown above the normal tier cards when admin test mode is on */}
-          {isTestMode && (
-            <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs font-mono flex items-start gap-3 animate-in fade-in">
-              <FlaskConical className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <span className="font-bold text-amber-300">Test Mode:</span>{" "}
-                Clicking Subscribe Now will open Stripe's hosted checkout using test API keys. Use card{" "}
-                <code className="px-1.5 py-0.5 rounded bg-amber-900/60 border border-amber-500/20 text-amber-100 text-[11px]">4242 4242 4242 4242</code>{" "}
-                with any future date and CVC.
               </div>
             </div>
           )}
