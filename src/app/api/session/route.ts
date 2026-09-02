@@ -5,20 +5,31 @@ import { postgresStore } from "@/core/storage/postgres-store";
 import { DataPersistenceStore } from "@/core/storage/persistence";
 import { verifyAdminAuth } from "@/core/auth/admin-guard";
 
+import { isReadOnlyRequest, readOnlyForbiddenResponse } from "@/core/auth/read-only-guard";
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const queryUserId = req.nextUrl.searchParams.get("userId");
+  const viewAsUserId = req.nextUrl.searchParams.get("viewAs") || req.headers.get("x-view-as-user");
 
-  // Determine user ID:
-  // 1. Authenticated session user
-  // 2. Query param ONLY IF authorized as Admin
-  // 3. Guest / anonymous user (does NOT leak other users' conversations)
   let effectiveUserId: string | null = null;
+  let isViewingAsOther = false;
 
-  if (session?.user?.email) {
-    effectiveUserId = `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
-  } else if (queryUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_guest") {
-    effectiveUserId = queryUserId;
+  // Handle "View site as another user" (Impersonation in read-only mode)
+  if (viewAsUserId && viewAsUserId.startsWith("usr_")) {
+    const adminCheck = await verifyAdminAuth(req);
+    if (adminCheck.isAuthorized) {
+      effectiveUserId = viewAsUserId;
+      isViewingAsOther = true;
+    }
+  }
+
+  if (!effectiveUserId) {
+    if (session?.user?.email) {
+      effectiveUserId = `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    } else if (queryUserId && queryUserId.startsWith("usr_") && queryUserId !== "usr_guest") {
+      effectiveUserId = queryUserId;
+    }
   }
 
   if (!effectiveUserId) {
@@ -30,6 +41,7 @@ export async function GET(req: NextRequest) {
       success: true,
       user_id: "usr_guest",
       is_authenticated: false,
+      is_viewing_as: false,
       user: null,
       unified_topic_node: guestNode,
       user_graph: {
@@ -50,12 +62,24 @@ export async function GET(req: NextRequest) {
   const chatSession = await postgresStore.getChatSession(effectiveUserId);
   const userGraph = await postgresStore.getUserGraph(effectiveUserId);
   const facts = await postgresStore.getAllFacts();
+  const dbUser = await postgresStore.getUser(effectiveUserId);
+  const usage = await postgresStore.getUserUsage(effectiveUserId);
 
   return NextResponse.json({
     success: true,
     user_id: effectiveUserId,
     is_authenticated: true,
-    user: session?.user || null,
+    is_viewing_as: isViewingAsOther,
+    user: dbUser
+      ? {
+          name: dbUser.name,
+          email: dbUser.email,
+          image: dbUser.image,
+          role: dbUser.role,
+          id: dbUser.id,
+        }
+      : session?.user || null,
+    usage: usage || null,
     unified_topic_node: unifiedTopicNode || null,
     user_graph: userGraph || null,
     messages: chatSession?.messages || [],
@@ -65,6 +89,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (isReadOnlyRequest(req)) {
+    return readOnlyForbiddenResponse("Clearing profile and mind-state memory");
+  }
+
   const session = await getServerSession(authOptions);
   const queryUserId = req.nextUrl.searchParams.get("userId");
 

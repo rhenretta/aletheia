@@ -35,6 +35,16 @@ export async function POST(req: NextRequest) {
       unifiedTopicNode: unifiedNode,
     });
 
+    // Record pipeline run in usage metrics
+    if (effectiveUserId && effectiveUserId !== "usr_guest") {
+      await postgresStore.recordUsage(effectiveUserId, {
+        pipelineRuns: 1,
+        tokensUsed: 120,
+        eventName: "pipeline",
+        detail: `Curated ${result.feed_cards?.length || 0} stories across topics`,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: result,

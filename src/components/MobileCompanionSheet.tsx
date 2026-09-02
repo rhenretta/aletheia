@@ -59,6 +59,8 @@ interface MobileCompanionSheetProps {
   isResettingProfile: boolean;
   setSelectedContext: (ctx: any) => void;
   setIsDevToolsOpen: (open: boolean) => void;
+  isReadOnlyMode?: boolean;
+  viewingAsUser?: any;
 }
 
 export default function MobileCompanionSheet({
@@ -91,6 +93,8 @@ export default function MobileCompanionSheet({
   isResettingProfile,
   setSelectedContext,
   setIsDevToolsOpen,
+  isReadOnlyMode = false,
+  viewingAsUser,
 }: MobileCompanionSheetProps) {
   const [isStoryExpanded, setIsStoryExpanded] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -460,7 +464,7 @@ export default function MobileCompanionSheet({
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      handleSendMessage();
+                      if (!isReadOnlyMode) handleSendMessage();
                     }}
                     className="p-3.5 pb-safe pb-5 bg-slate-950/98 border-t border-cyan-500/30 flex items-center gap-2 flex-shrink-0 shadow-2xl"
                   >
@@ -470,17 +474,25 @@ export default function MobileCompanionSheet({
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       placeholder={
-                        attachedStory ? `Ask about "${attachedStory.topic}"...` : "Discuss stories, ask questions..."
+                        isReadOnlyMode
+                          ? `Read-only mode (Viewing as ${viewingAsUser?.name || "user"})`
+                          : attachedStory
+                          ? `Ask about "${attachedStory.topic}"...`
+                          : "Discuss stories, ask questions..."
                       }
-                      className="flex-1 bg-slate-900 border border-white/15 rounded-xl px-4 py-3 text-xs sm:text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition shadow-inner"
-                      disabled={isSendingChat}
+                      className={`flex-1 rounded-xl px-4 py-3 text-xs sm:text-sm transition shadow-inner ${
+                        isReadOnlyMode
+                          ? "bg-amber-950/20 border border-amber-500/30 text-slate-400 cursor-not-allowed"
+                          : "bg-slate-900 border border-white/15 text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50"
+                      }`}
+                      disabled={isSendingChat || isReadOnlyMode}
                     />
 
                     <button
                       type="submit"
-                      disabled={isSendingChat || !chatInput.trim()}
+                      disabled={isSendingChat || !chatInput.trim() || isReadOnlyMode}
                       className="p-3 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-cyan-500/25 flex-shrink-0"
-                      title="Send message"
+                      title={isReadOnlyMode ? "Chat disabled in Read-Only Mode" : "Send message"}
                     >
                       <Send className="w-4 h-4" />
                     </button>

@@ -1,12 +1,18 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
+import { postgresStore } from "../storage/postgres-store";
+
 function getAdminEmails(): string[] {
-  const envEmails = process.env.ADMIN_EMAILS || "";
-  return envEmails
+  const envEmails = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "").toLowerCase();
+  const list = envEmails
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+  if (!list.includes("rhenretta@gmail.com")) {
+    list.push("rhenretta@gmail.com");
+  }
+  return list;
 }
 
 function getCookieDomain(): string | undefined {
@@ -89,27 +95,62 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id || `usr_${user.email?.replace(/[^a-zA-Z0-9]/g, "_") || "anon"}`;
-        token.role = (user as any).role || "USER";
         token.name = user.name;
         token.email = user.email;
         token.picture = user.image;
       }
 
       const userEmail = (token.email || user?.email || "").toLowerCase();
-      const adminEmails = getAdminEmails();
-      if (adminEmails.includes(userEmail)) {
-        token.role = "ADMIN";
+      if (userEmail) {
+        try {
+          const adminEmails = getAdminEmails();
+          const isAdminByEnv = adminEmails.includes(userEmail);
+          const initialRole = isAdminByEnv ? "admin" : "user";
+
+          const appUser = await postgresStore.getOrCreateUser({
+            id: (token.id as string) || `usr_${userEmail.replace(/[^a-zA-Z0-9]/g, "_")}`,
+            email: userEmail,
+            name: (token.name as string) || user?.name || undefined,
+            image: (token.picture as string) || user?.image || undefined,
+            role: initialRole,
+          });
+
+          // If env explicitly marks as admin, uphold admin role
+          if (isAdminByEnv && appUser.role !== "admin") {
+            await postgresStore.updateUserRole(appUser.id, "admin");
+            appUser.role = "admin";
+          }
+
+          token.role = appUser.role;
+
+          if (user) {
+            await postgresStore.recordUsage(appUser.id, {
+              eventName: "login",
+              detail: "User session authenticated",
+            });
+          }
+        } catch (err) {
+          console.warn("authOptions: Error syncing user with store:", err);
+          const adminEmails = getAdminEmails();
+          token.role = adminEmails.includes(userEmail) ? "admin" : "user";
+        }
       }
 
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        const customUser = session.user as { name?: string | null; email?: string | null; image?: string | null; id?: string; role?: string };
+        const customUser = session.user as {
+          name?: string | null;
+          email?: string | null;
+          image?: string | null;
+          id?: string;
+          role?: string;
+        };
         if (token.id) {
           customUser.id = token.id as string;
         }
-        customUser.role = (token.role as string) || "USER";
+        customUser.role = (token.role as string) || "user";
       }
       return session;
     },

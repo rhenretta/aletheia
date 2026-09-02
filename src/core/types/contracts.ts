@@ -723,3 +723,38 @@ export interface NewsStateContext {
   traces?: AgentTraceLog[];
   errors?: string[];
 }
+
+/**
+ * User levels and role system
+ */
+export type UserRole = "user" | "admin";
+export type UserAccountStatus = "active" | "suspended";
+
+export interface AppUser {
+  id: string;
+  email: string;
+  name: string;
+  image?: string;
+  role: UserRole;
+  status: UserAccountStatus;
+  created_at: string;
+  last_active_at: string;
+}
+
+export interface UsageEvent {
+  type: "chat" | "pipeline" | "telemetry" | "login";
+  timestamp: string;
+  detail?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UserUsageMetrics {
+  user_id: string;
+  total_chat_messages: number;
+  total_pipeline_runs: number;
+  total_tokens_used: number;
+  total_dwell_time_ms: number;
+  last_active_at: string;
+  recent_events: UsageEvent[];
+}
+

@@ -32,6 +32,7 @@ import {
   Newspaper,
   Zap,
   FileText,
+  Users,
 } from "lucide-react";
 import {
   NewsStateContext,
@@ -44,11 +45,14 @@ import {
   AttachedStoryContext,
   ContextualSelection,
   EventSourceArticle,
+  AppUser,
 } from "@/core/types/contracts";
 import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import DevToolsPanel from "@/components/DevToolsPanel";
 import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
+import UserManagerModal from "@/components/UserManagerModal";
+import ReadOnlyBanner from "@/components/ReadOnlyBanner";
 import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -70,9 +74,43 @@ function sanitizeDisplay(input?: string): string {
 
 export default function AletheiaHome() {
   const { data: session, status: authStatus } = useSession();
-  const effectiveUserId = session?.user?.email
+  const [viewingAsUser, setViewingAsUser] = useState<AppUser | null>(null);
+  const [isUserManagerOpen, setIsUserManagerOpen] = useState(false);
+
+  const actualUserId = session?.user?.email
     ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
     : "usr_guest";
+
+  const isReadOnlyMode = Boolean(viewingAsUser);
+  const effectiveUserId = viewingAsUser ? viewingAsUser.id : actualUserId;
+
+  const isAdmin =
+    (session?.user as any)?.role === "admin" ||
+    (session?.user as any)?.role === "ADMIN" ||
+    process.env.NODE_ENV !== "production";
+
+  const handleViewAsUser = (targetUser: AppUser) => {
+    setViewingAsUser(targetUser);
+    try {
+      sessionStorage.setItem("aletheia_view_as_user", JSON.stringify(targetUser));
+    } catch {}
+  };
+
+  const handleExitViewMode = () => {
+    setViewingAsUser(null);
+    try {
+      sessionStorage.removeItem("aletheia_view_as_user");
+    } catch {}
+  };
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("aletheia_view_as_user");
+      if (stored) {
+        setViewingAsUser(JSON.parse(stored));
+      }
+    } catch {}
+  }, []);
 
   const defaultWelcomeMessage: ChatMessage = {
     id: "welcome-msg",
@@ -157,11 +195,20 @@ export default function AletheiaHome() {
     }
   }, [messages, isSendingChat]);
 
-  // Rehydrate existing persisted session & knowledge graph on mount or when auth user switches
+  // Rehydrate existing persisted session & knowledge graph on mount or when auth user switches / viewAs changes
   useEffect(() => {
     if (authStatus === "loading") return;
 
-    if (effectiveUserId && effectiveUserId !== "usr_guest") {
+    if (viewingAsUser) {
+      // Clean slate before loading impersonated user's real mind-state and chat from server
+      setMessages([defaultWelcomeMessage]);
+      setUserGraph(null);
+      setUnifiedTopicNode(null);
+      setExtractedTopics([]);
+      setPipelineResult(null);
+      setAttachedStory(null);
+      setSelectedContext(null);
+    } else if (effectiveUserId && effectiveUserId !== "usr_guest") {
       try {
         const localCached = localStorage.getItem(`aletheia_chat_session_${effectiveUserId}`);
         if (localCached) {
@@ -186,20 +233,35 @@ export default function AletheiaHome() {
 
     const loadSession = async () => {
       try {
-        const res = await fetch(`/api/session?userId=${encodeURIComponent(effectiveUserId)}`);
+        const query = viewingAsUser
+          ? `/api/session?viewAs=${encodeURIComponent(viewingAsUser.id)}`
+          : `/api/session?userId=${encodeURIComponent(effectiveUserId)}`;
+        const res = await fetch(query, {
+          headers: viewingAsUser
+            ? { "x-view-as-user": viewingAsUser.id, "x-read-only-mode": "true" }
+            : undefined,
+        });
         const data = await res.json();
         if (data.success) {
           if (data.unified_topic_node && Object.keys(data.unified_topic_node.topics || {}).length > 0) {
             setUnifiedTopicNode(data.unified_topic_node);
+          } else if (viewingAsUser) {
+            setUnifiedTopicNode(data.unified_topic_node || null);
           }
           if (data.user_graph) {
             setUserGraph(data.user_graph);
+          } else if (viewingAsUser) {
+            setUserGraph(null);
           }
           if (data.messages && data.messages.length > 0) {
             setMessages(data.messages);
+          } else if (viewingAsUser) {
+            setMessages([defaultWelcomeMessage]);
           }
           if (data.extracted_topics && data.extracted_topics.length > 0) {
             setExtractedTopics(data.extracted_topics);
+          } else if (viewingAsUser) {
+            setExtractedTopics([]);
           }
         }
       } catch (err) {
@@ -207,7 +269,7 @@ export default function AletheiaHome() {
       }
     };
     loadSession();
-  }, [effectiveUserId, authStatus]);
+  }, [effectiveUserId, authStatus, viewingAsUser]);
 
   // Save to browser localStorage whenever state changes (only for authenticated users)
   useEffect(() => {
@@ -395,6 +457,10 @@ export default function AletheiaHome() {
 
   // Harmonize & clean up interests (merges near-duplicates & splits compound topics)
   const handleHarmonizeInterests = async () => {
+    if (isReadOnlyMode) {
+      alert("Harmonizing interests is disabled while viewing the site in Read-Only Mode.");
+      return;
+    }
     setIsHarmonizing(true);
     try {
       const res = await fetch("/api/interests/harmonize", {
@@ -458,6 +524,10 @@ export default function AletheiaHome() {
 
   // Full reset (wipes user profile, mind-state memory, chat session in database & storage)
   const handleResetProfileAndSession = async () => {
+    if (isReadOnlyMode) {
+      alert("Resetting profile is disabled while viewing the site in Read-Only Mode.");
+      return;
+    }
     if (!window.confirm("Are you sure you want to reset your profile and start from scratch? This will clear your learned interests, psychological profile, chat history, and feed.")) {
       return;
     }
@@ -511,6 +581,10 @@ export default function AletheiaHome() {
   // Send message to dual-intent conversational AI
   const handleSendMessage = async (e?: React.FormEvent, customHistory?: ChatMessage[]) => {
     if (e) e.preventDefault();
+    if (isReadOnlyMode) {
+      alert("Chat interactions are disabled while viewing the site in Read-Only Mode.");
+      return;
+    }
     const promptToSend = inputPrompt.trim();
     if (!promptToSend && (!customHistory || customHistory.length === 0)) return;
 
@@ -908,7 +982,17 @@ export default function AletheiaHome() {
   }, [feedCards, unifiedTopicNode, rankingSeenSnapshot]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      {/* Sticky Read-Only Impersonation Banner */}
+      {viewingAsUser && (
+        <ReadOnlyBanner
+          viewingUser={viewingAsUser}
+          onExit={handleExitViewMode}
+          onSwitchUser={() => setIsUserManagerOpen(true)}
+        />
+      )}
+
+      <div className="flex-1 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
       {/* Platform Header Bar */}
       <header className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 sm:pb-4">
         <div className="flex items-center gap-2.5 sm:gap-3">
@@ -970,6 +1054,21 @@ export default function AletheiaHome() {
             <RotateCcw className={`w-3.5 h-3.5 ${isResettingProfile ? "animate-spin text-rose-400" : ""}`} />
             <span>{isResettingProfile ? "Resetting..." : "Reset Profile"}</span>
           </button>
+
+          {/* Admin User Manager Button */}
+          {isAdmin && (
+            <button
+              onClick={() => setIsUserManagerOpen(true)}
+              className="px-3.5 py-2 rounded-xl text-xs font-mono font-semibold flex items-center gap-2 border bg-slate-900 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/10 hover:border-cyan-500/60 transition shadow-sm"
+              title="Open User Manager to configure user levels, inspect usage metrics, and view site perspectives"
+            >
+              <Users className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Users</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40">
+                Admin
+              </span>
+            </button>
+          )}
 
           <button
             onClick={() => setIsDevToolsOpen(!isDevToolsOpen)}
@@ -1154,6 +1253,23 @@ export default function AletheiaHome() {
 
               {/* Navigation & Actions */}
               <div className="space-y-2 text-xs">
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsUserManagerOpen(true);
+                    }}
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-900 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-950/40 text-xs font-mono font-semibold flex items-center justify-between transition shadow-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-cyan-400" />
+                      <span>User Manager</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
+                      Admin
+                    </span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
@@ -2448,18 +2564,36 @@ export default function AletheiaHome() {
                 </div>
 
                 {/* Chat Input Form (Pinned Bottom) */}
-                <form onSubmit={handleSendMessage} className="pt-2 border-t border-white/10 flex items-center gap-2 flex-shrink-0">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!isReadOnlyMode) handleSendMessage();
+                  }}
+                  className="pt-2 border-t border-white/10 flex items-center gap-2 flex-shrink-0"
+                >
                   <input
                     type="text"
                     value={inputPrompt}
                     onChange={(e) => setInputPrompt(e.target.value)}
-                    placeholder={attachedStory ? "Ask a question about this story..." : "Share a thought, curiosity, or question..."}
-                    className="flex-1 bg-slate-900/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
+                    disabled={isReadOnlyMode}
+                    placeholder={
+                      isReadOnlyMode
+                        ? `Chat disabled in Read-Only Mode (Viewing as ${viewingAsUser?.name || "user"})`
+                        : attachedStory
+                        ? "Ask a question about this story..."
+                        : "Share a thought, curiosity, or question..."
+                    }
+                    className={`flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm transition ${
+                      isReadOnlyMode
+                        ? "bg-amber-950/20 border border-amber-500/30 text-slate-400 cursor-not-allowed"
+                        : "bg-slate-900/80 border border-white/10 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    }`}
                   />
                   <button
                     type="submit"
-                    disabled={!inputPrompt.trim() || isSendingChat}
+                    disabled={isReadOnlyMode || !inputPrompt.trim() || isSendingChat}
                     className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 hover:opacity-90 transition disabled:opacity-40 flex-shrink-0"
+                    title={isReadOnlyMode ? "Chat disabled in Read-Only Mode" : "Send message"}
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -2862,6 +2996,8 @@ export default function AletheiaHome() {
         isResettingProfile={isResettingProfile}
         setSelectedContext={setSelectedContext}
         setIsDevToolsOpen={setIsDevToolsOpen}
+        isReadOnlyMode={isReadOnlyMode}
+        viewingAsUser={viewingAsUser}
       />
 
       {/* Mobile Fixed Bottom Navigation Bar */}
@@ -2959,6 +3095,15 @@ export default function AletheiaHome() {
         onSelectContext={setSelectedContext}
         isCollectingNews={isCollectingNews}
       />
+
+      {/* Admin User Manager Modal */}
+      <UserManagerModal
+        isOpen={isUserManagerOpen}
+        onClose={() => setIsUserManagerOpen(false)}
+        onViewAsUser={handleViewAsUser}
+        currentUserId={actualUserId}
+      />
+      </div>
     </div>
   );
 }

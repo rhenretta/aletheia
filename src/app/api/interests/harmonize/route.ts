@@ -3,9 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/core/auth/auth-options";
 import { postgresStore } from "@/core/storage/postgres-store";
 import { InterestHarmonizer } from "@/core/agents/observer/interest-harmonizer";
+import { isReadOnlyRequest, readOnlyForbiddenResponse } from "@/core/auth/read-only-guard";
 
 export async function POST(req: NextRequest) {
   try {
+    if (isReadOnlyRequest(req)) {
+      return readOnlyForbiddenResponse("Harmonizing user interests");
+    }
+
     const session = await getServerSession(authOptions);
     const body = await req.json().catch(() => ({}));
     const { userId } = body as { userId?: string };

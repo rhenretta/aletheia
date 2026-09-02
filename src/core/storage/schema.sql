@@ -109,3 +109,30 @@ CREATE INDEX IF NOT EXISTS idx_unified_topic_nodes_psych ON unified_topic_nodes 
 ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS recent_topic_diffs JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS harmonization_runs JSONB DEFAULT '[]'::jsonb;
 
+-- 8. Application Users Table (User levels: user, admin)
+CREATE TABLE IF NOT EXISTS app_users (
+    id VARCHAR(128) PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255),
+    image TEXT,
+    role VARCHAR(32) NOT NULL DEFAULT 'user',
+    status VARCHAR(32) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
+CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role);
+
+-- 9. User Usage Metrics Table
+CREATE TABLE IF NOT EXISTS user_usage_metrics (
+    user_id VARCHAR(128) PRIMARY KEY,
+    total_chat_messages INTEGER NOT NULL DEFAULT 0,
+    total_pipeline_runs INTEGER NOT NULL DEFAULT 0,
+    total_tokens_used BIGINT NOT NULL DEFAULT 0,
+    total_dwell_time_ms BIGINT NOT NULL DEFAULT 0,
+    last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    recent_events JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+

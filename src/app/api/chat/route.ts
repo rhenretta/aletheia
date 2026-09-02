@@ -8,8 +8,14 @@ import { ObserverAgent } from "@/core/agents/observer/observer-agent";
 import { DiscoveryAgent } from "@/core/agents/discovery/discovery-agent";
 import { executeAletheiaPipeline } from "@/core/graph/state-graph";
 
+import { isReadOnlyRequest, readOnlyForbiddenResponse } from "@/core/auth/read-only-guard";
+
 export async function POST(req: NextRequest) {
   try {
+    if (isReadOnlyRequest(req)) {
+      return readOnlyForbiddenResponse("Chat interactions");
+    }
+
     const session = await getServerSession(authOptions);
     const body = await req.json();
     const { history, userId, attachedStory, currentStories, clientContext } = body as {
@@ -162,6 +168,18 @@ export async function POST(req: NextRequest) {
               fullHistory,
               finalResponse.extracted_topics || []
             );
+
+            // 6. Record user usage metrics
+            const replyTokens = Math.max(60, Math.round((finalResponse.reply?.length || 100) / 3.5));
+            const promptTokens = Math.max(50, Math.round((history[history.length - 1]?.content?.length || 50) / 3.5));
+            await postgresStore.recordUsage(effectiveUserId, {
+              chatMessages: 1,
+              tokensUsed: replyTokens + promptTokens,
+              eventName: "chat",
+              detail: finalResponse.extracted_topics?.[0]?.topic
+                ? `Discussed ${finalResponse.extracted_topics[0].topic}`
+                : "Dialogue interaction",
+            });
 
             const userGraph = await postgresStore.getUserGraph(effectiveUserId);
 

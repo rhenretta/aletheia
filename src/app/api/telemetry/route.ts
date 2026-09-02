@@ -3,10 +3,31 @@ import { BehavioralTelemetrySchema } from "@/core/types/contracts";
 import { TelemetryGraphEngine } from "@/core/agents/telemetry";
 import { traceLogger } from "@/core/observability/trace-logger";
 
+import { isReadOnlyRequest } from "@/core/auth/read-only-guard";
+import { postgresStore } from "@/core/storage/postgres-store";
+
 export async function POST(req: NextRequest) {
   try {
+    if (isReadOnlyRequest(req)) {
+      return NextResponse.json({
+        success: true,
+        read_only: true,
+        message: "Telemetry ingestion bypassed in read-only impersonation mode",
+      });
+    }
+
     const body = await req.json();
     const validated = BehavioralTelemetrySchema.parse(body);
+
+    // Record reading dwell time if user context is present
+    const userId = body.userId || (validated.session_id.startsWith("usr_") ? validated.session_id : undefined);
+    if (userId && userId !== "usr_guest") {
+      await postgresStore.recordUsage(userId, {
+        dwellTimeMs: validated.dwell_time_ms,
+        eventName: "telemetry",
+        detail: `Read ${validated.topic} (${Math.round(validated.dwell_time_ms / 1000)}s, ${validated.scroll_depth_pct}% scroll)`,
+      });
+    }
 
     traceLogger.logTrace({
       session_id: validated.session_id,

@@ -8,6 +8,10 @@ import {
   BehavioralTelemetry,
   AgentTraceLog,
   UnifiedTopicNode,
+  AppUser,
+  UserRole,
+  UserUsageMetrics,
+  UsageEvent,
 } from "../types/contracts";
 import { DataPersistenceStore } from "./persistence";
 import { SEED_DATA_STATE } from "./seed-state";
@@ -26,6 +30,8 @@ export class PostgresStore {
   private memoryFactCache: Map<string, PureFactObject> = new Map();
   private memoryChatSessions: Map<string, { messages: any[]; extracted_topics: any[] }> = new Map();
   private memoryTraces: AgentTraceLog[] = [];
+  private memoryUsers: Map<string, AppUser> = new Map();
+  private memoryUserUsage: Map<string, UserUsageMetrics> = new Map();
 
   private diskFilePath: string;
 
@@ -95,6 +101,84 @@ export class PostgresStore {
         this.memoryFactCache = new Map(Object.entries(seed.factCache));
       }
 
+      // Seed baseline registered users
+      const defaultUsers: AppUser[] = [
+        {
+          id: "usr_rhenretta_gmail_com",
+          email: "rhenretta@gmail.com",
+          name: "R. Henretta",
+          image: "https://lh3.googleusercontent.com/a/default-user",
+          role: "admin",
+          status: "active",
+          created_at: "2026-08-30T00:00:00.000Z",
+          last_active_at: new Date().toISOString(),
+        },
+        {
+          id: "usr_alex",
+          email: "alex@ciclops.io",
+          name: "Alex Mercer",
+          image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
+          role: "user",
+          status: "active",
+          created_at: "2026-08-31T00:00:00.000Z",
+          last_active_at: new Date().toISOString(),
+        },
+        {
+          id: "usr_default",
+          email: "guest@ciclops.io",
+          name: "Default Guest",
+          role: "user",
+          status: "active",
+          created_at: "2026-08-30T00:00:00.000Z",
+          last_active_at: new Date().toISOString(),
+        },
+      ];
+
+      for (const u of defaultUsers) {
+        this.memoryUsers.set(u.id, u);
+      }
+
+      // Seed baseline usage
+      const defaultUsage: UserUsageMetrics[] = [
+        {
+          user_id: "usr_rhenretta_gmail_com",
+          total_chat_messages: 24,
+          total_pipeline_runs: 8,
+          total_tokens_used: 18450,
+          total_dwell_time_ms: 342000,
+          last_active_at: new Date().toISOString(),
+          recent_events: [
+            { type: "login", timestamp: new Date(Date.now() - 3600000).toISOString(), detail: "User signed in" },
+            { type: "chat", timestamp: new Date(Date.now() - 2400000).toISOString(), detail: "Dialogue turn analyzed" },
+            { type: "pipeline", timestamp: new Date(Date.now() - 1200000).toISOString(), detail: "Feed curation pipeline executed" },
+          ],
+        },
+        {
+          user_id: "usr_alex",
+          total_chat_messages: 12,
+          total_pipeline_runs: 4,
+          total_tokens_used: 9200,
+          total_dwell_time_ms: 184000,
+          last_active_at: new Date(Date.now() - 86400000).toISOString(),
+          recent_events: [
+            { type: "chat", timestamp: new Date(Date.now() - 86400000).toISOString(), detail: "Discussed quantum computing" },
+          ],
+        },
+        {
+          user_id: "usr_default",
+          total_chat_messages: 5,
+          total_pipeline_runs: 2,
+          total_tokens_used: 3100,
+          total_dwell_time_ms: 65000,
+          last_active_at: new Date(Date.now() - 172800000).toISOString(),
+          recent_events: [],
+        },
+      ];
+
+      for (const m of defaultUsage) {
+        this.memoryUserUsage.set(m.user_id, m);
+      }
+
       if (fs.existsSync(this.diskFilePath)) {
         const raw = fs.readFileSync(this.diskFilePath, "utf-8");
         const parsed = JSON.parse(raw);
@@ -110,6 +194,12 @@ export class PostgresStore {
         if (parsed.factCache) {
           for (const [k, v] of Object.entries(parsed.factCache)) this.memoryFactCache.set(k, v as any);
         }
+        if (parsed.users) {
+          for (const [k, v] of Object.entries(parsed.users)) this.memoryUsers.set(k, v as any);
+        }
+        if (parsed.userUsage) {
+          for (const [k, v] of Object.entries(parsed.userUsage)) this.memoryUserUsage.set(k, v as any);
+        }
       }
     } catch (err) {
       console.warn("PostgresStore: Could not load disk cache:", err);
@@ -124,6 +214,8 @@ export class PostgresStore {
         topicNodes: Object.fromEntries(this.memoryTopicNodes),
         chatSessions: Object.fromEntries(this.memoryChatSessions),
         factCache: Object.fromEntries(this.memoryFactCache),
+        users: Object.fromEntries(this.memoryUsers),
+        userUsage: Object.fromEntries(this.memoryUserUsage),
         lastUpdated: new Date().toISOString(),
       };
       fs.writeFileSync(this.diskFilePath, JSON.stringify(payload, null, 2), "utf-8");
@@ -191,6 +283,25 @@ export class PostgresStore {
               extracted_topics JSONB NOT NULL DEFAULT '[]'::jsonb,
               last_updated TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE TABLE IF NOT EXISTS app_users (
+              id VARCHAR(128) PRIMARY KEY,
+              email VARCHAR(255) NOT NULL UNIQUE,
+              name VARCHAR(255),
+              image TEXT,
+              role VARCHAR(32) NOT NULL DEFAULT 'user',
+              status VARCHAR(32) NOT NULL DEFAULT 'active',
+              created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+              last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS user_usage_metrics (
+              user_id VARCHAR(128) PRIMARY KEY,
+              total_chat_messages INTEGER NOT NULL DEFAULT 0,
+              total_pipeline_runs INTEGER NOT NULL DEFAULT 0,
+              total_tokens_used BIGINT NOT NULL DEFAULT 0,
+              total_dwell_time_ms BIGINT NOT NULL DEFAULT 0,
+              last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+              recent_events JSONB NOT NULL DEFAULT '[]'::jsonb
+            );
           `;
         }
 
@@ -198,6 +309,39 @@ export class PostgresStore {
         this.isConnected = true;
         this.schemaInitialized = true;
         console.log("PostgresStore: Unified Schema initialized successfully.");
+
+        // Automatically seed PostgreSQL from disk/memory state if records are missing or empty
+        for (const [userId, user] of this.memoryUsers.entries()) {
+          try {
+            const check = await client.query("SELECT id FROM app_users WHERE id = $1", [userId]);
+            if (check.rows.length === 0) {
+              await client.query(
+                `INSERT INTO app_users (id, email, name, image, role, status, created_at, last_active_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (id) DO NOTHING`,
+                [user.id, user.email, user.name, user.image || null, user.role, user.status, user.created_at, user.last_active_at]
+              );
+            }
+          } catch (uErr) {
+            console.warn("PostgresStore: Seeding error for user:", uErr);
+          }
+        }
+
+        for (const [userId, usage] of this.memoryUserUsage.entries()) {
+          try {
+            const check = await client.query("SELECT user_id FROM user_usage_metrics WHERE user_id = $1", [userId]);
+            if (check.rows.length === 0) {
+              await client.query(
+                `INSERT INTO user_usage_metrics (user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT (user_id) DO NOTHING`,
+                [usage.user_id, usage.total_chat_messages, usage.total_pipeline_runs, usage.total_tokens_used, usage.total_dwell_time_ms, usage.last_active_at, JSON.stringify(usage.recent_events)]
+              );
+            }
+          } catch (mErr) {
+            console.warn("PostgresStore: Seeding error for usage:", mErr);
+          }
+        }
 
         // Automatically seed PostgreSQL from disk/memory state if records are missing or empty
         for (const [userId, node] of this.memoryTopicNodes.entries()) {
@@ -792,6 +936,363 @@ export class PostgresStore {
       }
     }
     return [...this.memoryTraces].reverse().slice(0, limit);
+  }
+
+  // --- User Management (User Levels: user, admin) ---
+  public async getOrCreateUser(userData: {
+    id?: string;
+    email: string;
+    name?: string;
+    image?: string;
+    role?: UserRole;
+  }): Promise<AppUser> {
+    await this.ensureInitialized();
+    const effectiveId = userData.id || `usr_${userData.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    const now = new Date().toISOString();
+
+    let existing = await this.getUser(effectiveId);
+    if (!existing) {
+      // Check by email
+      existing = await this.getUserByEmail(userData.email);
+    }
+
+    if (existing) {
+      let changed = false;
+      if (userData.name && userData.name !== existing.name) {
+        existing.name = userData.name;
+        changed = true;
+      }
+      if (userData.image && userData.image !== existing.image) {
+        existing.image = userData.image;
+        changed = true;
+      }
+      existing.last_active_at = now;
+      this.memoryUsers.set(existing.id, existing);
+      this.saveToDisk();
+
+      if (this.pool && this.isConnected) {
+        try {
+          await this.pool.query(
+            `UPDATE app_users SET name = $1, image = $2, last_active_at = $3 WHERE id = $4`,
+            [existing.name, existing.image || null, now, existing.id]
+          );
+        } catch (err) {
+          console.warn("PostgresStore: Error updating existing user:", err);
+        }
+      }
+      return existing;
+    }
+
+    const newUser: AppUser = {
+      id: effectiveId,
+      email: userData.email,
+      name: userData.name || userData.email.split("@")[0],
+      image: userData.image,
+      role: userData.role || "user",
+      status: "active",
+      created_at: now,
+      last_active_at: now,
+    };
+
+    this.memoryUsers.set(newUser.id, newUser);
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `INSERT INTO app_users (id, email, name, image, role, status, created_at, last_active_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             image = EXCLUDED.image,
+             last_active_at = EXCLUDED.last_active_at`,
+          [newUser.id, newUser.email, newUser.name, newUser.image || null, newUser.role, newUser.status, newUser.created_at, newUser.last_active_at]
+        );
+      } catch (err) {
+        console.warn("PostgresStore: Error inserting new user:", err);
+      }
+    }
+
+    // Also initialize baseline usage metrics
+    await this.getUserUsage(newUser.id);
+
+    return newUser;
+  }
+
+  public async getUser(userId: string): Promise<AppUser | undefined> {
+    await this.ensureInitialized();
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT id, email, name, image, role, status, created_at, last_active_at FROM app_users WHERE id = $1`,
+          [userId]
+        );
+        if (res.rows.length > 0) {
+          const row = res.rows[0];
+          const user: AppUser = {
+            id: row.id,
+            email: row.email,
+            name: row.name,
+            image: row.image,
+            role: row.role as UserRole,
+            status: row.status,
+            created_at: row.created_at?.toISOString() || new Date().toISOString(),
+            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
+          };
+          this.memoryUsers.set(user.id, user);
+          return user;
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying user:", err);
+      }
+    }
+    return this.memoryUsers.get(userId);
+  }
+
+  public async getUserByEmail(email: string): Promise<AppUser | undefined> {
+    await this.ensureInitialized();
+    const normalized = email.toLowerCase().trim();
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT id, email, name, image, role, status, created_at, last_active_at FROM app_users WHERE LOWER(email) = $1`,
+          [normalized]
+        );
+        if (res.rows.length > 0) {
+          const row = res.rows[0];
+          const user: AppUser = {
+            id: row.id,
+            email: row.email,
+            name: row.name,
+            image: row.image,
+            role: row.role as UserRole,
+            status: row.status,
+            created_at: row.created_at?.toISOString() || new Date().toISOString(),
+            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
+          };
+          this.memoryUsers.set(user.id, user);
+          return user;
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying user by email:", err);
+      }
+    }
+    for (const u of this.memoryUsers.values()) {
+      if (u.email.toLowerCase().trim() === normalized) {
+        return u;
+      }
+    }
+    return undefined;
+  }
+
+  public async getAllUsers(): Promise<AppUser[]> {
+    await this.ensureInitialized();
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT id, email, name, image, role, status, created_at, last_active_at FROM app_users ORDER BY created_at ASC`
+        );
+        if (res.rows.length > 0) {
+          const users: AppUser[] = res.rows.map((row) => ({
+            id: row.id,
+            email: row.email,
+            name: row.name,
+            image: row.image,
+            role: row.role as UserRole,
+            status: row.status,
+            created_at: row.created_at?.toISOString() || new Date().toISOString(),
+            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
+          }));
+          for (const u of users) {
+            this.memoryUsers.set(u.id, u);
+          }
+          return users;
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying all users:", err);
+      }
+    }
+    return Array.from(this.memoryUsers.values());
+  }
+
+  public async updateUserRole(userId: string, role: UserRole): Promise<AppUser> {
+    await this.ensureInitialized();
+    let user = await this.getUser(userId);
+    if (!user) {
+      user = await this.getOrCreateUser({ id: userId, email: `${userId}@ciclops.io`, role });
+    }
+
+    user.role = role;
+    this.memoryUsers.set(userId, user);
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(`UPDATE app_users SET role = $1 WHERE id = $2`, [role, userId]);
+      } catch (err) {
+        console.warn("PostgresStore: Error updating user role:", err);
+      }
+    }
+
+    return user;
+  }
+
+  // --- User Usage Tracking ---
+  public async getUserUsage(userId: string): Promise<UserUsageMetrics> {
+    await this.ensureInitialized();
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events
+           FROM user_usage_metrics WHERE user_id = $1`,
+          [userId]
+        );
+        if (res.rows.length > 0) {
+          const row = res.rows[0];
+          const metrics: UserUsageMetrics = {
+            user_id: row.user_id,
+            total_chat_messages: Number(row.total_chat_messages || 0),
+            total_pipeline_runs: Number(row.total_pipeline_runs || 0),
+            total_tokens_used: Number(row.total_tokens_used || 0),
+            total_dwell_time_ms: Number(row.total_dwell_time_ms || 0),
+            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
+            recent_events: typeof row.recent_events === "string" ? JSON.parse(row.recent_events) : row.recent_events || [],
+          };
+          this.memoryUserUsage.set(userId, metrics);
+          return metrics;
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying user usage:", err);
+      }
+    }
+
+    let usage = this.memoryUserUsage.get(userId);
+    if (!usage) {
+      usage = {
+        user_id: userId,
+        total_chat_messages: 0,
+        total_pipeline_runs: 0,
+        total_tokens_used: 0,
+        total_dwell_time_ms: 0,
+        last_active_at: new Date().toISOString(),
+        recent_events: [],
+      };
+      this.memoryUserUsage.set(userId, usage);
+      this.saveToDisk();
+    }
+    return usage;
+  }
+
+  public async getAllUserUsage(): Promise<Record<string, UserUsageMetrics>> {
+    await this.ensureInitialized();
+    const result: Record<string, UserUsageMetrics> = {};
+
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events FROM user_usage_metrics`
+        );
+        for (const row of res.rows) {
+          result[row.user_id] = {
+            user_id: row.user_id,
+            total_chat_messages: Number(row.total_chat_messages || 0),
+            total_pipeline_runs: Number(row.total_pipeline_runs || 0),
+            total_tokens_used: Number(row.total_tokens_used || 0),
+            total_dwell_time_ms: Number(row.total_dwell_time_ms || 0),
+            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
+            recent_events: typeof row.recent_events === "string" ? JSON.parse(row.recent_events) : row.recent_events || [],
+          };
+          this.memoryUserUsage.set(row.user_id, result[row.user_id]);
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying all user usage:", err);
+      }
+    }
+
+    // Merge memory cache for any missing users
+    for (const [userId, metrics] of this.memoryUserUsage.entries()) {
+      if (!result[userId]) {
+        result[userId] = metrics;
+      }
+    }
+
+    return result;
+  }
+
+  public async recordUsage(
+    userId: string,
+    delta: {
+      chatMessages?: number;
+      pipelineRuns?: number;
+      tokensUsed?: number;
+      dwellTimeMs?: number;
+      eventName?: "chat" | "pipeline" | "telemetry" | "login";
+      detail?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<UserUsageMetrics> {
+    await this.ensureInitialized();
+    const current = await this.getUserUsage(userId);
+    const now = new Date().toISOString();
+
+    current.total_chat_messages += delta.chatMessages || 0;
+    current.total_pipeline_runs += delta.pipelineRuns || 0;
+    current.total_tokens_used += delta.tokensUsed || 0;
+    current.total_dwell_time_ms += delta.dwellTimeMs || 0;
+    current.last_active_at = now;
+
+    if (delta.eventName) {
+      current.recent_events.unshift({
+        type: delta.eventName,
+        timestamp: now,
+        detail: delta.detail,
+        metadata: delta.metadata,
+      });
+      if (current.recent_events.length > 50) {
+        current.recent_events.pop();
+      }
+    }
+
+    this.memoryUserUsage.set(userId, current);
+    this.saveToDisk();
+
+    // Also update user's last_active_at
+    const user = this.memoryUsers.get(userId);
+    if (user) {
+      user.last_active_at = now;
+      this.memoryUsers.set(userId, user);
+    }
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `INSERT INTO user_usage_metrics (user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (user_id) DO UPDATE SET
+             total_chat_messages = user_usage_metrics.total_chat_messages + EXCLUDED.total_chat_messages,
+             total_pipeline_runs = user_usage_metrics.total_pipeline_runs + EXCLUDED.total_pipeline_runs,
+             total_tokens_used = user_usage_metrics.total_tokens_used + EXCLUDED.total_tokens_used,
+             total_dwell_time_ms = user_usage_metrics.total_dwell_time_ms + EXCLUDED.total_dwell_time_ms,
+             last_active_at = EXCLUDED.last_active_at,
+             recent_events = EXCLUDED.recent_events`,
+          [
+            userId,
+            delta.chatMessages || 0,
+            delta.pipelineRuns || 0,
+            delta.tokensUsed || 0,
+            delta.dwellTimeMs || 0,
+            now,
+            JSON.stringify(current.recent_events),
+          ]
+        );
+
+        await this.pool.query(`UPDATE app_users SET last_active_at = $1 WHERE id = $2`, [now, userId]);
+      } catch (err) {
+        console.warn("PostgresStore: Error recording user usage:", err);
+      }
+    }
+
+    return current;
   }
 }
 
