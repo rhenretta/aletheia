@@ -92,6 +92,7 @@ jobs:
       - name: Build, Tag, and Push Docker Image to ECR
         env:
           IMAGE_TAG: ${{ github.sha }}
+          GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID || secrets.GA_MEASUREMENT_ID }}
         run: |
           echo "🐳 Fetching ECR URL from Terraform..."
           ECR_URL=$(terraform -chdir=terraform output -raw ecr_repository_url)
@@ -103,6 +104,7 @@ jobs:
           echo "🐳 Building Next.js Standalone Docker Image..."
           docker build \
             --cache-from "$ECR_URL:latest" \
+            --build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID="$GA_MEASUREMENT_ID" \
             -t "$ECR_URL:$IMAGE_TAG" \
             -t "$ECR_URL:latest" \
             .
@@ -122,6 +124,7 @@ jobs:
           TF_VAR_stripe_secret_key: ${{ secrets.STRIPE_SECRET_KEY }}
           TF_VAR_stripe_test_secret_key: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
           TF_VAR_stripe_webhook_secret: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          TF_VAR_ga_measurement_id: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID || secrets.GA_MEASUREMENT_ID }}
         run: |
           echo "📦 Applying Full Terraform Infrastructure..."
           terraform apply -auto-approve
@@ -131,6 +134,7 @@ jobs:
           STRIPE_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_TEST_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
           STRIPE_WEBHOOK: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          GA_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID || secrets.GA_MEASUREMENT_ID }}
         run: |
           if [ -n "$STRIPE_KEY" ]; then
             echo "Directly syncing STRIPE_SECRET_KEY into AWS SSM..."
@@ -158,6 +162,16 @@ jobs:
               --name "/aletheia/production/STRIPE_WEBHOOK_SECRET" \
               --type "SecureString" \
               --value "$STRIPE_WEBHOOK" \
+              --overwrite \
+              --region ${{ env.AWS_REGION }}
+          fi
+
+          if [ -n "$GA_ID" ]; then
+            echo "Directly syncing NEXT_PUBLIC_GA_MEASUREMENT_ID into AWS SSM..."
+            aws ssm put-parameter \
+              --name "/aletheia/production/NEXT_PUBLIC_GA_MEASUREMENT_ID" \
+              --type "String" \
+              --value "$GA_ID" \
               --overwrite \
               --region ${{ env.AWS_REGION }}
           fi

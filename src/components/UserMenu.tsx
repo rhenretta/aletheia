@@ -18,6 +18,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { ContextualSelection, AppUser, UserTier, UsageLimitStatus } from "@/core/types/contracts";
+import { trackSubscriptionFunnel, trackAuthAction, trackEvent } from "@/lib/analytics";
 
 export interface UserMenuProps {
   session: any;
@@ -238,6 +239,10 @@ export default function UserMenu({
               {onOpenSubscriptionModal && (
                 <button
                   onClick={() => {
+                    trackSubscriptionFunnel("modal_open", {
+                      source: "user_menu",
+                      tier,
+                    });
                     setIsOpen(false);
                     onOpenSubscriptionModal();
                   }}
@@ -344,6 +349,7 @@ export default function UserMenu({
               {/* Reset Profile & Memory */}
               <button
                 onClick={() => {
+                  trackEvent("user_profile_reset_clicked", { tier });
                   onResetProfile();
                   setIsOpen(false);
                 }}
@@ -387,6 +393,7 @@ export default function UserMenu({
             {session?.user ? (
               <button
                 onClick={async () => {
+                  trackAuthAction("sign_out", "user_menu");
                   setIsOpen(false);
                   await onSignOut();
                 }}
@@ -398,6 +405,7 @@ export default function UserMenu({
             ) : (
               <button
                 onClick={() => {
+                  trackAuthAction("sign_in_initiated", "user_menu");
                   setIsOpen(false);
                   onSignIn();
                 }}

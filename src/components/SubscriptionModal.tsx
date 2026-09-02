@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Sparkles,
   Zap,
@@ -19,6 +19,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { AppUser, UserTier, UsageLimitStatus } from "@/core/types/contracts";
+import { trackSubscriptionFunnel } from "@/lib/analytics";
 
 interface SubscriptionModalProps {
   isOpen: boolean;
@@ -51,6 +52,15 @@ export default function SubscriptionModal({
   const [testProcessing, setTestProcessing] = useState(false);
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      trackSubscriptionFunnel("modal_open", {
+        tier: user?.tier || "free",
+        source: isAdmin ? "admin" : "user",
+      });
+    }
+  }, [isOpen, user?.tier, isAdmin]);
+
   if (!isOpen) return null;
 
   const isSubscriber = user?.tier === "subscriber";
@@ -74,9 +84,16 @@ export default function SubscriptionModal({
   const handleCheckout = async (options?: { testMode?: boolean; skipDiscount?: boolean }) => {
     setLoading(true);
     setError(null);
+    const activeTestMode = options?.testMode !== undefined ? options.testMode : isTestMode;
+    const activeSkipDiscount = options?.skipDiscount !== undefined ? options.skipDiscount : isLapsed;
+
+    trackSubscriptionFunnel("checkout_start", {
+      tier: "subscriber",
+      testMode: activeTestMode,
+      skipDiscount: activeSkipDiscount,
+    });
+
     try {
-      const activeTestMode = options?.testMode !== undefined ? options.testMode : isTestMode;
-      const activeSkipDiscount = options?.skipDiscount !== undefined ? options.skipDiscount : isLapsed;
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,6 +121,12 @@ export default function SubscriptionModal({
     setTestProcessing(true);
     setError(null);
     setTestSuccessMessage(null);
+
+    trackSubscriptionFunnel("checkout_start", {
+      tier: "subscriber",
+      testMode: true,
+    });
+
     try {
       const res = await fetch("/api/stripe/test-charge", {
         method: "POST",
@@ -118,6 +141,10 @@ export default function SubscriptionModal({
 
       const data = await res.json();
       if (data.success) {
+        trackSubscriptionFunnel("checkout_success", {
+          tier: "subscriber",
+          testMode: true,
+        });
         setTestSuccessMessage(
           data.message || "Test payment approved! Subscription activated with $3.00/mo compute cap."
         );

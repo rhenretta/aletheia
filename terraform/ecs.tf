@@ -208,7 +208,8 @@ resource "aws_ecs_task_definition" "app" {
         { name = "NEXT_TELEMETRY_DISABLED", value = "1" },
         { name = "COOKIE_DOMAIN", value = ".${var.domain_name}" },
         { name = "NEXTAUTH_URL", value = "https://${var.subdomain}.${var.domain_name}" },
-        { name = "ADMIN_EMAILS", value = var.admin_emails }
+        { name = "ADMIN_EMAILS", value = var.admin_emails },
+        { name = "NEXT_PUBLIC_GA_MEASUREMENT_ID", value = var.ga_measurement_id }
       ]
 
       secrets = [

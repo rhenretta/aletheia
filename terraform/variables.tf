@@ -162,3 +162,11 @@ variable "stripe_webhook_secret" {
   sensitive   = true
 }
 
+# --- Analytics & Telemetry ---
+
+variable "ga_measurement_id" {
+  description = "Google Analytics 4 Measurement ID (e.g. G-XXXXXXXXXX)"
+  type        = string
+  default     = ""
+}
+

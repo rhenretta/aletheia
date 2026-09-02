@@ -84,4 +84,15 @@ resource "aws_ssm_parameter" "stripe_webhook_secret" {
   value       = var.stripe_webhook_secret != "" ? var.stripe_webhook_secret : "placeholder-stripe-webhook-secret"
 }
 
+resource "aws_ssm_parameter" "ga_measurement_id" {
+  name        = "/${var.app_name}/${var.environment}/NEXT_PUBLIC_GA_MEASUREMENT_ID"
+  description = "Google Analytics 4 Measurement ID for ${var.app_name}"
+  type        = "String"
+  value       = var.ga_measurement_id != "" ? var.ga_measurement_id : "placeholder-ga-id"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ||
@@ -56,6 +57,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="antialiased min-h-screen bg-slate-950 text-slate-100 selection:bg-cyan-500 selection:text-black">
+        <GoogleAnalytics />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

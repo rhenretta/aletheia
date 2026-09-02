@@ -20,6 +20,11 @@ import {
   CreditCard,
   Check,
 } from "lucide-react";
+import {
+  trackLandingCta,
+  trackFaqToggle,
+  trackAuthAction,
+} from "@/lib/analytics";
 
 interface LandingPageProps {
   onSignIn: () => void;
@@ -31,7 +36,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
   const [interactiveTab, setInteractiveTab] = useState<"after" | "before">("after");
 
   const toggleFaq = (index: number) => {
-    setOpenFaq(openFaq === index ? null : index);
+    const isOpening = openFaq !== index;
+    setOpenFaq(isOpening ? index : null);
+    if (faqs[index]) {
+      trackFaqToggle(faqs[index].q, isOpening ? "open" : "close");
+    }
   };
 
   const faqs = [
@@ -83,22 +92,58 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
         </div>
 
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300">
-          <a href="#how-it-works" className="hover:text-cyan-300 transition">How It Works</a>
-          <a href="#features" className="hover:text-cyan-300 transition">Features</a>
-          <a href="#comparison" className="hover:text-cyan-300 transition">Why Aletheia</a>
-          <a href="#pricing" className="hover:text-cyan-300 transition">Pricing</a>
-          <a href="#faq" className="hover:text-cyan-300 transition">FAQ</a>
+          <a
+            href="#how-it-works"
+            onClick={() => trackLandingCta("Nav How It Works", "header")}
+            className="hover:text-cyan-300 transition"
+          >
+            How It Works
+          </a>
+          <a
+            href="#features"
+            onClick={() => trackLandingCta("Nav Features", "header")}
+            className="hover:text-cyan-300 transition"
+          >
+            Features
+          </a>
+          <a
+            href="#comparison"
+            onClick={() => trackLandingCta("Nav Why Aletheia", "header")}
+            className="hover:text-cyan-300 transition"
+          >
+            Why Aletheia
+          </a>
+          <a
+            href="#pricing"
+            onClick={() => trackLandingCta("Nav Pricing", "header")}
+            className="hover:text-cyan-300 transition"
+          >
+            Pricing
+          </a>
+          <a
+            href="#faq"
+            onClick={() => trackLandingCta("Nav FAQ", "header")}
+            className="hover:text-cyan-300 transition"
+          >
+            FAQ
+          </a>
         </nav>
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={onExploreGuest}
+            onClick={() => {
+              trackAuthAction("guest_explore_start", "header_nav");
+              onExploreGuest();
+            }}
             className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 border border-white/10 transition"
           >
             Explore Live Preview
           </button>
           <button
-            onClick={onSignIn}
+            onClick={() => {
+              trackAuthAction("sign_in_initiated", "header_nav");
+              onSignIn();
+            }}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-500/25 transition transform active:scale-95"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
@@ -150,7 +195,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
           {/* Primary Action Buttons */}
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3.5 max-w-md mx-auto">
             <button
-              onClick={onSignIn}
+              onClick={() => {
+                trackLandingCta("Get Started with Google", "hero");
+                trackAuthAction("sign_in_initiated", "hero");
+                onSignIn();
+              }}
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-500 text-white font-semibold text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-cyan-500/20 hover:shadow-cyan-500/30 transition transform active:scale-95"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -176,7 +225,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
             </button>
 
             <button
-              onClick={onExploreGuest}
+              onClick={() => {
+                trackLandingCta("Explore Live Preview", "hero");
+                trackAuthAction("guest_explore_start", "hero");
+                onExploreGuest();
+              }}
               className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white font-medium text-sm flex items-center justify-center gap-2 transition"
             >
               <Eye className="w-4 h-4 text-cyan-400" />
@@ -226,7 +279,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                   </p>
                 </div>
                 <button
-                  onClick={onSignIn}
+                  onClick={() => {
+                    trackLandingCta("Experience it now", "hero_showcase");
+                    trackAuthAction("sign_in_initiated", "hero_showcase");
+                    onSignIn();
+                  }}
                   className="px-4 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition"
                 >
                   <span>Experience it now</span>
@@ -552,7 +609,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
               </div>
 
               <button
-                onClick={onExploreGuest}
+                onClick={() => {
+                  trackLandingCta("Explore Live Preview Free", "pricing_free_tier");
+                  trackAuthAction("guest_explore_start", "pricing");
+                  onExploreGuest();
+                }}
                 className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono font-semibold border border-white/10 transition"
               >
                 Explore Live Preview Free
@@ -612,7 +673,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
               </div>
 
               <button
-                onClick={onSignIn}
+                onClick={() => {
+                  trackLandingCta("Subscribe with Stripe", "pricing_subscriber_tier");
+                  trackAuthAction("sign_in_initiated", "pricing_subscriber");
+                  onSignIn();
+                }}
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-400 to-indigo-600 hover:from-cyan-400 hover:via-teal-300 hover:to-indigo-500 text-slate-950 text-xs font-mono font-bold flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 transition transform active:scale-95"
               >
                 <CreditCard className="w-4 h-4" />
@@ -672,7 +737,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
               </p>
               <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3.5">
                 <button
-                  onClick={onSignIn}
+                  onClick={() => {
+                    trackLandingCta("Sign In with Google", "bottom_banner");
+                    trackAuthAction("sign_in_initiated", "bottom_banner");
+                    onSignIn();
+                  }}
                   className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-500 text-white font-semibold text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-cyan-500/20 transition transform active:scale-95"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -698,7 +767,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </button>
 
                 <button
-                  onClick={onExploreGuest}
+                  onClick={() => {
+                    trackLandingCta("Explore Live Preview First", "bottom_banner");
+                    trackAuthAction("guest_explore_start", "bottom_banner");
+                    onExploreGuest();
+                  }}
                   className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/15 text-slate-300 hover:text-white text-sm font-medium transition"
                 >
                   Explore Live Preview First

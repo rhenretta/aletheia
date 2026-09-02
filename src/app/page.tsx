@@ -63,6 +63,13 @@ import LandingPage from "@/components/LandingPage";
 import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { useSession, signIn, signOut } from "next-auth/react";
+import {
+  trackAuthAction,
+  trackFeedInteraction,
+  trackSourceReader,
+  trackCompanionChat,
+  trackSubscriptionFunnel,
+} from "@/lib/analytics";
 
 function sanitizeDisplay(input?: string): string {
   if (!input) return "";
@@ -127,6 +134,10 @@ export default function AletheiaHome() {
         if (data.user) setCurrentUserData(data.user);
         if (data.limitStatus?.isNearLimit && data.limitStatus?.allowed) {
           setShowQuotaWarning(true);
+          trackSubscriptionFunnel("quota_warning", {
+            warningType: "near_limit",
+            tier: data.tier,
+          });
         } else {
           setShowQuotaWarning(false);
         }
@@ -154,6 +165,10 @@ export default function AletheiaHome() {
         .then((d) => {
           if (d.success) {
             setSubscriptionToast("Subscription activated! Welcome to Aletheia Subscriber tier.");
+            trackSubscriptionFunnel("checkout_success", {
+              sessionId,
+              tier: "subscriber",
+            });
             fetchUserUsage();
           }
         })
@@ -166,6 +181,9 @@ export default function AletheiaHome() {
       window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
     } else if (subParam === "canceled") {
       setSubscriptionToast("Subscription checkout canceled.");
+      trackSubscriptionFunnel("checkout_cancel", {
+        tier: "subscriber",
+      });
       url.searchParams.delete("subscription");
       window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
     }
@@ -286,6 +304,18 @@ export default function AletheiaHome() {
   };
 
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Track article reader opens in Google Analytics
+  useEffect(() => {
+    if (selectedReadingSource?.source) {
+      trackSourceReader("open", {
+        articleId: selectedReadingSource.card?.event_id,
+        title: selectedReadingSource.card?.headline || selectedReadingSource.source.title,
+        publisher: selectedReadingSource.source.name,
+        sourceUrl: selectedReadingSource.source.url,
+      });
+    }
+  }, [selectedReadingSource]);
 
   // Auto-scroll chat internally
   useEffect(() => {
@@ -534,6 +564,7 @@ export default function AletheiaHome() {
 
   // Clean run: wipes previous feed and executes fresh content finding across all current active topics
   const handleFindNewsClean = async () => {
+    trackFeedInteraction("refresh");
     setIsCollectingNews(false);
     setPipelineResult(null);
     setAttachedStory(null);
@@ -709,6 +740,12 @@ export default function AletheiaHome() {
 
     let newHistory: ChatMessage[] = customHistory || messages;
     if (promptToSend) {
+      trackCompanionChat("message_send", {
+        messageLength: promptToSend.length,
+        hasAttachedContext: Boolean(attachedStory || selectedContext),
+        storyTitle: attachedStory?.headline,
+        topic: attachedStory?.topic,
+      });
       const userMessage: ChatMessage = {
         id: `usr_${Date.now()}`,
         role: "user",
@@ -999,6 +1036,10 @@ export default function AletheiaHome() {
 
   // Attach a specific story to the conversational companion
   const handleDiscussStory = (card: SynthesizedEventCard) => {
+    trackCompanionChat("context_attach", {
+      storyTitle: card.headline,
+      topic: card.topic,
+    });
     const storyContext: AttachedStoryContext = {
       event_id: card.event_id,
       topic: card.topic,
@@ -1149,8 +1190,14 @@ export default function AletheiaHome() {
   if (!session?.user && !guestExplore) {
     return (
       <LandingPage
-        onSignIn={() => signIn("google", { callbackUrl: "/" })}
-        onExploreGuest={() => setGuestExplore(true)}
+        onSignIn={() => {
+          trackAuthAction("sign_in_initiated", "landing");
+          signIn("google", { callbackUrl: "/" });
+        }}
+        onExploreGuest={() => {
+          trackAuthAction("guest_explore_start", "landing");
+          setGuestExplore(true);
+        }}
       />
     );
   }
@@ -1168,13 +1215,19 @@ export default function AletheiaHome() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setGuestExplore(false)}
+              onClick={() => {
+                trackAuthAction("guest_preview_exit", "preview_banner");
+                setGuestExplore(false);
+              }}
               className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 text-xs transition"
             >
               Back to Overview
             </button>
             <button
-              onClick={() => signIn("google", { callbackUrl: "/" })}
+              onClick={() => {
+                trackAuthAction("sign_in_initiated", "preview_banner");
+                signIn("google", { callbackUrl: "/" });
+              }}
               className="px-3 py-1 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
             >
               <span>Sign In with Google</span>

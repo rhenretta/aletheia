@@ -12,6 +12,7 @@ import {
   Share2,
 } from "lucide-react";
 import { EventSourceArticle, SynthesizedEventCard } from "@/core/types/contracts";
+import { trackSourceReader, trackCompanionChat } from "@/lib/analytics";
 
 interface SourceReaderModalProps {
   source: EventSourceArticle | null;
@@ -84,6 +85,14 @@ export default function SourceReaderModal({
               href={directArticleUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => {
+                trackSourceReader("external_link_click", {
+                  articleId: card?.event_id,
+                  title,
+                  sourceUrl: source.url,
+                  publisher: source.name,
+                });
+              }}
               className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center gap-1.5 transition"
             >
               <span>Open on Publisher Website</span>
@@ -179,6 +188,10 @@ export default function SourceReaderModal({
             {card && (
               <button
                 onClick={() => {
+                  trackCompanionChat("context_attach", {
+                    storyTitle: card.headline,
+                    topic: card.topic,
+                  });
                   onDiscuss(card);
                   onClose();
                 }}
