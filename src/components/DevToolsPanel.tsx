@@ -230,44 +230,45 @@ export default function DevToolsPanel({
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-cyan-500/40 bg-slate-950/95 backdrop-blur-xl shadow-2xl transition-all duration-300">
+    <div className={`fixed bottom-0 left-0 right-0 z-50 border-t border-cyan-500/40 bg-slate-950/95 backdrop-blur-xl shadow-2xl transition-all duration-300 ${!isOpen ? "hidden lg:block" : "block"}`}>
       {/* DevTools Header Bar */}
       <div className="max-w-7xl mx-auto px-4 h-12 flex items-center justify-between">
         <button
           onClick={onToggle}
-          className="flex items-center gap-2.5 text-xs font-mono text-cyan-300 hover:text-cyan-200 transition font-bold"
+          className="flex items-center gap-2 text-xs font-mono text-cyan-300 hover:text-cyan-200 transition font-bold truncate mr-2"
         >
-          <Terminal className="w-4 h-4 text-cyan-400" />
-          <span>MIND-STATE MEMORY ARCHITECTURE DEVTOOLS</span>
+          <Terminal className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+          <span className="hidden sm:inline">MIND-STATE MEMORY ARCHITECTURE DEVTOOLS</span>
+          <span className="sm:hidden">DEVTOOLS</span>
 
           {/* Live Streaming Pulsing Indicator */}
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-white/10 text-[10px]">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-white/10 text-[10px] flex-shrink-0">
             <span className={`w-2 h-2 rounded-full ${isCollectingNews ? "bg-rose-500 animate-ping" : isConnectedSSE ? "bg-emerald-400" : "bg-slate-500"}`} />
             <span className={isCollectingNews ? "text-rose-400 font-bold" : "text-emerald-400"}>
               {isCollectingNews ? "LIVE RUN IN PROGRESS" : isConnectedSSE ? "SSE STREAM CONNECTED" : "OFFLINE"}
             </span>
           </div>
 
-          <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-cyan-500/20 text-[10px] border border-cyan-500/30">
+          <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-cyan-500/20 text-[10px] border border-cyan-500/30 flex-shrink-0">
             {traces.length} Traces
           </span>
 
           {selectedContext && (
-            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] border border-amber-500/30 font-mono flex items-center gap-1">
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] border border-amber-500/30 font-mono flex items-center gap-1 flex-shrink-0">
               <span>Target: {selectedContext.type.toUpperCase()}</span>
             </span>
           )}
-          {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          {isOpen ? <ChevronDown className="w-4 h-4 flex-shrink-0" /> : <ChevronUp className="w-4 h-4 flex-shrink-0" />}
         </button>
 
-        <div className="flex items-center gap-4 text-xs font-mono">
+        <div className="flex items-center gap-2 sm:gap-4 text-xs font-mono flex-shrink-0">
           {selectedContext && onSelectContext && (
             <button
               onClick={() => onSelectContext(null)}
               className="text-[11px] text-amber-400 hover:underline flex items-center gap-1"
             >
               <X className="w-3 h-3" />
-              Clear Filter
+              <span className="hidden sm:inline">Clear Filter</span>
             </button>
           )}
           <div className="hidden sm:flex items-center gap-2 text-slate-400">
@@ -285,12 +286,21 @@ export default function DevToolsPanel({
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-cyan-400" : ""}`} />
           </button>
+          {isOpen && (
+            <button
+              onClick={onToggle}
+              className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10"
+              title="Close DevTools"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* DevTools Drawer Content */}
       {isOpen && (
-        <div className="max-w-7xl mx-auto px-4 pb-6 pt-2 border-t border-white/5 space-y-4 max-h-[540px] overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-4 pb-6 pt-2 border-t border-white/5 space-y-4 max-h-[75vh] lg:max-h-[540px] overflow-y-auto">
           {/* Sub Navigation Tabs */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
             <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">

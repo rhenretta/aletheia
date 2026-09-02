@@ -135,7 +135,7 @@ export default function MobileCompanionSheet({
     <>
       {/* 1. PERSISTENT FLOATING AMBIENT COMPANION QUICK BAR (When sheet is closed on mobile) */}
       {!isOpen && (
-        <div className="fixed bottom-16 left-0 right-0 z-30 px-3 py-2 pointer-events-none lg:hidden">
+        <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-30 px-3 py-2 pointer-events-none lg:hidden">
           <div className="max-w-xl mx-auto pointer-events-auto">
             <div className="bg-slate-900/90 backdrop-blur-2xl border border-cyan-500/30 rounded-2xl p-2 shadow-2xl shadow-cyan-950/40 space-y-1.5 transition transform hover:scale-[1.01]">
               {/* Attached Story Pill if active */}

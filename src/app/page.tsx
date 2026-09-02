@@ -3063,8 +3063,10 @@ export default function AletheiaHome() {
         </button>
 
         <button
-          onClick={() => setIsDevToolsOpen(true)}
-          className="flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl text-slate-400 hover:text-cyan-300"
+          onClick={() => setIsDevToolsOpen(!isDevToolsOpen)}
+          className={`flex flex-col items-center gap-0.5 transition px-3 py-1 rounded-xl ${
+            isDevToolsOpen ? "text-amber-400 font-bold" : "text-slate-400 hover:text-cyan-300"
+          }`}
         >
           <Sliders className="w-5 h-5" />
           <span className="text-[10px] font-mono">DevTools</span>
