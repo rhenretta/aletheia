@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
               await postgresStore.saveUnifiedTopicNode(unifiedNode);
             }
 
-            // 4. Active Discussion Topic Feed Filtering
+            // 4. Active Discussion Topic Feed Filtering & Targeted News Curation
             let filter = finalResponse.active_feed_filter;
             const contextGen = finalResponse.context_generated as any;
             const primaryTopic =
@@ -164,12 +164,19 @@ export async function POST(req: NextRequest) {
 
             if (primaryTopic && primaryTopic !== "all" && primaryTopic !== "General") {
               const matchedIds = (contextGen?.relevant_stories || []).map((s: any) => s.event_id);
+              const shouldCurate =
+                matchedIds.length === 0 ||
+                !currentStories ||
+                currentStories.length === 0 ||
+                filter?.trigger_targeted_curation;
+
               finalResponse.active_feed_filter = {
                 is_active: true,
                 topic: primaryTopic,
                 matched_event_ids: matchedIds,
                 filter_reason: filter?.filter_reason || `Focusing on "${primaryTopic}" from active discussion`,
-                trigger_targeted_curation: false,
+                trigger_targeted_curation: Boolean(shouldCurate),
+                curation_query: filter?.curation_query || primaryTopic,
               };
             } else if (!finalResponse.active_feed_filter) {
               finalResponse.active_feed_filter = { is_active: false };

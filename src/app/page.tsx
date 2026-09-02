@@ -583,8 +583,14 @@ export default function AletheiaHome() {
     }
   };
 
+  const activeCurationTopicRef = useRef<string | null>(null);
+
   // On-demand targeted curation pipeline execution for topics with no feed cards
   const handleTargetedCuration = async (curationQuery: string, canonicalTopic?: string) => {
+    const topicKey = (canonicalTopic || curationQuery).toLowerCase().trim();
+    if (!topicKey || activeCurationTopicRef.current === topicKey) return;
+    activeCurationTopicRef.current = topicKey;
+
     setIsCollectingNews(true);
     try {
       const res = await fetch("/api/pipeline", {
@@ -605,9 +611,20 @@ export default function AletheiaHome() {
           const uniqueNew = newCards.filter((c: any) => !existingIds.has(c.event_id));
           return {
             ...prev,
+            ...json.data,
             feed_cards: [...uniqueNew, ...prevCards],
           };
         });
+
+        if (json.unified_topic_node) {
+          setUnifiedTopicNode(json.unified_topic_node);
+        } else if (json.data?.unified_topic_node) {
+          setUnifiedTopicNode(json.data.unified_topic_node);
+        }
+        if (json.data?.user_graph) {
+          setUserGraph(json.data.user_graph);
+        }
+        setDevToolsTrigger((prev) => prev + 1);
 
         setAiFeedFilter({
           is_active: true,
@@ -620,6 +637,7 @@ export default function AletheiaHome() {
       console.warn("handleTargetedCuration error:", err);
     } finally {
       setIsCollectingNews(false);
+      activeCurationTopicRef.current = null;
     }
   };
 
@@ -808,6 +826,9 @@ export default function AletheiaHome() {
           if (eventType === "feed_filter" && data) {
             if (data.is_active && (data.matched_event_ids?.length || data.topic)) {
               setAiFeedFilter(data);
+              if (data.trigger_targeted_curation && (data.curation_query || data.topic)) {
+                handleTargetedCuration(data.curation_query || data.topic, data.topic);
+              }
             } else {
               setAiFeedFilter(null);
             }
@@ -884,6 +905,15 @@ export default function AletheiaHome() {
               (metaData.active_feed_filter.matched_event_ids?.length || metaData.active_feed_filter.topic)
             ) {
               setAiFeedFilter(metaData.active_feed_filter);
+              if (
+                metaData.active_feed_filter.trigger_targeted_curation &&
+                (metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic)
+              ) {
+                handleTargetedCuration(
+                  metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic,
+                  metaData.active_feed_filter.topic
+                );
+              }
             } else {
               setAiFeedFilter(null);
             }
@@ -1085,7 +1115,9 @@ export default function AletheiaHome() {
       const topicToFilter = aiFeedFilter.topic;
       if (topicToFilter && topicToFilter !== "all") {
         const semanticallyFiltered = filterFeedBySemanticAffinity(pool, topicToFilter, unifiedTopicNode, selectedCategoryFilter, rankingSeenSnapshot);
-        return semanticallyFiltered;
+        if (semanticallyFiltered.length > 0) {
+          return semanticallyFiltered;
+        }
       }
       if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
         return pool.filter((c) => aiFeedFilter.matched_event_ids!.includes(c.event_id));
@@ -2028,28 +2060,33 @@ export default function AletheiaHome() {
                 <>
                   <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
                   <div className="text-sm font-semibold text-slate-200">
-                    Finding & synthesizing fresh news stories across active interests...
+                    {aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic
+                      ? `Curating & synthesizing live stories for "${aiFeedFilter.topic}"...`
+                      : "Finding & synthesizing fresh news stories across active interests..."}
                   </div>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Aletheia is retrieving and synthesizing verified news across trusted global wires to update your feed.
+                  </p>
                 </>
               ) : (
                 <>
                   <ShieldCheck className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
                   <div className="text-sm font-semibold text-slate-200">
-                    {feedCards.length === 0
+                    {aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic
+                      ? `No stories currently in feed matching "${aiFeedFilter.topic}".`
+                      : feedCards.length === 0
                       ? totalInterestsCount === 0
                         ? "Welcome to Your Noise-Free News Stream"
                         : "Feed Cleared"
-                      : aiFeedFilter && aiFeedFilter.is_active !== false
-                      ? `No stories currently in feed matching "${aiFeedFilter.topic}".`
                       : `No stories found for "${selectedTopicFilter}".`}
                   </div>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    {feedCards.length === 0
+                    {aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic
+                      ? `Click 'Fetch Stories for "${aiFeedFilter.topic}"' below to curate fresh wire coverage, or 'Show All Stories' to return to your complete news feed.`
+                      : feedCards.length === 0
                       ? totalInterestsCount === 0
                         ? "Your feed builds around what you care about. Start chatting with Aletheia on the right to discover verified stories, or click Refresh News to pull top global events."
                         : `Your news stream is empty. Your conversation history and ${totalInterestsCount} tracked interests are preserved.`
-                      : aiFeedFilter && aiFeedFilter.is_active !== false
-                      ? "Click 'Show All Stories' to return to your complete news feed, or refresh news to fetch stories."
                       : "Try clearing your topic filter or selecting All Topics from the dropdown."}
                   </p>
                   <div className="flex items-center justify-center gap-3 pt-2">
@@ -2072,11 +2109,21 @@ export default function AletheiaHome() {
                       </button>
                     )}
                     <button
-                      onClick={() => handleFindNewsClean()}
+                      onClick={() => {
+                        if (aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic) {
+                          handleTargetedCuration(aiFeedFilter.topic, aiFeedFilter.topic);
+                        } else {
+                          handleFindNewsClean();
+                        }
+                      }}
                       className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-teal-400 text-slate-950 font-bold text-xs inline-flex items-center gap-2 hover:opacity-90 transition shadow-lg shadow-cyan-500/20"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Refresh News</span>
+                      <span>
+                        {aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic
+                          ? `Fetch Stories for "${aiFeedFilter.topic}"`
+                          : "Refresh News"}
+                      </span>
                     </button>
                   </div>
                 </>

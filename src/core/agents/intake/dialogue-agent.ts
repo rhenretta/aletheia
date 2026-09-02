@@ -222,6 +222,28 @@ export class DialogueAgent {
       matchedIds = semanticallyMatched.map((s) => s.event_id);
     }
 
+    const shouldCurate = Boolean(
+      identifiedTopic &&
+      identifiedTopic !== "all" &&
+      identifiedTopic !== "General" &&
+      (matchedIds.length === 0 || !currentStories || currentStories.length === 0)
+    );
+
+    // Instantly emit feed_filter event to the client so UI updates immediately and can trigger background curation
+    if (identifiedTopic && identifiedTopic !== "all" && identifiedTopic !== "General") {
+      yield {
+        type: "feed_filter",
+        data: {
+          is_active: true,
+          topic: identifiedTopic,
+          matched_event_ids: matchedIds,
+          filter_reason: `Focusing on "${identifiedTopic}" from active discussion`,
+          trigger_targeted_curation: shouldCurate,
+          curation_query: identifiedTopic,
+        },
+      };
+    }
+
     const now = new Date();
     const currentDateStr = clientContext?.localFormatted || now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     const timeZoneStr = clientContext?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -570,6 +592,29 @@ CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
         why_this_response: "Standard",
       },
       context_generated: contextGenerated,
+      active_feed_filter: parsed.active_feed_filter
+        ? {
+            ...parsed.active_feed_filter,
+            is_active: parsed.active_feed_filter.is_active !== false,
+            topic: parsed.active_feed_filter.topic || identifiedTopic || undefined,
+            matched_event_ids: parsed.active_feed_filter.matched_event_ids?.length
+              ? parsed.active_feed_filter.matched_event_ids
+              : matchedIds,
+            trigger_targeted_curation:
+              parsed.active_feed_filter.trigger_targeted_curation ?? shouldCurate,
+            curation_query:
+              parsed.active_feed_filter.curation_query ||
+              parsed.active_feed_filter.topic ||
+              identifiedTopic,
+          }
+        : {
+            is_active: Boolean(identifiedTopic && identifiedTopic !== "all" && identifiedTopic !== "General"),
+            topic: identifiedTopic || undefined,
+            matched_event_ids: matchedIds,
+            filter_reason: `Focusing on "${identifiedTopic}" from active discussion`,
+            trigger_targeted_curation: shouldCurate,
+            curation_query: identifiedTopic,
+          },
       extracted_topics: validatedExtractedTopics,
       interest_intersections: parsed.interest_intersections || [],
       adjacent_curiosity_frontiers: parsed.adjacent_curiosity_frontiers || [],

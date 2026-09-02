@@ -262,6 +262,72 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
     expect(result.empath_instructions).toContain("CRITICAL NEGATIVE CONSTRAINTS");
   });
 
+  it("triggers targeted news curation when discussed topic has no matching stories in current feed", async () => {
+    const mockJson = JSON.stringify({
+      agent_internal_rationale: {
+        user_emotional_state_detected: "Curious",
+        curiosity_focus_identified: "Autonomous Systems",
+        intersections_analyzed: "None",
+        pedagogical_strategy: "Direct",
+        why_this_response: "Clear answer",
+      },
+      message: "Autonomous systems are expanding rapidly across commercial and defense domains.",
+      extracted_topics: [
+        {
+          topic: "Autonomous Systems",
+          weight: 0.88,
+          reasoning: "User asked about autonomous systems.",
+          confidence_score: 0.95,
+          evidence_quote: "What is going on with autonomous systems?",
+        },
+      ],
+      active_feed_filter: {
+        is_active: true,
+        topic: "Autonomous Systems",
+        matched_event_ids: [],
+        filter_reason: 'Focusing on "Autonomous Systems" from active discussion',
+        trigger_targeted_curation: true,
+        curation_query: "Autonomous Systems",
+      },
+    });
+
+    vi.spyOn(deepseekProvider, "generateStream").mockImplementation(async function* () {
+      yield mockJson;
+      return { fullText: mockJson, tokensUsed: 150 };
+    });
+
+    const node = DataPersistenceStore.createDefaultUnifiedTopicNode("usr_curation_test");
+    const stream = DialogueAgent.chatStream(
+      [
+        {
+          id: "msg_user_curation",
+          role: "user",
+          content: "What is going on with autonomous systems?",
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      node,
+      undefined,
+      [] // 0 current stories in feed!
+    );
+
+    const events: any[] = [];
+    for await (const evt of stream) {
+      events.push(evt);
+    }
+
+    const feedFilterEvent = events.find((e) => e.type === "feed_filter");
+    expect(feedFilterEvent).toBeDefined();
+    expect(feedFilterEvent.data.is_active).toBe(true);
+    expect(feedFilterEvent.data.trigger_targeted_curation).toBe(true);
+
+    const metaEvent = events.find((e) => e.type === "meta");
+    expect(metaEvent).toBeDefined();
+    expect(metaEvent.data.active_feed_filter).toBeDefined();
+    expect(metaEvent.data.active_feed_filter.is_active).toBe(true);
+    expect(metaEvent.data.active_feed_filter.trigger_targeted_curation).toBe(true);
+  });
+
   it("DocWorker automatically synchronizes state graph and architecture docs", () => {
     const report = docWorker.syncDocs();
     expect(report.architecture_updated).toBe(true);
