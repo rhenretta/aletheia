@@ -218,7 +218,9 @@ export class PostgresStore {
         userUsage: Object.fromEntries(this.memoryUserUsage),
         lastUpdated: new Date().toISOString(),
       };
-      fs.writeFileSync(this.diskFilePath, JSON.stringify(payload, null, 2), "utf-8");
+      const tmpPath = `${this.diskFilePath}.${process.pid}.${Date.now()}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), "utf-8");
+      fs.renameSync(tmpPath, this.diskFilePath);
     } catch (err) {
       console.warn("PostgresStore: Could not write disk cache:", err);
     }
