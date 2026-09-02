@@ -164,8 +164,19 @@ export class StripeService {
     const client = this.getClient(forceTestMode);
     if (!client) return null;
 
-    if (user.stripe_customer_id && !user.stripe_customer_id.startsWith("mock_")) {
-      return user.stripe_customer_id;
+    if (
+      user.stripe_customer_id &&
+      !user.stripe_customer_id.startsWith("mock_") &&
+      !user.stripe_customer_id.startsWith("cus_test_admin_")
+    ) {
+      try {
+        const customer = await client.customers.retrieve(user.stripe_customer_id);
+        if (customer && !(customer as any).deleted) {
+          return customer.id;
+        }
+      } catch (err: any) {
+        console.warn(`StripeService: Customer ${user.stripe_customer_id} not found in Stripe: ${err?.message}`);
+      }
     }
 
     try {
@@ -263,7 +274,19 @@ export class StripeService {
       sessionParams.customer_email = user.email;
     }
 
-    const session = await client.checkout.sessions.create(sessionParams);
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await client.checkout.sessions.create(sessionParams);
+    } catch (err: any) {
+      if (err?.message?.includes("No such customer") || err?.code === "resource_missing") {
+        console.warn(`StripeService: Customer ${customerId} rejected by Stripe (${err?.message}), falling back to customer_email.`);
+        delete sessionParams.customer;
+        sessionParams.customer_email = user.email;
+        session = await client.checkout.sessions.create(sessionParams);
+      } else {
+        throw err;
+      }
+    }
 
     return {
       checkoutUrl: session.url || `${originUrl}?subscription=success`,
@@ -370,12 +393,13 @@ export class StripeService {
       throw new Error("Stripe billing portal is not configured. Please set STRIPE_SECRET_KEY in server environment.");
     }
 
-    if (!user.stripe_customer_id) {
+    const customerId = await this.getOrCreateCustomer(user);
+    if (!customerId) {
       throw new Error("No active Stripe subscription or customer record found for this account.");
     }
 
     const portal = await client.billingPortal.sessions.create({
-      customer: user.stripe_customer_id,
+      customer: customerId,
       return_url: returnUrl,
     });
 
