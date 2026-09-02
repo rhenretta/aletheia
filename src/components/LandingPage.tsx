@@ -41,7 +41,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
     },
     {
       q: "How does pricing work?",
-      a: "Aletheia offers a generous Free Basic tier with ~$0.50/month in AI epistemic compute allowance, zero ads, and zero data tracking. For power readers and deep research, our Subscriber membership is $15/month (with $10 off your first month—just $5 to start!), providing 6x higher compute capacity ($3.00/mo), priority live wire retrieval, and unconstrained companion dialogue.",
+      a: "Aletheia offers a generous Free Basic tier with standard AI epistemic companion allowance, zero ads, and zero data tracking. For power readers and deep research, our Subscriber membership is $15/month (with $10 off your first month—just $5 to start!), providing 6x higher companion capacity, priority live wire retrieval, and unconstrained dialogue.",
     },
     {
       q: "How does the AI reading partner work?",
@@ -534,7 +534,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <ul className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-white/5">
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                    <span>~$0.50/month AI compute allowance</span>
+                    <span>Standard AI companion capacity</span>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-slate-400 flex-shrink-0" />
@@ -594,7 +594,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <ul className="space-y-2.5 text-xs text-slate-200 pt-4 border-t border-cyan-500/20">
                   <li className="flex items-center gap-2.5 font-medium text-cyan-200">
                     <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                    <span>~$3.00/month compute allowance (6x capacity)</span>
+                    <span>6x companion dialogue & research capacity</span>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />

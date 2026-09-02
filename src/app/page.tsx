@@ -767,7 +767,7 @@ export default function AletheiaHome() {
               msg.id === botMessageId
                 ? {
                     ...msg,
-                    content: `⚠️ **Monthly Compute Quota Reached ($${(errData.limitStatus?.currentCost || 0.5).toFixed(2)} / $${(errData.limitStatus?.limit || 0.5).toFixed(2)})**\n\nYou've utilized your allocated free monthly epistemic compute allowance. Upgrade to our **Subscriber Tier** ($15/mo, with **$10 off your first month — just $5!**) for 6x compute quota ($3.00/mo) and uninterrupted deep analysis.`,
+                    content: `⚠️ **Monthly Companion Capacity Reached (${errData.limitStatus?.percentUsed || 100}% used)**\n\nYou've utilized your allocated free companion capacity for this billing cycle. Upgrade to our **Subscriber Tier** ($15/mo, with **$10 off your first month — just $5!**) for 6x compute allowance and uninterrupted deep analysis.`,
                     sources: [],
                   }
                 : msg
@@ -1182,7 +1182,7 @@ export default function AletheiaHome() {
           <div className="flex items-center gap-2.5">
             <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
             <span>
-              Approaching monthly free compute quota (<strong>${(userLimitStatus.currentCost ?? 0).toFixed(2)}</strong> / ${(userLimitStatus.limit ?? 0.5).toFixed(2)}). Upgrade to Subscriber for 6x compute allowance ($3.00/mo).
+              Approaching monthly free companion capacity (<strong>${userLimitStatus.percentUsed || 85}% used</strong>). Upgrade to Subscriber for 6x compute allowance and uninterrupted deep analysis.
             </span>
           </div>
           <div className="flex items-center gap-2">

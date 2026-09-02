@@ -213,12 +213,10 @@ export default function UserMenu({
               {limitStatus && (
                 <div className="space-y-1.5 pt-1">
                   <div className="flex items-center justify-between text-[10px] font-mono">
-                    <span className="text-slate-400">Monthly Compute</span>
+                    <span className="text-slate-400">Monthly Allowance</span>
                     <span className="text-slate-200 font-bold">
-                      ${(limitStatus.currentCost ?? 0).toFixed(2)} / ${(limitStatus.limit ?? 0.5).toFixed(2)}
-                      <span className="text-slate-400 font-normal ml-1">
-                        ({limitStatus.percentUsed}%)
-                      </span>
+                      {limitStatus.percentUsed}%
+                      <span className="text-slate-400 font-normal ml-1">used</span>
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-white/5">

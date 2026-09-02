@@ -276,7 +276,7 @@ export default function SubscriptionModal({
             <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center gap-3">
               <Flame className="w-5 h-5 text-amber-400 flex-shrink-0" />
               <div>
-                <strong>Free Monthly Limit Reached:</strong> You have consumed ${(limitStatus.currentCost ?? 0).toFixed(2)} of your $0.50 free epistemic compute quota. Upgrade to unlock $3.00/mo allowance (6x capacity) and uninterrupted deep analysis.
+                <strong>Monthly Free Limit Reached:</strong> You have reached your monthly companion dialogue allowance. Upgrade to unlock 6x capacity and uninterrupted deep analysis.
               </div>
             </div>
           )}
@@ -336,7 +336,7 @@ export default function SubscriptionModal({
                   <ul className="space-y-2 text-xs text-slate-300 pt-2 border-t border-white/5">
                     <li className="flex items-center gap-2">
                       <Check className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                      <span>~$0.50/mo epistemic compute allowance</span>
+                      <span>Standard epistemic companion capacity</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
@@ -401,7 +401,7 @@ export default function SubscriptionModal({
                   <ul className="space-y-2 text-xs text-slate-200 pt-2 border-t border-cyan-500/20">
                     <li className="flex items-center gap-2 font-medium text-cyan-200">
                       <Check className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-                      <span>~$3.00/mo compute allowance (6x capacity)</span>
+                      <span>6x companion dialogue & research capacity</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
