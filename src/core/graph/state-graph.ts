@@ -146,11 +146,13 @@ export async function executeAletheiaPipeline(initialState: {
     }
   }
 
-  // Trigger Living Documentation auto-sync loop on pipeline completion
-  try {
-    docWorker.syncDocs();
-  } catch (err) {
-    console.warn("DocWorker sync failed during pipeline execution:", err);
+  // Trigger Living Documentation auto-sync loop on pipeline completion if explicitly enabled
+  if (process.env.SYNC_DOCS === "true") {
+    try {
+      docWorker.syncDocs({ force: true });
+    } catch (err) {
+      console.warn("DocWorker sync failed during pipeline execution:", err);
+    }
   }
 
   return finalContext;

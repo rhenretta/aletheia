@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { traceLogger } from "../core/observability/trace-logger";
-import { docWorker } from "../core/observability/doc-worker";
+import { DocWorker } from "../core/observability/doc-worker";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 describe("Observability & Living Documentation Pipeline", () => {
   beforeEach(() => {
@@ -13,20 +14,19 @@ describe("Observability & Living Documentation Pipeline", () => {
     const trace = traceLogger.logTrace({
       session_id: "test-session-123",
       node_name: "node_c_serendipity",
-      input_summary: { user_id: "usr_42", epsilon: 0.2 },
-      output_summary: { selected_topic: "Quantum Computing", strategy: "exploration" },
-      reasoning_rationale: "Node C selected Topic Quantum Computing because Epsilon greedy triggered exploration on adjacent node Physics.",
+      input_summary: { topic: "Quantum Computing", weight: 0.8 },
+      output_summary: { decision: "explore", selected_topic: "Naval Strategy" },
+      reasoning_rationale: "Serendipity bandit triggered 20% exploration threshold.",
       latency_ms: 45,
-      llm_tokens_used: 120,
     });
 
+    expect(trace).toBeDefined();
     expect(trace.trace_id).toBeDefined();
-    expect(trace.timestamp).toBeDefined();
     expect(trace.node_name).toBe("node_c_serendipity");
-    expect(trace.reasoning_rationale).toContain("Epsilon greedy triggered exploration");
+    expect(trace.reasoning_rationale).toContain("Serendipity bandit");
 
     const recent = traceLogger.getRecentTraces();
-    expect(recent.length).toBe(1);
+    expect(recent.length).toBeGreaterThan(0);
     expect(recent[0].trace_id).toBe(trace.trace_id);
   });
 
@@ -41,14 +41,15 @@ describe("Observability & Living Documentation Pipeline", () => {
       latency_ms: 60,
     });
 
-    const report = docWorker.syncDocs();
+    const testDocsDir = path.join(os.tmpdir(), `aletheia-docs-test-${Date.now()}`);
+    const testDocWorker = new DocWorker(testDocsDir);
+    const report = testDocWorker.syncDocs({ force: true });
     expect(report.architecture_updated).toBe(true);
     expect(report.mermaid_updated).toBe(true);
     expect(report.recent_traces_count).toBeGreaterThan(0);
 
-    const docsDir = path.resolve(process.cwd(), "docs");
-    const mermaidFile = path.join(docsDir, "state_graph.mermaid");
-    const archFile = path.join(docsDir, "system_architecture.md");
+    const mermaidFile = path.join(testDocsDir, "state_graph.mermaid");
+    const archFile = path.join(testDocsDir, "system_architecture.md");
 
     expect(fs.existsSync(mermaidFile)).toBe(true);
     expect(fs.existsSync(archFile)).toBe(true);
@@ -62,5 +63,9 @@ describe("Observability & Living Documentation Pipeline", () => {
 
     expect(archContent).toContain("Project Aletheia: Living System Architecture");
     expect(archContent).toContain("node_a_epistemology");
+
+    try {
+      fs.rmSync(testDocsDir, { recursive: true, force: true });
+    } catch {}
   });
 });

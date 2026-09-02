@@ -15,8 +15,8 @@ export class DocWorker {
   private archDocPath: string;
   private mermaidDocPath: string;
 
-  constructor() {
-    this.docsDir = path.resolve(process.cwd(), "docs");
+  constructor(customDocsDir?: string) {
+    this.docsDir = customDocsDir || path.resolve(process.cwd(), "docs");
     this.archDocPath = path.join(this.docsDir, "system_architecture.md");
     this.mermaidDocPath = path.join(this.docsDir, "state_graph.mermaid");
     this.ensureDocsDir();
@@ -238,13 +238,17 @@ ${traceSummary}
   /**
    * Sync documentation files
    */
-  public syncDocs(): DocWorkerReport {
+  public syncDocs(options?: { force?: boolean }): DocWorkerReport {
     this.ensureDocsDir();
     const mermaidContent = this.generateMermaidGraph();
     const archContent = this.generateArchitectureDoc();
 
-    fs.writeFileSync(this.mermaidDocPath, mermaidContent, "utf-8");
-    fs.writeFileSync(this.archDocPath, archContent, "utf-8");
+    const shouldWrite = Boolean(options?.force || process.env.SYNC_DOCS === "true");
+
+    if (shouldWrite) {
+      fs.writeFileSync(this.mermaidDocPath, mermaidContent, "utf-8");
+      fs.writeFileSync(this.archDocPath, archContent, "utf-8");
+    }
 
     const traces = traceLogger.getRecentTraces();
 
