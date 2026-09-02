@@ -54,6 +54,7 @@ import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import UserManagerModal from "@/components/UserManagerModal";
 import ReadOnlyBanner from "@/components/ReadOnlyBanner";
 import UserMenu from "@/components/UserMenu";
+import LandingPage from "@/components/LandingPage";
 import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -77,6 +78,7 @@ export default function AletheiaHome() {
   const { data: session, status: authStatus } = useSession();
   const [viewingAsUser, setViewingAsUser] = useState<AppUser | null>(null);
   const [isUserManagerOpen, setIsUserManagerOpen] = useState(false);
+  const [guestExplore, setGuestExplore] = useState(false);
 
   const actualUserId = session?.user?.email
     ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
@@ -982,8 +984,56 @@ export default function AletheiaHome() {
     return buildTopicBriefs(feedCards, unifiedTopicNode, rankingSeenSnapshot);
   }, [feedCards, unifiedTopicNode, rankingSeenSnapshot]);
 
+  if (authStatus === "loading") {
+    return (
+      <div className="min-h-screen bg-[#080c14] flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-400 via-teal-400 to-indigo-500 flex items-center justify-center font-bold text-slate-950 text-xl shadow-lg shadow-cyan-500/20 animate-pulse">
+          α
+        </div>
+        <div className="text-xs font-mono text-slate-400 tracking-wider">
+          Loading Aletheia...
+        </div>
+      </div>
+    );
+  }
+
+  if (!session?.user && !guestExplore) {
+    return (
+      <LandingPage
+        onSignIn={() => signIn("google", { callbackUrl: "/" })}
+        onExploreGuest={() => setGuestExplore(true)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      {/* Live Preview Mode Banner when browsing as guest */}
+      {!session?.user && guestExplore && (
+        <div className="bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-indigo-950/90 border-b border-cyan-500/30 px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-3 sticky top-0 z-40 backdrop-blur-md">
+          <div className="flex items-center gap-2 text-slate-200">
+            <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>
+              <strong className="text-cyan-300">Live Preview Mode:</strong> You are browsing as a guest. Sign in with Google to save your personalized topics and companion chat history.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGuestExplore(false)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 text-xs transition"
+            >
+              Back to Overview
+            </button>
+            <button
+              onClick={() => signIn("google", { callbackUrl: "/" })}
+              className="px-3 py-1 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
+            >
+              <span>Sign In with Google</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sticky Read-Only Impersonation Banner */}
       {viewingAsUser && (
         <ReadOnlyBanner
@@ -1025,14 +1075,11 @@ export default function AletheiaHome() {
             <span>{isCollectingNews ? "Fetching News..." : "Refresh News"}</span>
           </button>
 
-          {authStatus === "loading" ? (
-            <div className="w-24 h-8 rounded-xl bg-slate-900 animate-pulse border border-white/5" />
-          ) : (
-            <UserMenu
-              session={session}
-              isAdmin={isAdmin}
-              onOpenDevTools={() => setIsDevToolsOpen(!isDevToolsOpen)}
-              isDevToolsOpen={isDevToolsOpen}
+          <UserMenu
+            session={session}
+            isAdmin={isAdmin}
+            onOpenDevTools={() => setIsDevToolsOpen(!isDevToolsOpen)}
+            isDevToolsOpen={isDevToolsOpen}
               selectedContext={selectedContext}
               onClearFeed={handleClearFeedContent}
               onResetProfile={handleResetProfileAndSession}
@@ -1058,7 +1105,6 @@ export default function AletheiaHome() {
               onSignIn={() => signIn("google", { callbackUrl: "/" })}
               isCollectingNews={isCollectingNews}
             />
-          )}
         </div>
 
         {/* Mobile Header Quick Actions */}
