@@ -2,8 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.NEXTAUTH_URL && !process.env.NEXTAUTH_URL.includes("localhost")
+    ? process.env.NEXTAUTH_URL
+    : "https://news.ciclops.io");
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
+  metadataBase: new URL(siteUrl),
   title: "Aletheia | News Without Noise",
   description: "News without the noise. Clear facts without the drama. An AI reading partner that filters out clickbait and sensationalism so you get the real story.",
   icons: {
@@ -19,13 +25,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Aletheia | News Without Noise",
     description: "News without the noise. Clear facts without the drama. An AI reading partner that filters out clickbait and sensationalism so you get the real story.",
-    url: "/",
+    url: siteUrl,
     siteName: "Aletheia",
     images: [
       {
-        url: "/og-image.jpg",
+        url: `${siteUrl}/og-image.jpg`,
+        secureUrl: `${siteUrl}/og-image.jpg`,
         width: 1280,
         height: 720,
+        type: "image/jpeg",
         alt: "Aletheia — News without the noise. Clear facts without the drama.",
       },
     ],
@@ -36,7 +44,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Aletheia | News Without Noise",
     description: "News without the noise. Clear facts without the drama. An AI reading partner that filters out clickbait and sensationalism.",
-    images: ["/og-image.jpg"],
+    images: [`${siteUrl}/og-image.jpg`],
   },
 };
 
