@@ -23,6 +23,48 @@ async function runMigration() {
     const schemaPath = path.resolve(process.cwd(), "src", "core", "storage", "schema.sql");
     const sql = fs.readFileSync(schemaPath, "utf8");
 
+    console.log("📦 Applying schema alterations for app_users and user_usage_metrics...");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_users (
+        id VARCHAR(128) PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        name VARCHAR(255),
+        image TEXT,
+        role VARCHAR(32) NOT NULL DEFAULT 'user',
+        status VARCHAR(32) NOT NULL DEFAULT 'active',
+        tier VARCHAR(32) NOT NULL DEFAULT 'free',
+        stripe_customer_id VARCHAR(128),
+        stripe_subscription_id VARCHAR(128),
+        subscription_status VARCHAR(32) NOT NULL DEFAULT 'none',
+        subscription_period_end TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE app_users ADD COLUMN IF NOT EXISTS tier VARCHAR(32) NOT NULL DEFAULT 'free';
+      ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(128);
+      ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(128);
+      ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(32) NOT NULL DEFAULT 'none';
+      ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_period_end TIMESTAMPTZ;
+
+      CREATE TABLE IF NOT EXISTS user_usage_metrics (
+        user_id VARCHAR(128) PRIMARY KEY,
+        total_chat_messages INTEGER NOT NULL DEFAULT 0,
+        total_pipeline_runs INTEGER NOT NULL DEFAULT 0,
+        total_tokens_used BIGINT NOT NULL DEFAULT 0,
+        total_dwell_time_ms BIGINT NOT NULL DEFAULT 0,
+        current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        period_tokens_used BIGINT NOT NULL DEFAULT 0,
+        period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000,
+        lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000,
+        last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        recent_events JSONB NOT NULL DEFAULT '[]'::jsonb
+      );
+      ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_tokens_used BIGINT NOT NULL DEFAULT 0;
+      ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
+      ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
+    `);
+
     console.log("📦 Applying schema.sql DDL...");
     await client.query(sql);
     await client.query("ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS recent_topic_diffs JSONB DEFAULT '[]'::jsonb;");

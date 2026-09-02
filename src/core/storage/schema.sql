@@ -126,16 +126,17 @@ CREATE TABLE IF NOT EXISTS app_users (
     last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
-CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role);
-CREATE INDEX IF NOT EXISTS idx_app_users_tier ON app_users(tier);
-
 -- Safe Alterations for backwards-compatible upgrades to app_users
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS tier VARCHAR(32) NOT NULL DEFAULT 'free';
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(128);
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(128);
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(32) NOT NULL DEFAULT 'none';
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_period_end TIMESTAMPTZ;
+
+-- Indexes on app_users (applied after columns are ensured to exist)
+CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
+CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role);
+CREATE INDEX IF NOT EXISTS idx_app_users_tier ON app_users(tier);
 
 -- 9. User Usage Metrics Table
 CREATE TABLE IF NOT EXISTS user_usage_metrics (
