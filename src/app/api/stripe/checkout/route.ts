@@ -15,14 +15,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { userId, testMode, skipDiscount } = body as { userId?: string; testMode?: boolean; skipDiscount?: boolean };
 
-    const effectiveUserId =
-      session?.user?.email
-        ? `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`
-        : userId && userId.startsWith("usr_") && userId !== "usr_guest"
-        ? userId
-        : null;
-
-    if (!effectiveUserId) {
+    // Must have an authenticated session to subscribe
+    if (!session?.user?.email) {
       return NextResponse.json(
         {
           success: false,
@@ -32,16 +26,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await postgresStore.getUser(effectiveUserId);
-    if (!user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "User record not found. Please sign in again.",
-        },
-        { status: 404 }
-      );
-    }
+    const effectiveUserId = `usr_${session.user.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+    // Get or create the user record — never hard-fail if the row isn't in the DB yet
+    const user = await postgresStore.getOrCreateUser({
+      id: effectiveUserId,
+      email: session.user.email,
+      name: session.user.name || session.user.email.split("@")[0],
+      image: session.user.image || undefined,
+    });
 
     const origin = req.headers.get("origin") || process.env.NEXTAUTH_URL || "http://localhost:3000";
     const result = await stripeService.createCheckoutSession({
@@ -63,3 +56,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+

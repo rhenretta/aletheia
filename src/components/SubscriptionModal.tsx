@@ -315,140 +315,21 @@ export default function SubscriptionModal({
             </div>
           )}
 
-          {/* Interactive Test Card Terminal (Visible in Test Mode) */}
-          {isTestMode ? (
-            <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-amber-500/50 space-y-4 shadow-xl shadow-amber-950/30">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-mono font-bold text-amber-300 uppercase">
-                    Stripe Test Card Terminal
-                  </span>
-                </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Amount: $5.00
-                </span>
-              </div>
-
-              {/* Preset Test Cards */}
-              <div className="space-y-1.5">
-                <span className="text-[10px] font-mono text-slate-400">QUICK-FILL TEST CARDS:</span>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => {
-                      setTestCardNumber("4242 4242 4242 4242");
-                      setTestExpDate("12/28");
-                      setTestCvc("123");
-                      setError(null);
-                    }}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 transition"
-                  >
-                    <Check className="w-3 h-3 text-cyan-400" />
-                    <span>4242 (Success)</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setTestCardNumber("4000 0000 0000 0002");
-                      setTestExpDate("12/28");
-                      setTestCvc("123");
-                      setError(null);
-                    }}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition"
-                  >
-                    <AlertTriangle className="w-3 h-3 text-rose-400" />
-                    <span>0002 (Decline)</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setTestCardNumber("4000 0000 0000 0115");
-                      setTestExpDate("01/20");
-                      setTestCvc("123");
-                      setError(null);
-                    }}
-                    className="px-2.5 py-1 rounded-lg text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 flex items-center gap-1 transition"
-                  >
-                    <Clock className="w-3 h-3 text-amber-400" />
-                    <span>0115 (Expired)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Card Inputs */}
-              <div className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-[10px] font-mono text-slate-400 mb-1">
-                    TEST CARD NUMBER
-                  </label>
-                  <input
-                    type="text"
-                    value={testCardNumber}
-                    onChange={(e) => setTestCardNumber(e.target.value)}
-                    placeholder="4242 4242 4242 4242"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-sm focus:outline-none focus:border-amber-400 transition"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-mono text-slate-400 mb-1">
-                      EXPIRATION (MM/YY)
-                    </label>
-                    <input
-                      type="text"
-                      value={testExpDate}
-                      onChange={(e) => setTestExpDate(e.target.value)}
-                      placeholder="12/28"
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-sm focus:outline-none focus:border-amber-400 transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-mono text-slate-400 mb-1">
-                      CVC CODE
-                    </label>
-                    <input
-                      type="text"
-                      value={testCvc}
-                      onChange={(e) => setTestCvc(e.target.value)}
-                      placeholder="123"
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-white/15 text-white font-mono text-sm focus:outline-none focus:border-amber-400 transition"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Submit Action */}
-              <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
-                <button
-                  onClick={handleTestPayment}
-                  disabled={testProcessing}
-                  className="w-full sm:flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-mono font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 transition disabled:opacity-50"
-                >
-                  {testProcessing ? (
-                    <span>Processing Test Charge...</span>
-                  ) : (
-                    <>
-                      <CreditCard className="w-4 h-4" />
-                      <span>Submit Test Payment ($5.00)</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => handleCheckout(true)}
-                  disabled={loading}
-                  className="w-full sm:w-auto px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono border border-white/10 flex items-center justify-center gap-2 transition"
-                  title="Open Stripe's hosted checkout page in test mode"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Stripe Hosted Test Page</span>
-                </button>
+          {/* Test Mode Hint — shown above the normal tier cards when admin test mode is on */}
+          {isTestMode && (
+            <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs font-mono flex items-start gap-3 animate-in fade-in">
+              <FlaskConical className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-bold text-amber-300">Test Mode:</span>{" "}
+                Clicking Subscribe Now will open Stripe's hosted checkout using test API keys. Use card{" "}
+                <code className="px-1.5 py-0.5 rounded bg-amber-900/60 border border-amber-500/20 text-amber-100 text-[11px]">4242 4242 4242 4242</code>{" "}
+                with any future date and CVC.
               </div>
             </div>
-          ) : (
-            /* Side-by-Side Tier Comparison (Standard Flow) */
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          )}
+
+          {/* Side-by-Side Tier Comparison */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Basic / Free Tier */}
               <div className="p-5 rounded-2xl bg-slate-900/60 border border-white/10 space-y-4 flex flex-col justify-between">
                 <div className="space-y-3">
@@ -596,7 +477,7 @@ export default function SubscriptionModal({
                 </div>
               </div>
             </div>
-          )}
+
 
           {error && (
             <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs text-center font-mono">
