@@ -729,6 +729,8 @@ export interface NewsStateContext {
  */
 export type UserRole = "user" | "admin";
 export type UserAccountStatus = "active" | "suspended";
+export type UserTier = "free" | "subscriber";
+export type SubscriptionStatus = "none" | "active" | "past_due" | "canceled";
 
 export interface AppUser {
   id: string;
@@ -737,6 +739,11 @@ export interface AppUser {
   image?: string;
   role: UserRole;
   status: UserAccountStatus;
+  tier?: UserTier;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  subscription_status?: SubscriptionStatus;
+  subscription_period_end?: string;
   created_at: string;
   last_active_at: string;
 }
@@ -754,7 +761,22 @@ export interface UserUsageMetrics {
   total_pipeline_runs: number;
   total_tokens_used: number;
   total_dwell_time_ms: number;
+  current_period_start: string;
+  period_tokens_used: number;
+  period_cost_usd: number;
+  lifetime_cost_usd: number;
   last_active_at: string;
   recent_events: UsageEvent[];
 }
+
+export interface UsageLimitStatus {
+  allowed: boolean;
+  tier: UserTier;
+  currentCost: number;
+  limit: number;
+  percentUsed: number;
+  isNearLimit: boolean;
+  reason?: string;
+}
+
 

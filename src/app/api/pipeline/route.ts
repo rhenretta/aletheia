@@ -18,6 +18,21 @@ export async function POST(req: NextRequest) {
     const effectiveUserId = userId || "usr_default";
     let articlesToProcess: RawArticle[] = articles || [];
 
+    if (effectiveUserId && effectiveUserId !== "usr_guest" && effectiveUserId !== "usr_default") {
+      const limitStatus = await postgresStore.checkUsageLimit(effectiveUserId);
+      if (!limitStatus.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "MONTHLY_QUOTA_EXCEEDED",
+            message: limitStatus.reason || "Monthly compute quota reached for pipeline execution. Upgrade to continue.",
+            limitStatus,
+          },
+          { status: 402 }
+        );
+      }
+    }
+
     const unifiedNode: UnifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
     const storedGraph = await postgresStore.getUserGraph(effectiveUserId);
 

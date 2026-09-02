@@ -18,8 +18,10 @@ import {
   Activity,
   AlertCircle,
   ExternalLink,
+  DollarSign,
+  CreditCard,
 } from "lucide-react";
-import { AppUser, UserRole, UserUsageMetrics } from "@/core/types/contracts";
+import { AppUser, UserRole, UserTier, UserUsageMetrics } from "@/core/types/contracts";
 
 interface EnrichedUser extends AppUser {
   usage?: UserUsageMetrics;
@@ -42,7 +44,7 @@ export default function UserManagerModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user" | "subscriber">("all");
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [selectedUserForEvents, setSelectedUserForEvents] = useState<EnrichedUser | null>(null);
 
@@ -93,6 +95,29 @@ export default function UserManagerModal({
     }
   };
 
+  const handleTierChange = async (userId: string, newTier: UserTier) => {
+    setUpdatingUserId(userId);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, tier: newTier }),
+      });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, tier: newTier } : u))
+        );
+      } else {
+        alert(data.error || "Failed to update user tier");
+      }
+    } catch (err) {
+      alert("Failed to update user tier due to a network error");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   const filteredUsers = users.filter((u) => {
@@ -100,12 +125,16 @@ export default function UserManagerModal({
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === "all" || u.role === roleFilter;
+    const matchesRole =
+      roleFilter === "all" ||
+      u.role === roleFilter ||
+      (roleFilter === "subscriber" && u.tier === "subscriber");
     return matchesSearch && matchesRole;
   });
 
   const adminCount = users.filter((u) => u.role === "admin").length;
   const standardCount = users.filter((u) => u.role === "user").length;
+  const subscriberCount = users.filter((u) => u.tier === "subscriber").length;
 
   const formatDwellTime = (ms: number = 0) => {
     const seconds = Math.floor(ms / 1000);
@@ -225,6 +254,17 @@ export default function UserManagerModal({
               <Users className="w-3 h-3 text-slate-400" />
               Users ({standardCount})
             </button>
+            <button
+              onClick={() => setRoleFilter("subscriber")}
+              className={`px-3 py-1 rounded-lg transition font-mono flex items-center gap-1.5 ${
+                roleFilter === "subscriber"
+                  ? "bg-amber-500/20 text-yellow-300 font-semibold border border-yellow-500/40"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sparkles className="w-3 h-3 text-yellow-400" />
+              Subscribers ({subscriberCount})
+            </button>
           </div>
         </div>
 
@@ -278,6 +318,16 @@ export default function UserManagerModal({
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-white text-sm">{user.name}</span>
+                          {user.tier === "subscriber" ? (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-yellow-300 border border-yellow-500/40 flex items-center gap-1 font-semibold">
+                              <Sparkles className="w-2.5 h-2.5 text-yellow-400" />
+                              Subscriber
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-white/10 font-medium">
+                              Free
+                            </span>
+                          )}
                           {isCurrent && (
                             <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">
                               YOU
@@ -294,7 +344,7 @@ export default function UserManagerModal({
                     </div>
 
                     {/* Usage Metrics Column */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950/60 border border-white/5 p-2.5 rounded-xl text-xs font-mono">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-950/60 border border-white/5 p-2.5 rounded-xl text-xs font-mono">
                       <div className="space-y-0.5" title="Total conversational turns">
                         <div className="flex items-center gap-1 text-slate-400 text-[10px]">
                           <MessageSquare className="w-3 h-3 text-cyan-400" />
@@ -325,6 +375,19 @@ export default function UserManagerModal({
                         </div>
                       </div>
 
+                      <div className="space-y-0.5" title="Estimated compute cost in current monthly cycle">
+                        <div className="flex items-center gap-1 text-slate-400 text-[10px]">
+                          <DollarSign className="w-3 h-3 text-cyan-400" />
+                          <span>Month $</span>
+                        </div>
+                        <div className="font-bold text-white">
+                          ${(user.usage?.period_cost_usd || 0).toFixed(2)}
+                          <span className="text-[10px] text-slate-400 font-normal ml-0.5">
+                            /{user.tier === "subscriber" ? "3.00" : "0.50"}
+                          </span>
+                        </div>
+                      </div>
+
                       <div className="space-y-0.5" title="Passive reading dwell time">
                         <div className="flex items-center gap-1 text-slate-400 text-[10px]">
                           <Clock className="w-3 h-3 text-amber-400" />
@@ -336,8 +399,34 @@ export default function UserManagerModal({
                       </div>
                     </div>
 
-                    {/* Role Controller & Actions */}
+                    {/* Role & Tier Controllers & Actions */}
                     <div className="flex items-center gap-2.5 justify-end">
+                      {/* Tier Selector Toggle */}
+                      <div className="flex items-center rounded-xl bg-slate-950 border border-white/10 p-1" title="User subscription tier">
+                        <button
+                          onClick={() => handleTierChange(user.id, "free")}
+                          disabled={isUpdating}
+                          className={`px-2 py-1 rounded-lg text-xs font-mono transition ${
+                            user.tier !== "subscriber"
+                              ? "bg-slate-800 text-slate-200 font-semibold shadow-sm"
+                              : "text-slate-500 hover:text-slate-300"
+                          }`}
+                        >
+                          Free
+                        </button>
+                        <button
+                          onClick={() => handleTierChange(user.id, "subscriber")}
+                          disabled={isUpdating}
+                          className={`px-2 py-1 rounded-lg text-xs font-mono transition flex items-center gap-1 ${
+                            user.tier === "subscriber"
+                              ? "bg-amber-500/20 text-yellow-300 border border-yellow-500/40 font-semibold shadow-sm"
+                              : "text-slate-500 hover:text-slate-300"
+                          }`}
+                        >
+                          <Sparkles className="w-3 h-3 text-yellow-400" />
+                          <span>Sub</span>
+                        </button>
+                      </div>
                       {/* Role Selector Toggle */}
                       <div className="flex items-center rounded-xl bg-slate-950 border border-white/10 p-1">
                         <button

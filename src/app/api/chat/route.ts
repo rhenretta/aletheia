@@ -54,6 +54,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const limitStatus = await postgresStore.checkUsageLimit(effectiveUserId);
+    if (!limitStatus.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "MONTHLY_QUOTA_EXCEEDED",
+          message: limitStatus.reason || "Monthly compute quota reached. Please upgrade to continue.",
+          limitStatus,
+        },
+        { status: 402 }
+      );
+    }
+
     let unifiedNode: UnifiedTopicNode = await postgresStore.getUnifiedTopicNode(effectiveUserId);
 
     const stream = new ReadableStream({

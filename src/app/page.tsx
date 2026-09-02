@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Send,
   Sparkles,
@@ -47,12 +47,15 @@ import {
   ContextualSelection,
   EventSourceArticle,
   AppUser,
+  UserTier,
+  UsageLimitStatus,
 } from "@/core/types/contracts";
 import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import DevToolsPanel from "@/components/DevToolsPanel";
 import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import UserManagerModal from "@/components/UserManagerModal";
+import SubscriptionModal from "@/components/SubscriptionModal";
 import ReadOnlyBanner from "@/components/ReadOnlyBanner";
 import UserMenu from "@/components/UserMenu";
 import LandingPage from "@/components/LandingPage";
@@ -102,6 +105,67 @@ export default function AletheiaHome() {
     process.env.NODE_ENV !== "production";
 
   const isEffectiveAdmin = isAdmin && !viewingAsUser;
+
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [userLimitStatus, setUserLimitStatus] = useState<UsageLimitStatus | null>(null);
+  const [currentUserTier, setCurrentUserTier] = useState<UserTier>("free");
+  const [currentUserData, setCurrentUserData] = useState<AppUser | null>(null);
+  const [showQuotaWarning, setShowQuotaWarning] = useState(false);
+  const [subscriptionToast, setSubscriptionToast] = useState<string | null>(null);
+
+  const fetchUserUsage = useCallback(async () => {
+    if (effectiveUserId === "usr_guest") return;
+    try {
+      const res = await fetch(`/api/user/usage?userId=${effectiveUserId}`);
+      const data = await res.json();
+      if (data.success) {
+        setUserLimitStatus(data.limitStatus || null);
+        setCurrentUserTier(data.tier || "free");
+        if (data.user) setCurrentUserData(data.user);
+        if (data.limitStatus?.isNearLimit && data.limitStatus?.allowed) {
+          setShowQuotaWarning(true);
+        } else {
+          setShowQuotaWarning(false);
+        }
+      }
+    } catch {}
+  }, [effectiveUserId]);
+
+  useEffect(() => {
+    fetchUserUsage();
+  }, [fetchUserUsage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const subParam = url.searchParams.get("subscription");
+    const sessionId = url.searchParams.get("session_id");
+
+    if (subParam === "success" && sessionId) {
+      fetch("/api/stripe/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, userId: effectiveUserId }),
+      })
+        .then((res) => res.json())
+        .then((d) => {
+          if (d.success) {
+            setSubscriptionToast("Subscription activated! Welcome to Aletheia Subscriber tier.");
+            fetchUserUsage();
+          }
+        })
+        .catch(() => {});
+
+      url.searchParams.delete("subscription");
+      url.searchParams.delete("session_id");
+      url.searchParams.delete("mock");
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    } else if (subParam === "canceled") {
+      setSubscriptionToast("Subscription checkout canceled.");
+      url.searchParams.delete("subscription");
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    }
+  }, [effectiveUserId, fetchUserUsage]);
 
   const handleViewAsUser = (targetUser: AppUser) => {
     // Clean slate immediately so existing in-memory state never bleeds into viewed user
@@ -683,6 +747,24 @@ export default function AletheiaHome() {
       });
 
       if (!res.ok) {
+        if (res.status === 402) {
+          const errData = await res.json().catch(() => ({}));
+          if (errData.limitStatus) setUserLimitStatus(errData.limitStatus);
+          setIsSubscriptionModalOpen(true);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === botMessageId
+                ? {
+                    ...msg,
+                    content: `⚠️ **Monthly Compute Quota Reached ($${(errData.limitStatus?.currentCost || 0.5).toFixed(2)} / $${(errData.limitStatus?.limit || 0.5).toFixed(2)})**\n\nYou've utilized your allocated free monthly epistemic compute allowance. Upgrade to our **Subscriber Tier** ($15/mo, with **$10 off your first month — just $5!**) for 6x compute quota ($3.00/mo) and uninterrupted deep analysis.`,
+                    sources: [],
+                  }
+                : msg
+            )
+          );
+          setIsSendingChat(false);
+          return;
+        }
         throw new Error(`Server responded with status ${res.status}`);
       }
 
@@ -821,6 +903,7 @@ export default function AletheiaHome() {
       setChatError(errMsg);
     } finally {
       setIsSendingChat(false);
+      fetchUserUsage();
     }
   };
 
@@ -1066,6 +1149,48 @@ export default function AletheiaHome() {
         />
       )}
 
+      {/* Subscription Toast Alert */}
+      {subscriptionToast && (
+        <div className="mx-4 sm:mx-8 my-2 p-3 bg-gradient-to-r from-cyan-950/90 to-indigo-950/90 border border-cyan-500/40 text-cyan-200 text-xs font-mono rounded-2xl shadow-lg flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+            <span>{subscriptionToast}</span>
+          </div>
+          <button
+            onClick={() => setSubscriptionToast(null)}
+            className="p-1 hover:text-white text-slate-400 transition"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Approaching Quota Gentle Warning Banner */}
+      {showQuotaWarning && userLimitStatus && (
+        <div className="mx-4 sm:mx-8 my-2 p-3 rounded-2xl bg-amber-950/50 border border-amber-500/40 text-amber-200 text-xs font-mono flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span>
+              Approaching monthly free compute quota (<strong>${userLimitStatus.currentCost.toFixed(2)}</strong> / ${userLimitStatus.limit.toFixed(2)}). Upgrade to Subscriber for 6x compute allowance ($3.00/mo).
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSubscriptionModalOpen(true)}
+              className="px-3 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-bold transition text-xs shadow-sm"
+            >
+              Upgrade — $5 First Month
+            </button>
+            <button
+              onClick={() => setShowQuotaWarning(false)}
+              className="text-amber-400 hover:text-amber-200 p-1"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 pb-24 lg:pb-8">
       {/* Platform Header Bar */}
       <header className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 sm:pb-4">
@@ -1103,6 +1228,9 @@ export default function AletheiaHome() {
             isAdmin={isEffectiveAdmin}
             viewingUser={viewingAsUser}
             onExitViewMode={handleExitViewMode}
+            tier={currentUserTier}
+            limitStatus={userLimitStatus}
+            onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
             onOpenDevTools={() => setIsDevToolsOpen(!isDevToolsOpen)}
             isDevToolsOpen={isDevToolsOpen}
             selectedContext={selectedContext}
@@ -3097,6 +3225,7 @@ export default function AletheiaHome() {
           selectedContext={selectedContext}
           onSelectContext={setSelectedContext}
           isCollectingNews={isCollectingNews}
+          onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
         />
       )}
 
@@ -3106,6 +3235,16 @@ export default function AletheiaHome() {
         onClose={() => setIsUserManagerOpen(false)}
         onViewAsUser={handleViewAsUser}
         currentUserId={actualUserId}
+      />
+
+      {/* Stripe Subscription & Upgrade Modal */}
+      <SubscriptionModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
+        user={currentUserData}
+        limitStatus={userLimitStatus}
+        isAdmin={isEffectiveAdmin}
+        onSuccess={fetchUserUsage}
       />
       </div>
     </div>

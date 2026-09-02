@@ -17,6 +17,8 @@ import {
   Flame,
   Globe2,
   Lock,
+  CreditCard,
+  Check,
 } from "lucide-react";
 
 interface LandingPageProps {
@@ -39,7 +41,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
     },
     {
       q: "How does pricing work?",
-      a: "Aletheia offers a generous free tier so you can start reading curated news and chatting with the AI companion right away. Optional upgraded tiers will provide higher usage limits and advanced features.",
+      a: "Aletheia offers a generous Free Basic tier with ~$0.50/month in AI epistemic compute allowance, zero ads, and zero data tracking. For power readers and deep research, our Subscriber membership is $15/month (with $10 off your first month—just $5 to start!), providing 6x higher compute capacity ($3.00/mo), priority live wire retrieval, and unconstrained companion dialogue.",
     },
     {
       q: "How does the AI reading partner work?",
@@ -84,6 +86,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
           <a href="#how-it-works" className="hover:text-cyan-300 transition">How It Works</a>
           <a href="#features" className="hover:text-cyan-300 transition">Features</a>
           <a href="#comparison" className="hover:text-cyan-300 transition">Why Aletheia</a>
+          <a href="#pricing" className="hover:text-cyan-300 transition">Pricing</a>
           <a href="#faq" className="hover:text-cyan-300 transition">FAQ</a>
         </nav>
 
@@ -491,6 +494,131 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
               <p className="text-xs text-slate-300 leading-relaxed">
                 Chat with your AI companion to explore backstory, ask for explanations, and cultivate your curiosity.
               </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing & Membership Plans */}
+        <section id="pricing" className="py-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto border-t border-white/5">
+          <div className="text-center mb-12 space-y-2">
+            <span className="text-xs font-mono uppercase tracking-widest text-cyan-400 font-bold">
+              TRANSPARENT, VALUE-ALIGNED PRICING
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              Invest in Your Epistemic Diet, Not Outrage
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
+              No sponsored posts. No algorithmic rage-bait. Choose the plan that best fits your daily news discovery and research needs.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+            {/* Free Basic Tier */}
+            <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/40 border border-white/10 hover:border-white/20 transition flex flex-col justify-between space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">
+                    Basic Tier
+                  </span>
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-white/10 font-mono">
+                    Free Forever
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5 font-mono">
+                  <span className="text-4xl font-extrabold text-white">$0</span>
+                  <span className="text-xs text-slate-400">/ month</span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Start reading bias-stripped news wires and learning with your personalized companion immediately.
+                </p>
+                <ul className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-white/5">
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <span>~$0.50/month AI compute allowance</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <span>Epistemically sanitized multi-source articles</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <span>Mind-State personal topic tracking</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <span>Verified fact extractions & source citations</span>
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                onClick={onExploreGuest}
+                className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono font-semibold border border-white/10 transition"
+              >
+                Explore Live Preview Free
+              </button>
+            </div>
+
+            {/* Subscriber Tier */}
+            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-900/80 to-cyan-950/30 border-2 border-cyan-500/50 shadow-xl shadow-cyan-500/10 flex flex-col justify-between space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 px-4 py-1 rounded-bl-2xl bg-cyan-500 text-slate-950 text-[10px] font-mono font-bold uppercase tracking-wider shadow-sm">
+                First Month $10 Off Special
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase tracking-wider text-cyan-300 font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Subscriber Tier</span>
+                  </span>
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-mono font-semibold">
+                    Most Popular
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-baseline gap-2 font-mono">
+                    <span className="text-4xl font-extrabold text-white">$5</span>
+                    <span className="text-sm text-slate-400 line-through mr-1">$15</span>
+                    <span className="text-xs text-slate-400">/ 1st month</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-mono block">
+                    then $15/month · cancel anytime
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  For serious readers, analysts, and researchers requiring deep synthesis and extensive inquiry.
+                </p>
+
+                <ul className="space-y-2.5 text-xs text-slate-200 pt-4 border-t border-cyan-500/20">
+                  <li className="flex items-center gap-2.5 font-medium text-cyan-200">
+                    <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    <span>~$3.00/month compute allowance (6x capacity)</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    <span>Priority live wire research & search retrieval</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    <span>Unrestricted companion dialogue deep-dives</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    <span>Multi-tier thematic intersections & discovery</span>
+                  </li>
+                </ul>
+              </div>
+
+              <button
+                onClick={onSignIn}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-400 to-indigo-600 hover:from-cyan-400 hover:via-teal-300 hover:to-indigo-500 text-slate-950 text-xs font-mono font-bold flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 transition transform active:scale-95"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Subscribe with Stripe — $5 First Month</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </section>

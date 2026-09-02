@@ -10,8 +10,11 @@ import {
   UnifiedTopicNode,
   AppUser,
   UserRole,
+  UserTier,
+  SubscriptionStatus,
   UserUsageMetrics,
   UsageEvent,
+  UsageLimitStatus,
 } from "../types/contracts";
 import { DataPersistenceStore } from "./persistence";
 import { SEED_DATA_STATE } from "./seed-state";
@@ -110,6 +113,8 @@ export class PostgresStore {
           image: "https://lh3.googleusercontent.com/a/default-user",
           role: "admin",
           status: "active",
+          tier: "subscriber",
+          subscription_status: "active",
           created_at: "2026-08-30T00:00:00.000Z",
           last_active_at: new Date().toISOString(),
         },
@@ -120,6 +125,8 @@ export class PostgresStore {
           image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
           role: "user",
           status: "active",
+          tier: "free",
+          subscription_status: "none",
           created_at: "2026-08-31T00:00:00.000Z",
           last_active_at: new Date().toISOString(),
         },
@@ -129,6 +136,8 @@ export class PostgresStore {
           name: "Default Guest",
           role: "user",
           status: "active",
+          tier: "free",
+          subscription_status: "none",
           created_at: "2026-08-30T00:00:00.000Z",
           last_active_at: new Date().toISOString(),
         },
@@ -146,6 +155,10 @@ export class PostgresStore {
           total_pipeline_runs: 8,
           total_tokens_used: 18450,
           total_dwell_time_ms: 342000,
+          current_period_start: new Date(Date.now() - 7 * 86400000).toISOString(),
+          period_tokens_used: 18450,
+          period_cost_usd: 0.0437,
+          lifetime_cost_usd: 0.0437,
           last_active_at: new Date().toISOString(),
           recent_events: [
             { type: "login", timestamp: new Date(Date.now() - 3600000).toISOString(), detail: "User signed in" },
@@ -159,6 +172,10 @@ export class PostgresStore {
           total_pipeline_runs: 4,
           total_tokens_used: 9200,
           total_dwell_time_ms: 184000,
+          current_period_start: new Date(Date.now() - 7 * 86400000).toISOString(),
+          period_tokens_used: 9200,
+          period_cost_usd: 0.0218,
+          lifetime_cost_usd: 0.0218,
           last_active_at: new Date(Date.now() - 86400000).toISOString(),
           recent_events: [
             { type: "chat", timestamp: new Date(Date.now() - 86400000).toISOString(), detail: "Discussed quantum computing" },
@@ -170,6 +187,10 @@ export class PostgresStore {
           total_pipeline_runs: 2,
           total_tokens_used: 3100,
           total_dwell_time_ms: 65000,
+          current_period_start: new Date(Date.now() - 7 * 86400000).toISOString(),
+          period_tokens_used: 3100,
+          period_cost_usd: 0.0087,
+          lifetime_cost_usd: 0.0087,
           last_active_at: new Date(Date.now() - 172800000).toISOString(),
           recent_events: [],
         },
@@ -292,6 +313,11 @@ export class PostgresStore {
               image TEXT,
               role VARCHAR(32) NOT NULL DEFAULT 'user',
               status VARCHAR(32) NOT NULL DEFAULT 'active',
+              tier VARCHAR(32) NOT NULL DEFAULT 'free',
+              stripe_customer_id VARCHAR(128),
+              stripe_subscription_id VARCHAR(128),
+              subscription_status VARCHAR(32) NOT NULL DEFAULT 'none',
+              subscription_period_end TIMESTAMPTZ,
               created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
               last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
@@ -301,6 +327,10 @@ export class PostgresStore {
               total_pipeline_runs INTEGER NOT NULL DEFAULT 0,
               total_tokens_used BIGINT NOT NULL DEFAULT 0,
               total_dwell_time_ms BIGINT NOT NULL DEFAULT 0,
+              current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              period_tokens_used BIGINT NOT NULL DEFAULT 0,
+              period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000,
+              lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000,
               last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
               recent_events JSONB NOT NULL DEFAULT '[]'::jsonb
             );
@@ -308,6 +338,19 @@ export class PostgresStore {
         }
 
         await client.query(sql);
+        try {
+          await client.query(`
+            ALTER TABLE app_users ADD COLUMN IF NOT EXISTS tier VARCHAR(32) NOT NULL DEFAULT 'free';
+            ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(128);
+            ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(128);
+            ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(32) NOT NULL DEFAULT 'none';
+            ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_period_end TIMESTAMPTZ;
+            ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+            ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_tokens_used BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
+            ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
+          `);
+        } catch {}
         this.isConnected = true;
         this.schemaInitialized = true;
         console.log("PostgresStore: Unified Schema initialized successfully.");
@@ -318,10 +361,24 @@ export class PostgresStore {
             const check = await client.query("SELECT id FROM app_users WHERE id = $1", [userId]);
             if (check.rows.length === 0) {
               await client.query(
-                `INSERT INTO app_users (id, email, name, image, role, status, created_at, last_active_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `INSERT INTO app_users (id, email, name, image, role, status, tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, created_at, last_active_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                  ON CONFLICT (id) DO NOTHING`,
-                [user.id, user.email, user.name, user.image || null, user.role, user.status, user.created_at, user.last_active_at]
+                [
+                  user.id,
+                  user.email,
+                  user.name,
+                  user.image || null,
+                  user.role,
+                  user.status,
+                  user.tier || "free",
+                  user.stripe_customer_id || null,
+                  user.stripe_subscription_id || null,
+                  user.subscription_status || "none",
+                  user.subscription_period_end || null,
+                  user.created_at,
+                  user.last_active_at,
+                ]
               );
             }
           } catch (uErr) {
@@ -334,10 +391,22 @@ export class PostgresStore {
             const check = await client.query("SELECT user_id FROM user_usage_metrics WHERE user_id = $1", [userId]);
             if (check.rows.length === 0) {
               await client.query(
-                `INSERT INTO user_usage_metrics (user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                `INSERT INTO user_usage_metrics (user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, current_period_start, period_tokens_used, period_cost_usd, lifetime_cost_usd, last_active_at, recent_events)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                  ON CONFLICT (user_id) DO NOTHING`,
-                [usage.user_id, usage.total_chat_messages, usage.total_pipeline_runs, usage.total_tokens_used, usage.total_dwell_time_ms, usage.last_active_at, JSON.stringify(usage.recent_events)]
+                [
+                  usage.user_id,
+                  usage.total_chat_messages,
+                  usage.total_pipeline_runs,
+                  usage.total_tokens_used,
+                  usage.total_dwell_time_ms,
+                  usage.current_period_start || new Date().toISOString(),
+                  usage.period_tokens_used || 0,
+                  usage.period_cost_usd || 0,
+                  usage.lifetime_cost_usd || 0,
+                  usage.last_active_at,
+                  JSON.stringify(usage.recent_events),
+                ]
               );
             }
           } catch (mErr) {
@@ -940,13 +1009,18 @@ export class PostgresStore {
     return [...this.memoryTraces].reverse().slice(0, limit);
   }
 
-  // --- User Management (User Levels: user, admin) ---
+  // --- User Management (User Levels: user, admin; Tiers: free, subscriber) ---
   public async getOrCreateUser(userData: {
     id?: string;
     email: string;
     name?: string;
     image?: string;
     role?: UserRole;
+    tier?: UserTier;
+    stripe_customer_id?: string;
+    stripe_subscription_id?: string;
+    subscription_status?: SubscriptionStatus;
+    subscription_period_end?: string;
   }): Promise<AppUser> {
     await this.ensureInitialized();
     const effectiveId = userData.id || `usr_${userData.email.replace(/[^a-zA-Z0-9]/g, "_")}`;
@@ -968,6 +1042,26 @@ export class PostgresStore {
         existing.image = userData.image;
         changed = true;
       }
+      if (userData.tier && userData.tier !== existing.tier) {
+        existing.tier = userData.tier;
+        changed = true;
+      }
+      if (userData.stripe_customer_id && userData.stripe_customer_id !== existing.stripe_customer_id) {
+        existing.stripe_customer_id = userData.stripe_customer_id;
+        changed = true;
+      }
+      if (userData.stripe_subscription_id && userData.stripe_subscription_id !== existing.stripe_subscription_id) {
+        existing.stripe_subscription_id = userData.stripe_subscription_id;
+        changed = true;
+      }
+      if (userData.subscription_status && userData.subscription_status !== existing.subscription_status) {
+        existing.subscription_status = userData.subscription_status;
+        changed = true;
+      }
+      if (userData.subscription_period_end && userData.subscription_period_end !== existing.subscription_period_end) {
+        existing.subscription_period_end = userData.subscription_period_end;
+        changed = true;
+      }
       existing.last_active_at = now;
       this.memoryUsers.set(existing.id, existing);
       this.saveToDisk();
@@ -975,8 +1069,18 @@ export class PostgresStore {
       if (this.pool && this.isConnected) {
         try {
           await this.pool.query(
-            `UPDATE app_users SET name = $1, image = $2, last_active_at = $3 WHERE id = $4`,
-            [existing.name, existing.image || null, now, existing.id]
+            `UPDATE app_users SET name = $1, image = $2, tier = $3, stripe_customer_id = $4, stripe_subscription_id = $5, subscription_status = $6, subscription_period_end = $7, last_active_at = $8 WHERE id = $9`,
+            [
+              existing.name,
+              existing.image || null,
+              existing.tier || "free",
+              existing.stripe_customer_id || null,
+              existing.stripe_subscription_id || null,
+              existing.subscription_status || "none",
+              existing.subscription_period_end || null,
+              now,
+              existing.id,
+            ]
           );
         } catch (err) {
           console.warn("PostgresStore: Error updating existing user:", err);
@@ -992,6 +1096,11 @@ export class PostgresStore {
       image: userData.image,
       role: userData.role || "user",
       status: "active",
+      tier: userData.tier || "free",
+      stripe_customer_id: userData.stripe_customer_id,
+      stripe_subscription_id: userData.stripe_subscription_id,
+      subscription_status: userData.subscription_status || "none",
+      subscription_period_end: userData.subscription_period_end,
       created_at: now,
       last_active_at: now,
     };
@@ -1002,13 +1111,32 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(
-          `INSERT INTO app_users (id, email, name, image, role, status, created_at, last_active_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `INSERT INTO app_users (id, email, name, image, role, status, tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, created_at, last_active_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (id) DO UPDATE SET
              name = EXCLUDED.name,
              image = EXCLUDED.image,
+             tier = EXCLUDED.tier,
+             stripe_customer_id = EXCLUDED.stripe_customer_id,
+             stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+             subscription_status = EXCLUDED.subscription_status,
+             subscription_period_end = EXCLUDED.subscription_period_end,
              last_active_at = EXCLUDED.last_active_at`,
-          [newUser.id, newUser.email, newUser.name, newUser.image || null, newUser.role, newUser.status, newUser.created_at, newUser.last_active_at]
+          [
+            newUser.id,
+            newUser.email,
+            newUser.name,
+            newUser.image || null,
+            newUser.role,
+            newUser.status,
+            newUser.tier,
+            newUser.stripe_customer_id || null,
+            newUser.stripe_subscription_id || null,
+            newUser.subscription_status,
+            newUser.subscription_period_end || null,
+            newUser.created_at,
+            newUser.last_active_at,
+          ]
         );
       } catch (err) {
         console.warn("PostgresStore: Error inserting new user:", err);
@@ -1026,7 +1154,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT id, email, name, image, role, status, created_at, last_active_at FROM app_users WHERE id = $1`,
+          `SELECT id, email, name, image, role, status, tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, created_at, last_active_at FROM app_users WHERE id = $1`,
           [userId]
         );
         if (res.rows.length > 0) {
@@ -1038,6 +1166,11 @@ export class PostgresStore {
             image: row.image,
             role: row.role as UserRole,
             status: row.status,
+            tier: (row.tier as UserTier) || "free",
+            stripe_customer_id: row.stripe_customer_id || undefined,
+            stripe_subscription_id: row.stripe_subscription_id || undefined,
+            subscription_status: (row.subscription_status as SubscriptionStatus) || "none",
+            subscription_period_end: row.subscription_period_end?.toISOString() || undefined,
             created_at: row.created_at?.toISOString() || new Date().toISOString(),
             last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
           };
@@ -1057,7 +1190,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT id, email, name, image, role, status, created_at, last_active_at FROM app_users WHERE LOWER(email) = $1`,
+          `SELECT id, email, name, image, role, status, tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, created_at, last_active_at FROM app_users WHERE LOWER(email) = $1`,
           [normalized]
         );
         if (res.rows.length > 0) {
@@ -1069,6 +1202,11 @@ export class PostgresStore {
             image: row.image,
             role: row.role as UserRole,
             status: row.status,
+            tier: (row.tier as UserTier) || "free",
+            stripe_customer_id: row.stripe_customer_id || undefined,
+            stripe_subscription_id: row.stripe_subscription_id || undefined,
+            subscription_status: (row.subscription_status as SubscriptionStatus) || "none",
+            subscription_period_end: row.subscription_period_end?.toISOString() || undefined,
             created_at: row.created_at?.toISOString() || new Date().toISOString(),
             last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
           };
@@ -1092,7 +1230,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT id, email, name, image, role, status, created_at, last_active_at FROM app_users ORDER BY created_at ASC`
+          `SELECT id, email, name, image, role, status, tier, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_period_end, created_at, last_active_at FROM app_users ORDER BY created_at ASC`
         );
         if (res.rows.length > 0) {
           const users: AppUser[] = res.rows.map((row) => ({
@@ -1102,6 +1240,11 @@ export class PostgresStore {
             image: row.image,
             role: row.role as UserRole,
             status: row.status,
+            tier: (row.tier as UserTier) || "free",
+            stripe_customer_id: row.stripe_customer_id || undefined,
+            stripe_subscription_id: row.stripe_subscription_id || undefined,
+            subscription_status: (row.subscription_status as SubscriptionStatus) || "none",
+            subscription_period_end: row.subscription_period_end?.toISOString() || undefined,
             created_at: row.created_at?.toISOString() || new Date().toISOString(),
             last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
           }));
@@ -1139,27 +1282,120 @@ export class PostgresStore {
     return user;
   }
 
-  // --- User Usage Tracking ---
+  public async updateUserTier(userId: string, tier: UserTier): Promise<AppUser> {
+    await this.ensureInitialized();
+    let user = await this.getUser(userId);
+    if (!user) {
+      user = await this.getOrCreateUser({ id: userId, email: `${userId}@ciclops.io`, tier });
+    }
+
+    user.tier = tier;
+    this.memoryUsers.set(userId, user);
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(`UPDATE app_users SET tier = $1 WHERE id = $2`, [tier, userId]);
+      } catch (err) {
+        console.warn("PostgresStore: Error updating user tier:", err);
+      }
+    }
+
+    return user;
+  }
+
+  public async updateUserSubscription(
+    userId: string,
+    sub: {
+      tier?: UserTier;
+      stripeCustomerId?: string;
+      stripeSubscriptionId?: string;
+      subscriptionStatus?: SubscriptionStatus;
+      subscriptionPeriodEnd?: string;
+    }
+  ): Promise<AppUser> {
+    await this.ensureInitialized();
+    let user = await this.getUser(userId);
+    if (!user) {
+      user = await this.getOrCreateUser({ id: userId, email: `${userId}@ciclops.io` });
+    }
+
+    if (sub.tier !== undefined) user.tier = sub.tier;
+    if (sub.stripeCustomerId !== undefined) user.stripe_customer_id = sub.stripeCustomerId;
+    if (sub.stripeSubscriptionId !== undefined) user.stripe_subscription_id = sub.stripeSubscriptionId;
+    if (sub.subscriptionStatus !== undefined) user.subscription_status = sub.subscriptionStatus;
+    if (sub.subscriptionPeriodEnd !== undefined) user.subscription_period_end = sub.subscriptionPeriodEnd;
+
+    this.memoryUsers.set(userId, user);
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `UPDATE app_users SET tier = $1, stripe_customer_id = $2, stripe_subscription_id = $3, subscription_status = $4, subscription_period_end = $5 WHERE id = $6`,
+          [
+            user.tier || "free",
+            user.stripe_customer_id || null,
+            user.stripe_subscription_id || null,
+            user.subscription_status || "none",
+            user.subscription_period_end || null,
+            userId,
+          ]
+        );
+      } catch (err) {
+        console.warn("PostgresStore: Error updating user subscription:", err);
+      }
+    }
+
+    return user;
+  }
+
+  // --- User Usage Tracking & Compute Cost Accounting ---
   public async getUserUsage(userId: string): Promise<UserUsageMetrics> {
     await this.ensureInitialized();
+    const now = new Date().toISOString();
+
+    const parseUsageRow = (row: any): UserUsageMetrics => {
+      let periodStart = row.current_period_start
+        ? typeof row.current_period_start === "string"
+          ? row.current_period_start
+          : row.current_period_start.toISOString()
+        : now;
+      let periodCost = Number(row.period_cost_usd || 0);
+      let periodTokens = Number(row.period_tokens_used || 0);
+
+      // Monthly 30-day rollover check
+      const startMs = Date.parse(periodStart);
+      if (!isNaN(startMs) && Date.now() - startMs > 30 * 24 * 60 * 60 * 1000) {
+        periodStart = now;
+        periodCost = 0;
+        periodTokens = 0;
+      }
+
+      return {
+        user_id: row.user_id,
+        total_chat_messages: Number(row.total_chat_messages || 0),
+        total_pipeline_runs: Number(row.total_pipeline_runs || 0),
+        total_tokens_used: Number(row.total_tokens_used || 0),
+        total_dwell_time_ms: Number(row.total_dwell_time_ms || 0),
+        current_period_start: periodStart,
+        period_tokens_used: periodTokens,
+        period_cost_usd: periodCost,
+        lifetime_cost_usd: Number(row.lifetime_cost_usd || 0),
+        last_active_at: row.last_active_at?.toISOString?.() || row.last_active_at || now,
+        recent_events: typeof row.recent_events === "string" ? JSON.parse(row.recent_events) : row.recent_events || [],
+      };
+    };
+
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events
+          `SELECT user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, current_period_start, period_tokens_used, period_cost_usd, lifetime_cost_usd, last_active_at, recent_events
            FROM user_usage_metrics WHERE user_id = $1`,
           [userId]
         );
         if (res.rows.length > 0) {
-          const row = res.rows[0];
-          const metrics: UserUsageMetrics = {
-            user_id: row.user_id,
-            total_chat_messages: Number(row.total_chat_messages || 0),
-            total_pipeline_runs: Number(row.total_pipeline_runs || 0),
-            total_tokens_used: Number(row.total_tokens_used || 0),
-            total_dwell_time_ms: Number(row.total_dwell_time_ms || 0),
-            last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
-            recent_events: typeof row.recent_events === "string" ? JSON.parse(row.recent_events) : row.recent_events || [],
-          };
+          const metrics = parseUsageRow(res.rows[0]);
           this.memoryUserUsage.set(userId, metrics);
           return metrics;
         }
@@ -1176,11 +1412,25 @@ export class PostgresStore {
         total_pipeline_runs: 0,
         total_tokens_used: 0,
         total_dwell_time_ms: 0,
-        last_active_at: new Date().toISOString(),
+        current_period_start: now,
+        period_tokens_used: 0,
+        period_cost_usd: 0,
+        lifetime_cost_usd: 0,
+        last_active_at: now,
         recent_events: [],
       };
       this.memoryUserUsage.set(userId, usage);
       this.saveToDisk();
+    } else {
+      // 30-day rollover check for in-memory mirror
+      const startMs = Date.parse(usage.current_period_start || now);
+      if (!isNaN(startMs) && Date.now() - startMs > 30 * 24 * 60 * 60 * 1000) {
+        usage.current_period_start = now;
+        usage.period_tokens_used = 0;
+        usage.period_cost_usd = 0;
+        this.memoryUserUsage.set(userId, usage);
+        this.saveToDisk();
+      }
     }
     return usage;
   }
@@ -1188,23 +1438,29 @@ export class PostgresStore {
   public async getAllUserUsage(): Promise<Record<string, UserUsageMetrics>> {
     await this.ensureInitialized();
     const result: Record<string, UserUsageMetrics> = {};
+    const now = new Date().toISOString();
 
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events FROM user_usage_metrics`
+          `SELECT user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, current_period_start, period_tokens_used, period_cost_usd, lifetime_cost_usd, last_active_at, recent_events FROM user_usage_metrics`
         );
         for (const row of res.rows) {
-          result[row.user_id] = {
+          const m: UserUsageMetrics = {
             user_id: row.user_id,
             total_chat_messages: Number(row.total_chat_messages || 0),
             total_pipeline_runs: Number(row.total_pipeline_runs || 0),
             total_tokens_used: Number(row.total_tokens_used || 0),
             total_dwell_time_ms: Number(row.total_dwell_time_ms || 0),
+            current_period_start: row.current_period_start ? (typeof row.current_period_start === "string" ? row.current_period_start : row.current_period_start.toISOString()) : now,
+            period_tokens_used: Number(row.period_tokens_used || 0),
+            period_cost_usd: Number(row.period_cost_usd || 0),
+            lifetime_cost_usd: Number(row.lifetime_cost_usd || 0),
             last_active_at: row.last_active_at?.toISOString() || new Date().toISOString(),
             recent_events: typeof row.recent_events === "string" ? JSON.parse(row.recent_events) : row.recent_events || [],
           };
-          this.memoryUserUsage.set(row.user_id, result[row.user_id]);
+          result[row.user_id] = m;
+          this.memoryUserUsage.set(row.user_id, m);
         }
       } catch (err) {
         console.warn("PostgresStore: Error querying all user usage:", err);
@@ -1237,10 +1493,20 @@ export class PostgresStore {
     const current = await this.getUserUsage(userId);
     const now = new Date().toISOString();
 
+    // Compute estimated USD cost:
+    // - LLM Tokens: $0.0000015 per token ($1.50 per 1M tokens)
+    // - Pipeline curation overhead: $0.002 per run
+    const tokensCost = (delta.tokensUsed || 0) * 0.0000015;
+    const pipelineCost = (delta.pipelineRuns || 0) * 0.002;
+    const deltaCost = Number((tokensCost + pipelineCost).toFixed(6));
+
     current.total_chat_messages += delta.chatMessages || 0;
     current.total_pipeline_runs += delta.pipelineRuns || 0;
     current.total_tokens_used += delta.tokensUsed || 0;
     current.total_dwell_time_ms += delta.dwellTimeMs || 0;
+    current.period_tokens_used = (current.period_tokens_used || 0) + (delta.tokensUsed || 0);
+    current.period_cost_usd = Number(((current.period_cost_usd || 0) + deltaCost).toFixed(4));
+    current.lifetime_cost_usd = Number(((current.lifetime_cost_usd || 0) + deltaCost).toFixed(4));
     current.last_active_at = now;
 
     if (delta.eventName) {
@@ -1268,13 +1534,16 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(
-          `INSERT INTO user_usage_metrics (user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, last_active_at, recent_events)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO user_usage_metrics (user_id, total_chat_messages, total_pipeline_runs, total_tokens_used, total_dwell_time_ms, current_period_start, period_tokens_used, period_cost_usd, lifetime_cost_usd, last_active_at, recent_events)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (user_id) DO UPDATE SET
              total_chat_messages = user_usage_metrics.total_chat_messages + EXCLUDED.total_chat_messages,
              total_pipeline_runs = user_usage_metrics.total_pipeline_runs + EXCLUDED.total_pipeline_runs,
              total_tokens_used = user_usage_metrics.total_tokens_used + EXCLUDED.total_tokens_used,
              total_dwell_time_ms = user_usage_metrics.total_dwell_time_ms + EXCLUDED.total_dwell_time_ms,
+             period_tokens_used = user_usage_metrics.period_tokens_used + EXCLUDED.period_tokens_used,
+             period_cost_usd = user_usage_metrics.period_cost_usd + EXCLUDED.period_cost_usd,
+             lifetime_cost_usd = user_usage_metrics.lifetime_cost_usd + EXCLUDED.lifetime_cost_usd,
              last_active_at = EXCLUDED.last_active_at,
              recent_events = EXCLUDED.recent_events`,
           [
@@ -1283,6 +1552,10 @@ export class PostgresStore {
             delta.pipelineRuns || 0,
             delta.tokensUsed || 0,
             delta.dwellTimeMs || 0,
+            current.current_period_start,
+            delta.tokensUsed || 0,
+            deltaCost,
+            deltaCost,
             now,
             JSON.stringify(current.recent_events),
           ]
@@ -1296,6 +1569,53 @@ export class PostgresStore {
 
     return current;
   }
+
+  /**
+   * Evaluates user compute limits based on tier:
+   * - Free / Basic User: ~$0.50 / month
+   * - Subscriber: ~$3.00 / month
+   * - Admin: Unlimited compute
+   */
+  public async checkUsageLimit(userId: string): Promise<UsageLimitStatus> {
+    await this.ensureInitialized();
+    const user = await this.getUser(userId);
+    const usage = await this.getUserUsage(userId);
+
+    const tier: UserTier = user?.tier || "free";
+    const isAdmin = user?.role === "admin";
+
+    if (isAdmin) {
+      return {
+        allowed: true,
+        tier,
+        currentCost: usage.period_cost_usd,
+        limit: Infinity,
+        percentUsed: 0,
+        isNearLimit: false,
+      };
+    }
+
+    const limit = tier === "subscriber" ? 3.0 : 0.5;
+    const currentCost = usage.period_cost_usd;
+    const percentUsed = Math.min(100, Math.round((currentCost / limit) * 100));
+    const isNearLimit = percentUsed >= 70;
+    const allowed = currentCost < limit;
+
+    return {
+      allowed,
+      tier,
+      currentCost,
+      limit,
+      percentUsed,
+      isNearLimit,
+      reason: allowed
+        ? undefined
+        : tier === "free"
+        ? `Monthly free compute limit reached ($0.50). Upgrade to Subscriber for 6x compute allowance ($3.00/mo).`
+        : `Monthly subscriber compute allowance reached ($3.00).`,
+    };
+  }
+
 }
 
 export const postgresStore = PostgresStore.getInstance();

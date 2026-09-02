@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS idx_unified_topic_nodes_psych ON unified_topic_nodes 
 ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS recent_topic_diffs JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE unified_topic_nodes ADD COLUMN IF NOT EXISTS harmonization_runs JSONB DEFAULT '[]'::jsonb;
 
--- 8. Application Users Table (User levels: user, admin)
+-- 8. Application Users Table (User levels: user, admin; Tiers: free, subscriber)
 CREATE TABLE IF NOT EXISTS app_users (
     id VARCHAR(128) PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
@@ -117,12 +117,25 @@ CREATE TABLE IF NOT EXISTS app_users (
     image TEXT,
     role VARCHAR(32) NOT NULL DEFAULT 'user',
     status VARCHAR(32) NOT NULL DEFAULT 'active',
+    tier VARCHAR(32) NOT NULL DEFAULT 'free',
+    stripe_customer_id VARCHAR(128),
+    stripe_subscription_id VARCHAR(128),
+    subscription_status VARCHAR(32) NOT NULL DEFAULT 'none',
+    subscription_period_end TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_app_users_email ON app_users(email);
 CREATE INDEX IF NOT EXISTS idx_app_users_role ON app_users(role);
+CREATE INDEX IF NOT EXISTS idx_app_users_tier ON app_users(tier);
+
+-- Safe Alterations for backwards-compatible upgrades to app_users
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS tier VARCHAR(32) NOT NULL DEFAULT 'free';
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(128);
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(128);
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(32) NOT NULL DEFAULT 'none';
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_period_end TIMESTAMPTZ;
 
 -- 9. User Usage Metrics Table
 CREATE TABLE IF NOT EXISTS user_usage_metrics (
@@ -131,8 +144,19 @@ CREATE TABLE IF NOT EXISTS user_usage_metrics (
     total_pipeline_runs INTEGER NOT NULL DEFAULT 0,
     total_tokens_used BIGINT NOT NULL DEFAULT 0,
     total_dwell_time_ms BIGINT NOT NULL DEFAULT 0,
+    current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    period_tokens_used BIGINT NOT NULL DEFAULT 0,
+    period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000,
+    lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000,
     last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     recent_events JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+
+-- Safe Alterations for backwards-compatible upgrades to user_usage_metrics
+ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_tokens_used BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
+ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
+
 
 

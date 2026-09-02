@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdminAuth } from "@/core/auth/admin-guard";
 import { postgresStore } from "@/core/storage/postgres-store";
-import { UserRole, UserAccountStatus } from "@/core/types/contracts";
+import { UserRole, UserTier, UserAccountStatus } from "@/core/types/contracts";
 
 export async function GET(req: NextRequest) {
   const auth = await verifyAdminAuth(req);
@@ -54,9 +54,10 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { userId, role } = body as {
+    const { userId, role, tier } = body as {
       userId?: string;
       role?: UserRole;
+      tier?: UserTier;
     };
 
     if (!userId) {
@@ -67,6 +68,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid role specified" }, { status: 400 });
     }
 
+    if (tier && tier !== "free" && tier !== "subscriber") {
+      return NextResponse.json({ success: false, error: "Invalid tier specified" }, { status: 400 });
+    }
+
     let updatedUser = await postgresStore.getUser(userId);
     if (!updatedUser) {
       return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
@@ -74,6 +79,10 @@ export async function PATCH(req: NextRequest) {
 
     if (role) {
       updatedUser = await postgresStore.updateUserRole(userId, role);
+    }
+
+    if (tier) {
+      updatedUser = await postgresStore.updateUserTier(userId, tier);
     }
 
     const usage = await postgresStore.getUserUsage(userId);

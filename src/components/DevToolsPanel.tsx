@@ -30,6 +30,8 @@ import {
   Copy,
   FileText,
   Code,
+  CreditCard,
+  FlaskConical,
 } from "lucide-react";
 import {
   AgentTraceLog,
@@ -47,6 +49,7 @@ interface DevToolsProps {
   selectedContext?: ContextualSelection | null;
   onSelectContext?: (context: ContextualSelection | null) => void;
   isCollectingNews?: boolean;
+  onOpenSubscriptionModal?: () => void;
 }
 
 export default function DevToolsPanel({
@@ -58,6 +61,7 @@ export default function DevToolsPanel({
   selectedContext,
   onSelectContext,
   isCollectingNews = false,
+  onOpenSubscriptionModal,
 }: DevToolsProps) {
   const [activeTab, setActiveTab] = useState<
     "live_stream" | "mind_state" | "contextual" | "ai_calls" | "state_tree" | "raw_traces"
@@ -279,6 +283,17 @@ export default function DevToolsPanel({
             <Clock className="w-3.5 h-3.5 text-violet-400" />
             <span>Avg Latency: <strong className="text-slate-200">{avgLatency}ms</strong></span>
           </div>
+          {onOpenSubscriptionModal && (
+            <button
+              onClick={onOpenSubscriptionModal}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-mono font-semibold flex items-center gap-1.5 transition shadow-sm"
+              title="Test Stripe Checkout & Test Credit Card in Sandbox"
+            >
+              <CreditCard className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden md:inline">Test Stripe Mode</span>
+            </button>
+          )}
+
           <button
             onClick={fetchDevToolsData}
             className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10"

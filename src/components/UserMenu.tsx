@@ -14,14 +14,19 @@ import {
   Compass,
   Shield,
   EyeOff,
+  Sparkles,
+  CreditCard,
 } from "lucide-react";
-import { ContextualSelection, AppUser } from "@/core/types/contracts";
+import { ContextualSelection, AppUser, UserTier, UsageLimitStatus } from "@/core/types/contracts";
 
 export interface UserMenuProps {
   session: any;
   isAdmin: boolean;
   viewingUser?: AppUser | null;
   onExitViewMode?: () => void;
+  tier?: UserTier;
+  limitStatus?: UsageLimitStatus | null;
+  onOpenSubscriptionModal?: () => void;
   onOpenDevTools: () => void;
   isDevToolsOpen: boolean;
   selectedContext: ContextualSelection | null;
@@ -39,6 +44,9 @@ export default function UserMenu({
   isAdmin,
   viewingUser,
   onExitViewMode,
+  tier = "free",
+  limitStatus,
+  onOpenSubscriptionModal,
   onOpenDevTools,
   isDevToolsOpen,
   selectedContext,
@@ -183,6 +191,72 @@ export default function UserMenu({
               </div>
             ) : null}
           </div>
+
+          {/* Monthly Compute Quota & Subscription Widget */}
+          {session?.user && (
+            <div className="p-3 bg-slate-900/40 space-y-2.5">
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-slate-400">TIER</span>
+                {tier === "subscriber" ? (
+                  <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-yellow-300 border border-yellow-500/40 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-yellow-400" />
+                    <span>Subscriber ($15/mo)</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-white/10 font-medium">
+                    Basic (Free)
+                  </span>
+                )}
+              </div>
+
+              {/* Compute Usage Progress Meter */}
+              {limitStatus && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-[10px] font-mono">
+                    <span className="text-slate-400">Monthly Compute</span>
+                    <span className="text-slate-200 font-bold">
+                      ${limitStatus.currentCost.toFixed(2)} / ${limitStatus.limit.toFixed(2)}
+                      <span className="text-slate-400 font-normal ml-1">
+                        ({limitStatus.percentUsed}%)
+                      </span>
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-white/5">
+                    <div
+                      className={`h-full transition-all duration-300 rounded-full ${
+                        limitStatus.percentUsed >= 90
+                          ? "bg-rose-500"
+                          : limitStatus.percentUsed >= 70
+                          ? "bg-amber-400"
+                          : "bg-cyan-400"
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(4, limitStatus.percentUsed))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Upgrade / Manage Subscription Trigger */}
+              {onOpenSubscriptionModal && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenSubscriptionModal();
+                  }}
+                  className={`w-full py-2 px-3 rounded-xl text-xs font-mono font-semibold flex items-center justify-center gap-2 transition ${
+                    tier === "subscriber"
+                      ? "bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30"
+                      : "bg-gradient-to-r from-cyan-500 via-teal-400 to-indigo-600 hover:from-cyan-400 hover:via-teal-300 hover:to-indigo-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>
+                    {tier === "subscriber" ? "Manage Subscription" : "Upgrade — $5 First Month"}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Exit View Mode Button if currently impersonating */}
           {isViewingOtherUser && onExitViewMode && (
