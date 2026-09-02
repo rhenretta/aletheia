@@ -68,10 +68,6 @@ resource "aws_ssm_parameter" "stripe_secret_key" {
   description = "Stripe Live Secret Key for ${var.app_name}"
   type        = "SecureString"
   value       = var.stripe_secret_key != "" ? var.stripe_secret_key : "placeholder-stripe-secret-key"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }
 
 resource "aws_ssm_parameter" "stripe_test_secret_key" {
@@ -79,10 +75,6 @@ resource "aws_ssm_parameter" "stripe_test_secret_key" {
   description = "Stripe Test Secret Key for ${var.app_name}"
   type        = "SecureString"
   value       = var.stripe_test_secret_key != "" ? var.stripe_test_secret_key : "placeholder-stripe-test-key"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }
 
 resource "aws_ssm_parameter" "stripe_webhook_secret" {
@@ -90,9 +82,6 @@ resource "aws_ssm_parameter" "stripe_webhook_secret" {
   description = "Stripe Webhook Signing Secret for ${var.app_name}"
   type        = "SecureString"
   value       = var.stripe_webhook_secret != "" ? var.stripe_webhook_secret : "placeholder-stripe-webhook-secret"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }
+
 
