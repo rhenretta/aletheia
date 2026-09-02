@@ -200,13 +200,15 @@ export class StripeService {
 
   /**
    * Creates a Stripe Checkout Session for $15/month subscription with $10 first-month discount.
+   * Pass skipDiscount: true for reactivating lapsed subscribers (coupon already used).
    */
   public async createCheckoutSession(params: {
     user: AppUser;
     originUrl: string;
     testMode?: boolean;
+    skipDiscount?: boolean;
   }): Promise<CheckoutSessionResult> {
-    const { user, originUrl, testMode } = params;
+    const { user, originUrl, testMode, skipDiscount } = params;
     const client = this.getClient(testMode);
 
     if (!client) {
@@ -231,7 +233,8 @@ export class StripeService {
           quantity: 1,
         },
       ],
-      discounts: couponId ? [{ coupon: couponId }] : undefined,
+      // Only attach the discount coupon for brand-new subscribers, not reactivating lapsed ones
+      discounts: (!skipDiscount && couponId) ? [{ coupon: couponId }] : undefined,
       client_reference_id: user.id,
       metadata: {
         userId: user.id,

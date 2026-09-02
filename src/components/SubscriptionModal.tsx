@@ -54,6 +54,12 @@ export default function SubscriptionModal({
   if (!isOpen) return null;
 
   const isSubscriber = user?.tier === "subscriber";
+  // Lapsed = previously subscribed (has customer id) but now on free tier
+  const isLapsed =
+    !isSubscriber &&
+    (user?.subscription_status === "past_due" ||
+      user?.subscription_status === "canceled") &&
+    !!user?.stripe_customer_id;
 
   const toggleTestMode = () => {
     const next = !isTestMode;
@@ -65,7 +71,7 @@ export default function SubscriptionModal({
     } catch {}
   };
 
-  const handleCheckout = async (forceTestMode?: boolean) => {
+  const handleCheckout = async (forceTestMode?: boolean, skipDiscount?: boolean) => {
     setLoading(true);
     setError(null);
     try {
@@ -75,6 +81,7 @@ export default function SubscriptionModal({
         body: JSON.stringify({
           userId: user?.id,
           testMode: forceTestMode ?? isTestMode,
+          skipDiscount: skipDiscount ?? isLapsed,
         }),
       });
 
@@ -229,30 +236,52 @@ export default function SubscriptionModal({
             </div>
           )}
 
-          {/* Hero Callout / First Month Promo */}
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-950/70 via-indigo-950/50 to-slate-900/80 border border-cyan-500/30 p-5 text-center sm:text-left sm:flex items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[11px] font-mono font-medium border border-cyan-500/40">
-                <Sparkles className="w-3 h-3 text-cyan-400" />
-                <span>FIRST MONTH SPECIAL OFFER</span>
+          {/* Hero Callout / First Month Promo — or Reactivation callout for lapsed */}
+          {isLapsed ? (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800/60 to-slate-900 border border-slate-600/40 p-5 text-center sm:text-left sm:flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 text-[11px] font-mono font-medium border border-amber-500/30">
+                  <RotateCcw className="w-3 h-3 text-amber-400" />
+                  <span>SUBSCRIPTION LAPSED</span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  Welcome Back
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Your subscription has lapsed. Reactivate to restore full epistemic compute access at the standard{" "}
+                  <strong className="text-white font-bold">$15/month</strong> rate.
+                </p>
               </div>
-              <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-                $10 Off Your First Month
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Enjoy full unconstrained news synthesis and epistemic companion analysis for only{" "}
-                <strong className="text-cyan-300 font-bold">$5.00</strong> your first month, then $15/mo.
-              </p>
-            </div>
-            <div className="mt-3 sm:mt-0 flex-shrink-0 text-center sm:text-right">
-              <div className="text-3xl font-extrabold text-white font-mono flex items-baseline justify-center sm:justify-end gap-1">
-                <span className="text-cyan-400">$5</span>
-                <span className="text-xs font-normal text-slate-400 line-through mr-1">$15</span>
-                <span className="text-xs font-normal text-slate-400">/ 1st mo</span>
+              <div className="mt-3 sm:mt-0 flex-shrink-0 text-center sm:text-right">
+                <div className="text-3xl font-extrabold text-white font-mono">$15</div>
+                <span className="text-[10px] text-slate-400 font-mono">/ month, cancel anytime</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-mono">renews at $15/month</span>
             </div>
-          </div>
+          ) : (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-950/70 via-indigo-950/50 to-slate-900/80 border border-cyan-500/30 p-5 text-center sm:text-left sm:flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[11px] font-mono font-medium border border-cyan-500/40">
+                  <Sparkles className="w-3 h-3 text-cyan-400" />
+                  <span>FIRST MONTH SPECIAL OFFER</span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  $10 Off Your First Month
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Enjoy full unconstrained news synthesis and epistemic companion analysis for only{" "}
+                  <strong className="text-cyan-300 font-bold">$5.00</strong> your first month, then $15/mo.
+                </p>
+              </div>
+              <div className="mt-3 sm:mt-0 flex-shrink-0 text-center sm:text-right">
+                <div className="text-3xl font-extrabold text-white font-mono flex items-baseline justify-center sm:justify-end gap-1">
+                  <span className="text-cyan-400">$5</span>
+                  <span className="text-xs font-normal text-slate-400 line-through mr-1">$15</span>
+                  <span className="text-xs font-normal text-slate-400">/ 1st mo</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">renews at $15/month</span>
+              </div>
+            </div>
+          )}
 
           {/* Current Quota Notice if Triggered by Limit */}
           {limitStatus && !limitStatus.allowed && (
@@ -476,11 +505,27 @@ export default function SubscriptionModal({
                       $10 Off 1st Mo
                     </span>
                   </div>
-                  <div className="flex items-baseline gap-1.5 font-mono">
-                    <span className="text-2xl font-bold text-white">$15</span>
-                    <span className="text-xs text-slate-400">/ month</span>
-                    <span className="text-xs text-cyan-300 font-semibold ml-1">($5 first month)</span>
+                  <div className="flex items-baseline gap-2 font-mono flex-wrap">
+                    {isLapsed ? (
+                      // Returning subscriber — coupon already used, honest $15 price
+                      <>
+                        <span className="text-2xl font-bold text-white">$15</span>
+                        <span className="text-xs text-slate-400">/ month</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-400 border border-white/10 font-mono ml-1">renewal rate</span>
+                      </>
+                    ) : (
+                      // New subscriber — lead with the $5 discount price
+                      <>
+                        <span className="text-2xl font-extrabold text-cyan-300">$5</span>
+                        <span className="text-xs text-slate-400">1st month</span>
+                        <span className="text-xs text-slate-500 line-through ml-1">$15</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono font-bold ml-1">$10 OFF</span>
+                      </>
+                    )}
                   </div>
+                  {!isLapsed && (
+                    <p className="text-[10px] text-slate-500 font-mono">then $15/month — cancel anytime</p>
+                  )}
                   <p className="text-xs text-slate-300 leading-relaxed">
                     High-capacity epistemic companion for serious analysts, researchers, and daily readers.
                   </p>
@@ -513,6 +558,23 @@ export default function SubscriptionModal({
                     >
                       <span>Manage Billing with Stripe</span>
                       <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  ) : isLapsed ? (
+                    // Returning subscriber — coupon already used, go straight to portal or new checkout at $15
+                    <button
+                      onClick={() => handleCheckout(false)}
+                      disabled={loading}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 hover:from-slate-600 hover:to-slate-600 text-white text-xs font-mono font-bold flex items-center justify-center gap-2 border border-cyan-500/30 shadow-md transition transform active:scale-95 disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <span>Redirecting to Stripe...</span>
+                      ) : (
+                        <>
+                          <RotateCcw className="w-4 h-4 text-cyan-400" />
+                          <span>Reactivate — $15/month</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+                        </>
+                      )}
                     </button>
                   ) : (
                     <button

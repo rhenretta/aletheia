@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
     const session = await getServerSession(authOptions);
     const body = await req.json().catch(() => ({}));
-    const { userId, testMode } = body as { userId?: string; testMode?: boolean };
+    const { userId, testMode, skipDiscount } = body as { userId?: string; testMode?: boolean; skipDiscount?: boolean };
 
     const effectiveUserId =
       session?.user?.email
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
       user,
       originUrl: origin,
       testMode: Boolean(testMode),
+      skipDiscount: Boolean(skipDiscount),
     });
 
     return NextResponse.json({
