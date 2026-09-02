@@ -35,11 +35,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
   const faqs = [
     {
       q: "What makes Aletheia different from typical news apps?",
-      a: "Most news apps make money by keeping you angry or alarmed so you click ads. Aletheia does the exact opposite: an AI reads stories from trusted global wires, strips away sensational adjectives and emotional spin, and presents just the clear, verified facts.",
+      a: "Most news feeds are optimized for outrage and emotional reactions to keep you scrolling. Aletheia focuses on clarity: an AI reads stories from trusted global wires, strips away sensational adjectives and emotional spin, and presents just the clear, verified facts.",
     },
     {
-      q: "Is Aletheia really 100% free to use?",
-      a: "Yes! Aletheia is free. There are no paywalls, no subscription fees, and no advertisements.",
+      q: "How does pricing work?",
+      a: "Aletheia offers a generous free tier so you can start reading curated news and chatting with the AI companion right away. Optional upgraded tiers will provide higher usage limits and advanced features.",
     },
     {
       q: "How does the AI reading partner work?",
@@ -47,7 +47,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
     },
     {
       q: "Do you sell my data or track my reading?",
-      a: "No. Your interests and conversations are kept private to your account so the system knows what news to find for you. We never sell data to advertisers, data brokers, or third parties.",
+      a: "No. Your interests and conversations are kept private to your account so the system knows what news to find for you. We never sell your personal data to brokers or third parties.",
     },
     {
       q: "Can I try it before signing in?",
@@ -185,11 +185,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
           <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>100% Free Forever</span>
+              <span>Free Tier Available</span>
             </div>
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Zero Clickbait & Ads</span>
+              <span>Zero Clickbait</span>
             </div>
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -266,7 +266,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                     "Experts warn of catastrophic fallout as tensions mount... Read on to uncover the shocking revelation that changes everything."
                   </p>
                   <div className="pt-2 flex items-center gap-2 text-[10px] text-rose-400/80">
-                    <span className="px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800">12 pop-up ads</span>
+                    <span className="px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800">Distracting clutter</span>
                     <span className="px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800">Emotional clickbait</span>
                     <span className="px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800">Zero context</span>
                   </div>
@@ -275,7 +275,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <ul className="space-y-2.5 text-xs text-slate-300">
                   <li className="flex items-start gap-2">
                     <span className="text-rose-400 font-bold">✕</span>
-                    <span>Designed to keep you worried so you refresh and click more ads.</span>
+                    <span>Designed to keep you worried so you stay trapped in outrage cycles.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-rose-400 font-bold">✕</span>
@@ -437,7 +437,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                   </div>
                   <div className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                    <span><strong>Zero Ad-Targeting:</strong> Your interests stay yours. No data brokers, no selling to marketers.</span>
+                    <span><strong>Private to Your Account:</strong> Your interests and chats stay yours. We never sell your personal data to brokers.</span>
                   </div>
                 </div>
               </div>
@@ -458,7 +458,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
             <span className="text-xs font-mono uppercase tracking-widest text-cyan-400 font-bold">Simple by Design</span>
             <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">Get Started in Less Than 30 Seconds</h2>
             <p className="text-sm sm:text-base text-slate-400 max-w-lg mx-auto mt-2">
-              No complex setup, no payment info required. Just clean, honest news.
+              No credit card required to start. Just clean, honest news.
             </p>
           </div>
 
@@ -591,7 +591,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
           <span className="text-slate-400">• Part of the ciclops.io ecosystem</span>
         </div>
         <p className="max-w-md mx-auto text-slate-400">
-          Built to restore trust, clarity, and depth to human knowledge. No ads, no clickbait, no tracking brokers.
+          Built to restore trust, clarity, and depth to human knowledge. Clean facts, zero clickbait, private by design.
         </p>
         <div className="pt-2 text-[11px] text-slate-400">
           © {new Date().getFullYear()} Aletheia. All rights reserved.
