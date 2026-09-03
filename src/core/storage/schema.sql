@@ -197,6 +197,9 @@ CREATE TABLE IF NOT EXISTS direct_sources (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE direct_sources ADD COLUMN IF NOT EXISTS platform VARCHAR(64);
+ALTER TABLE direct_sources ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_direct_sources_topic ON direct_sources(topic);
 CREATE INDEX IF NOT EXISTS idx_direct_sources_status ON direct_sources(status);
 CREATE INDEX IF NOT EXISTS idx_direct_sources_platform ON direct_sources(platform);

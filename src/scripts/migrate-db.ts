@@ -74,6 +74,27 @@ async function runMigration() {
         status VARCHAR(32) NOT NULL DEFAULT 'open',
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS direct_sources (
+        id VARCHAR(128) PRIMARY KEY,
+        topic TEXT NOT NULL,
+        source_type VARCHAR(32) NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        publisher_name TEXT NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending_validation',
+        reliability_score NUMERIC(4, 3) NOT NULL DEFAULT 1.000,
+        platform VARCHAR(64),
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        last_crawled_at TIMESTAMPTZ,
+        last_successful_content_at TIMESTAMPTZ,
+        etag TEXT,
+        last_modified TEXT,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE direct_sources ADD COLUMN IF NOT EXISTS platform VARCHAR(64);
+      ALTER TABLE direct_sources ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
     `);
 
     console.log("📦 Applying schema.sql DDL...");
