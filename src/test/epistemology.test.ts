@@ -83,4 +83,28 @@ describe("Node A: Epistemology Agent (BiasStripper)", () => {
     // Verify adjective density is constrained
     expect(result.adjective_density_score).toBeLessThanOrEqual(0.15);
   });
+
+  it("handles single-source articles without claiming official confirmation", () => {
+    const singleArticle: RawArticle[] = [
+      {
+        source_url: "https://speculative-blog.example.com/rumored-space-project",
+        source_name: "Speculative Insider",
+        title: "Island Facility Rumored for Multi-Billion Launch Site",
+        author_bias_rating: "center",
+        raw_text: "Unconfirmed reports suggest an island location is being considered for a major new launch complex.",
+      },
+    ];
+
+    const result = BiasStripper.processArticles("Speculative Launch Facility", singleArticle);
+    const parseResult = PureFactObjectSchema.safeParse(result);
+    expect(parseResult.success).toBe(true);
+
+    // Verify timeline does not claim 'Official confirmation'
+    expect(result.timeline[0].verified_event).not.toContain("Official confirmation");
+    expect(result.timeline[0].verified_event).toContain("Single-source reporting");
+
+    // Verify disputed claims notes single-source status
+    expect(result.disputed_claims.length).toBeGreaterThan(0);
+    expect(result.disputed_claims[0].divergence_reason).toContain("Single-source");
+  });
 });

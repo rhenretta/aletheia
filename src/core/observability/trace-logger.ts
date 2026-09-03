@@ -29,13 +29,18 @@ export class TraceLogger {
     return () => this.listeners.delete(listener);
   }
 
-  private ensureDirectory(): void {
+  private diskWriteDisabled: boolean = false;
+
+  private ensureDirectory(): boolean {
+    if (this.diskWriteDisabled) return false;
     try {
       if (!fs.existsSync(this.logDirectory)) {
         fs.mkdirSync(this.logDirectory, { recursive: true });
       }
+      return true;
     } catch {
-      // In constrained environments or serverless, ignore disk error
+      this.diskWriteDisabled = true;
+      return false;
     }
   }
 
@@ -72,12 +77,16 @@ export class TraceLogger {
     }
 
     // Append to audit JSONL file
-    try {
-      this.ensureDirectory();
-      const line = JSON.stringify(validated) + "\n";
-      fs.appendFileSync(this.logFilePath, line, "utf-8");
-    } catch (err) {
-      console.warn("TraceLogger: Could not write trace to disk:", err);
+    if (!this.diskWriteDisabled) {
+      try {
+        if (this.ensureDirectory()) {
+          const line = JSON.stringify(validated) + "\n";
+          fs.appendFileSync(this.logFilePath, line, "utf-8");
+        }
+      } catch (err) {
+        this.diskWriteDisabled = true;
+        console.warn("TraceLogger: Could not write trace to disk, disabling file logging:", err);
+      }
     }
 
     // Persist asynchronously to PostgreSQL store

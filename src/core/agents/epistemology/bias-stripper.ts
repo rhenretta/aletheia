@@ -147,6 +147,13 @@ export class BiasStripper {
         contested_by: articles.slice(1).map(a => a.source_name),
         divergence_reason: "Differences in framing regarding initial legislative intent versus retroactive justification.",
       });
+    } else if (disputedClaims.length === 0 && articles.length === 1) {
+      disputedClaims.push({
+        claim: `Primary reporting on ${topic}`,
+        asserted_by: [articles[0].source_name],
+        contested_by: [],
+        divergence_reason: "Single-source reporting; pending independent multi-source corroboration.",
+      });
     }
 
     const combinedText = agreedFacts.join(" ");
@@ -159,7 +166,9 @@ export class BiasStripper {
       timeline: timeline.length > 0 ? timeline : [
         {
           timestamp_iso: new Date().toISOString(),
-          verified_event: `Official confirmation on ${topic} recorded across ${articles.length} sources.`,
+          verified_event: articles.length > 1
+            ? `Cross-source reporting on ${topic} recorded across ${articles.length} sources.`
+            : `Single-source reporting on ${topic} from ${articles[0]?.source_name || "news wire"}.`,
           sources: articles.map(a => a.source_name),
         }
       ],

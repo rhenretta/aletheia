@@ -176,3 +176,25 @@ CREATE TABLE IF NOT EXISTS support_tickets (
 CREATE INDEX IF NOT EXISTS idx_support_tickets_email ON support_tickets(email);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_category ON support_tickets(category);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets(created_at);
+
+-- 11. Canonical Direct RSS & WWW Sources Table
+CREATE TABLE IF NOT EXISTS direct_sources (
+    id VARCHAR(128) PRIMARY KEY,
+    topic TEXT NOT NULL,
+    source_type VARCHAR(32) NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    publisher_name TEXT NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending_validation',
+    reliability_score NUMERIC(4, 3) NOT NULL DEFAULT 1.000,
+    last_crawled_at TIMESTAMPTZ,
+    last_successful_content_at TIMESTAMPTZ,
+    etag TEXT,
+    last_modified TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_direct_sources_topic ON direct_sources(topic);
+CREATE INDEX IF NOT EXISTS idx_direct_sources_status ON direct_sources(status);
+

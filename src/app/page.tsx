@@ -259,14 +259,17 @@ export default function AletheiaHome() {
   const renderFormattedMessageContent = (content: string): React.ReactNode => {
     if (!content) return null;
 
+    // Normalize orphan punctuation like " [link] ." -> " [link]."
+    const normalizedContent = content.replace(/\s+([.,;:!?])/g, "$1");
+
     const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
     const parts: React.ReactNode[] = [];
     let lastIdx = 0;
     let match: RegExpExecArray | null;
 
-    while ((match = linkRegex.exec(content)) !== null) {
+    while ((match = linkRegex.exec(normalizedContent)) !== null) {
       if (match.index > lastIdx) {
-        parts.push(renderBoldSegments(content.substring(lastIdx, match.index), `txt-${lastIdx}`));
+        parts.push(renderBoldSegments(normalizedContent.substring(lastIdx, match.index), `txt-${lastIdx}`));
       }
       const label = match[1];
       const url = match[2];
@@ -276,18 +279,18 @@ export default function AletheiaHome() {
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-cyan-400 hover:text-cyan-200 underline underline-offset-2 font-medium inline-flex items-center gap-0.5 transition-colors mx-0.5 bg-cyan-950/50 hover:bg-cyan-900/70 px-1.5 py-0.5 rounded border border-cyan-500/30"
+          className="text-cyan-400 hover:text-cyan-200 underline underline-offset-2 font-medium inline-flex items-center gap-0.5 transition-colors mx-0.5 bg-cyan-950/50 hover:bg-cyan-900/70 px-1.5 py-0.5 rounded border border-cyan-500/30 max-w-full align-middle text-xs"
           title={`Visit original source: ${url}`}
         >
-          <span>{label}</span>
-          <ExternalLink className="w-2.5 h-2.5 opacity-80 inline ml-0.5" />
+          <span className="truncate max-w-[280px]">{label}</span>
+          <ExternalLink className="w-2.5 h-2.5 opacity-80 inline ml-0.5 flex-shrink-0" />
         </a>
       );
       lastIdx = linkRegex.lastIndex;
     }
 
-    if (lastIdx < content.length) {
-      parts.push(renderBoldSegments(content.substring(lastIdx), `txt-${lastIdx}`));
+    if (lastIdx < normalizedContent.length) {
+      parts.push(renderBoldSegments(normalizedContent.substring(lastIdx), `txt-${lastIdx}`));
     }
 
     return parts;
@@ -935,40 +938,54 @@ export default function AletheiaHome() {
             }
           } else if (eventType === "tool_start" && data.tool_name) {
             setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === botMessageId
-                  ? {
-                      ...msg,
-                      tool_executions: [
-                        {
-                          tool_name: data.tool_name,
-                          query: data.query,
-                          results_summary: "Searching live web wire...",
-                          items_retrieved: 0,
-                        },
-                      ],
-                    }
-                  : msg
-              )
+              prev.map((msg) => {
+                if (msg.id !== botMessageId) return msg;
+                const existing = msg.tool_executions || [];
+                const alreadyExists = existing.some((t) => t.tool_name === data.tool_name && t.query === data.query);
+                if (alreadyExists) return msg;
+                return {
+                  ...msg,
+                  tool_executions: [
+                    ...existing,
+                    {
+                      tool_name: data.tool_name,
+                      query: data.query,
+                      results_summary: data.tool_name === "crawl_web_page" ? "Reading direct web page..." : "Searching live web wire...",
+                      items_retrieved: 0,
+                    },
+                  ],
+                };
+              })
             );
           } else if (eventType === "tool_complete" && data.tool_name) {
             setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === botMessageId
-                  ? {
-                      ...msg,
-                      tool_executions: [
-                        {
-                          tool_name: data.tool_name,
-                          query: data.query,
-                          results_summary: data.summary || "Retrieved live sources",
-                          items_retrieved: Array.isArray(data.sources) ? data.sources.length : (data.items_retrieved ?? 0),
-                          sources: data.sources || [],
-                        },
-                      ],
-                    }
-                  : msg
-              )
+              prev.map((msg) => {
+                if (msg.id !== botMessageId) return msg;
+                const existing = msg.tool_executions || [];
+                const updated = existing.map((t) =>
+                  t.tool_name === data.tool_name && t.query === data.query
+                    ? {
+                        ...t,
+                        results_summary: data.summary || (data.tool_name === "crawl_web_page" ? "Page read completed" : "Retrieved live sources"),
+                        items_retrieved: Array.isArray(data.sources) ? data.sources.length : (data.items_retrieved ?? 0),
+                        sources: data.sources || [],
+                      }
+                    : t
+                );
+                if (!updated.some((t) => t.tool_name === data.tool_name && t.query === data.query)) {
+                  updated.push({
+                    tool_name: data.tool_name,
+                    query: data.query,
+                    results_summary: data.summary || (data.tool_name === "crawl_web_page" ? "Page read completed" : "Retrieved live sources"),
+                    items_retrieved: Array.isArray(data.sources) ? data.sources.length : (data.items_retrieved ?? 0),
+                    sources: data.sources || [],
+                  });
+                }
+                return {
+                  ...msg,
+                  tool_executions: updated,
+                };
+              })
             );
           } else if (eventType === "token" && data.token) {
             accumulatedContent += data.token;
@@ -2828,7 +2845,11 @@ export default function AletheiaHome() {
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className={`w-1.5 h-1.5 rounded-full ${tool.items_retrieved > 0 ? "bg-emerald-400" : (tool.results_summary && !tool.results_summary.includes("Searching") ? "bg-slate-500" : "bg-cyan-400 animate-ping")}`} />
                                     <span className="font-bold">
-                                      {tool.tool_name === "search_internet" ? "🌐 Live Web Wire Search:" : "🧠 Local Knowledge Lookup:"}
+                                      {tool.tool_name === "search_internet"
+                                        ? "🌐 Live Web Wire Search:"
+                                        : tool.tool_name === "crawl_web_page"
+                                        ? "📖 Deep Web Page Reading:"
+                                        : "🧠 Local Knowledge Lookup:"}
                                     </span>
                                     <span className="text-slate-300 truncate max-w-[200px]" title={tool.query}>"{tool.query}"</span>
                                     <span className={`font-bold ml-auto ${tool.items_retrieved > 0 ? "text-emerald-400" : (tool.results_summary && !tool.results_summary.includes("Searching") ? "text-slate-400" : "text-cyan-400 animate-pulse")}`}>

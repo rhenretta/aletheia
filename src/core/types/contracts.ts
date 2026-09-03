@@ -469,6 +469,7 @@ export interface AgentTraceLog {
   node_name:
     | "node_context"
     | "node_discovery"
+    | "node_scout"
     | "node_observer"
     | "node_a_epistemology"
     | "node_b_telemetry"
@@ -489,6 +490,7 @@ export const AgentTraceLogSchema = z.object({
   node_name: z.enum([
     "node_context",
     "node_discovery",
+    "node_scout",
     "node_observer",
     "node_a_epistemology",
     "node_b_telemetry",
@@ -819,6 +821,46 @@ export interface SupportTicketPayload {
   message: string;
   metadata?: SupportTicketMetadata;
 }
+
+/**
+ * Direct Source Discovery & Ingestion Contracts
+ */
+export type DirectSourceType = "rss_feed" | "www_page";
+export type DirectSourceStatus = "active" | "failing" | "pending_validation" | "inactive";
+
+export interface DirectSource {
+  id: string;
+  topic: string;
+  source_type: DirectSourceType;
+  url: string;
+  title: string;
+  publisher_name: string;
+  status: DirectSourceStatus;
+  reliability_score: number; // 0.0 - 1.0
+  last_crawled_at?: string;
+  last_successful_content_at?: string;
+  etag?: string;
+  last_modified?: string;
+  consecutive_failures: number;
+  created_at: string;
+}
+
+export const DirectSourceSchema = z.object({
+  id: z.string(),
+  topic: z.string(),
+  source_type: z.enum(["rss_feed", "www_page"]),
+  url: z.string().url(),
+  title: z.string(),
+  publisher_name: z.string(),
+  status: z.enum(["active", "failing", "pending_validation", "inactive"]),
+  reliability_score: z.number().min(0).max(1),
+  last_crawled_at: z.string().optional(),
+  last_successful_content_at: z.string().optional(),
+  etag: z.string().optional(),
+  last_modified: z.string().optional(),
+  consecutive_failures: z.number().int().nonnegative(),
+  created_at: z.string(),
+});
 
 
 

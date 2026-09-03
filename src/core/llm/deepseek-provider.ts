@@ -62,7 +62,7 @@ export class DeepSeekProvider {
             model,
             messages,
             temperature: options.temperature ?? 0.2,
-            max_tokens: options.maxTokens ?? 1500,
+            max_tokens: options.maxTokens ?? 4096,
             response_format: { type: "json_object" },
           }),
           signal: controller.signal,
@@ -142,7 +142,7 @@ export class DeepSeekProvider {
           model,
           messages,
           temperature: options.temperature ?? 0.5,
-          max_tokens: options.maxTokens ?? 1500,
+          max_tokens: options.maxTokens ?? 4096,
           response_format: { type: "json_object" },
           stream: true,
         }),
@@ -201,17 +201,41 @@ export class DeepSeekProvider {
     articles: RawArticle[]
   ): Promise<Partial<PureFactObject>> {
     const systemPrompt = `You are the Epistemology Agent for Project Aletheia.
-Your task is to analyze multi-source articles across the ideological spectrum for an event and extract a PureFactObject in strict JSON.
-Rules:
-1. Strip all emotional framing, adjectives, sensationalism, and speculation.
-2. Identify undisputed facts agreed upon by sources.
-3. Identify disputed claims, noting which sources assert or contest them, and why they diverge.
-4. Extract key verified entities and timeline events.
+Your task is to analyze reporting across sources for a specific event and extract a PureFactObject in strict JSON with absolute epistemic integrity.
+
+CRITICAL EPISTEMIC INTEGRITY RULES:
+1. TEMPORAL & MODALITY INTEGRITY (ABSOLUTE PROHIBITION ON TENSE INVERSION):
+   - Distinguish strictly between completed past events, scheduled future targets, and speculative rumors.
+   - NEVER convert scheduled future milestones ("slated for", "scheduled for", "targeted for", "preparing for") into completed past actions. If a milestone has not yet occurred, state it strictly as an upcoming target (e.g. "Scheduled for [date]" or "Targeted to occur in [month/year]").
+   - NEVER convert speculative chatter, rumors, or unverified aspirations ("talk of potentially attempting", "claims that", "speculation suggests") into established agreed facts.
+   - If a source describes an action as conditional, contemplated, or unconfirmed, it MUST be recorded in "disputed_claims" or explicitly qualified as an unconfirmed rumor, NEVER placed as an unconditional agreed fact.
+
+2. MULTI-SOURCE CORROBORATION & CONSENSUS THRESHOLD:
+   - "agreed_facts" represents verified consensus. A factual statement may ONLY be placed in "agreed_facts" if:
+     * It is corroborated by 2 or more independent sources, OR
+     * It represents an uncontested official primary documentation or release.
+   - If an event cluster has only 1 source, or if a significant claim is asserted by only 1 source, place it in "disputed_claims" with "asserted_by" naming that single source and noting "Single-source report; pending independent confirmation".
+
+3. STRICT TOPICAL & ENTITY BOUNDARIES (ZERO CROSS-CONTAMINATION):
+   - Restrict extracted claims strictly to the core subject of the specified Topic.
+   - When an article discusses multiple distinct initiatives, projects, or locations, DO NOT conflate claims from secondary or tangential subjects into this event's fact object.
+
+4. OBJECTIVE PURITY & ADJECTIVE DENSITY:
+   - Strip all sensationalism, emotional adjectives, rhetorical hyperbole, and speculative projections.
+   - Calculate "adjective_density_score" (0.0 to 1.0) based on remaining subjective or framing language in the original text.
+
 Output JSON adhering strictly to:
 {
   "verified_entities": string[],
   "agreed_facts": string[],
-  "disputed_claims": [{"claim": string, "asserted_by": string[], "contested_by": string[], "divergence_reason": string}],
+  "disputed_claims": [
+    {
+      "claim": string,
+      "asserted_by": string[],
+      "contested_by": string[],
+      "divergence_reason": string
+    }
+  ],
   "adjective_density_score": number
 }`;
 

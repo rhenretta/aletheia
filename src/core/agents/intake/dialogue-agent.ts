@@ -371,6 +371,7 @@ EVALUATION MANDATE:
 1. If the inquiry is a general reflection or is 100% answered with complete accuracy by the verified local articles above, output the final conversational JSON directly.
 2. If the user's inquiry touches upon real-world developments, current status, roadmap, upcoming milestones, recent news, or future expectations, AND the local context above lacks verified reporting from ${now.getFullYear()} covering this exact point, your pre-training knowledge is OUTDATED. You MUST execute a "search_internet" tool call to ground yourself in the live wire before generating a response.
 3. NEVER answer questions about the current state of ongoing real-world technologies, companies, or events from static memory without live wire verification.
+4. QUERY FORMULATION MANDATE: Keep search queries concise, objective, and entity-focused (e.g. "Tesla FSD latest version", "SpaceX Starship upcoming flight"). Do NOT append current calendar months (e.g. "September 2026") or conversational question words unless the user explicitly requested that specific month, as exact month strings severely over-constrain search engines.
 
 Output strict JSON:
 - To call search tool:
@@ -378,7 +379,7 @@ Output strict JSON:
   "thought_process": "Why local context is insufficient for current real-world status as of ${now.getFullYear()}",
   "tool_call": {
     "tool_name": "search_internet",
-    "query": "targeted search query for current status"
+    "query": "targeted entity-focused search query"
   }
 }
 - To respond directly (only when local articles provide verified current facts):
@@ -404,101 +405,187 @@ Output strict JSON:
       }
     }
 
-    // Agentic Tool Loop: Evaluate information sufficiency, execute tools, observe outputs, and optionally refine queries (max 2 iterations)
+    // Agentic Tool Loop: Evaluate information sufficiency, execute tools (search or deep crawl), observe outputs, and actively explore until satisfied (up to 3 turns)
     let totalItemsFound = 0;
-    const MAX_TOOL_TURNS = 2;
-    let currentQuery = toolDecision?.tool_call?.query ? String(toolDecision.tool_call.query).trim() : null;
+    const MAX_TOOL_TURNS = 3;
+    let nextToolAction: { tool_name: "search_internet" | "crawl_web_page"; param: string } | null =
+      toolDecision?.tool_call?.query
+        ? { tool_name: "search_internet", param: String(toolDecision.tool_call.query).trim() }
+        : null;
 
-    for (let turn = 0; turn < MAX_TOOL_TURNS && currentQuery; turn++) {
-      yield { type: "tool_start", tool_name: "search_internet", query: currentQuery };
+    for (let turn = 0; turn < MAX_TOOL_TURNS && nextToolAction; turn++) {
+      const currentAction = nextToolAction;
+      nextToolAction = null; // Clear so it only continues if sufficiency evaluation explicitly decides to explore further
 
-      let liveArticles: RawArticle[] = [];
-      try {
-        liveArticles = await FreeNewsFetcher.searchNews(currentQuery, 5);
-      } catch (err) {
-        console.warn(`Agentic search error for "${currentQuery}":`, err);
-      }
+      if (currentAction.tool_name === "search_internet") {
+        const currentQuery = currentAction.param;
+        yield { type: "tool_start", tool_name: "search_internet", query: currentQuery };
 
-      totalItemsFound += liveArticles.length;
+        let liveArticles: RawArticle[] = [];
+        try {
+          liveArticles = await FreeNewsFetcher.searchNews(currentQuery, 5);
+        } catch (err) {
+          console.warn(`Agentic search error for "${currentQuery}":`, err);
+        }
 
-      const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
-        name: a.source_name || "News Wire",
-        title: a.title,
-        url: a.source_url,
-        bias: a.author_bias_rating || "center",
-        raw_text: a.raw_text,
-        published_at: a.published_at,
-        highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
-      }));
+        totalItemsFound += liveArticles.length;
 
-      executedTools.push({
-        tool_name: "search_internet",
-        query: currentQuery,
-        results_summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
-        items_retrieved: liveArticles.length,
-        sources: eventSources,
-      });
+        const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
+          name: a.source_name || "News Wire",
+          title: a.title,
+          url: a.source_url,
+          bias: a.author_bias_rating || "center",
+          raw_text: a.raw_text,
+          published_at: a.published_at,
+          highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
+        }));
 
-      yield {
-        type: "tool_complete",
-        tool_name: "search_internet",
-        query: currentQuery,
-        summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
-        sources: eventSources,
-      };
+        executedTools.push({
+          tool_name: "search_internet",
+          query: currentQuery,
+          results_summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
+          items_retrieved: liveArticles.length,
+          sources: eventSources,
+        });
 
-      if (liveArticles.length > 0) {
-        finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}" (${liveArticles.length} SOURCES)]:
+        yield {
+          type: "tool_complete",
+          tool_name: "search_internet",
+          query: currentQuery,
+          summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
+          sources: eventSources,
+        };
+
+        if (liveArticles.length > 0) {
+          finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}" (${liveArticles.length} SOURCES)]:
 ${liveArticles.map((a, i) => `Source ${i + 1}: [${a.source_name}](${a.source_url})
 Title: "${a.title}" (Published: ${a.published_at || 'Recent'})
-Passage: ${a.raw_text}`).join("\n\n")}`;
-      } else {
-        finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}"]:
+Snippet: ${a.raw_text}`).join("\n\n")}`;
+        } else {
+          finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}"]:
 Zero sources found. No verified global news or reporting matched this exact query.`;
-      }
+        }
+      } else if (currentAction.tool_name === "crawl_web_page") {
+        const targetUrl = currentAction.param;
+        yield { type: "tool_start", tool_name: "crawl_web_page", query: targetUrl };
 
-      // If turn 0 yielded 0 results, give the LLM one opportunity to agentically refine its query
-      if (turn === 0 && liveArticles.length === 0 && deepseekProvider.isConfigured()) {
+        let crawledArticles: RawArticle[] = [];
         try {
-          const refinementPrompt = `${finalPrompt}
+          const { DirectContentCrawler } = await import("../../ingestion/direct-crawler");
+          const crawlRes = await DirectContentCrawler.crawl({
+            id: `crawl_${Date.now()}`,
+            topic: "Direct Web Crawl",
+            source_type: "www_page",
+            url: targetUrl,
+            title: targetUrl,
+            publisher_name: new URL(targetUrl).hostname.replace(/^www\./, ""),
+            status: "active",
+            reliability_score: 1.0,
+            consecutive_failures: 0,
+            created_at: new Date().toISOString(),
+          }, 2);
+          crawledArticles = crawlRes.articles;
+        } catch (err) {
+          console.warn(`Agentic crawl error for "${targetUrl}":`, err);
+        }
 
-TOOL OBSERVATION ANALYSIS:
-Your previous search query "${currentQuery}" returned 0 results from live global wire search.
-Evaluate whether you need to try an alternative query formulation (e.g. focusing on primary entities/subject without modifier phrases), or proceed to synthesize your response.
+        totalItemsFound += crawledArticles.length;
 
-Output strict JSON:
-- To refine search with an alternative query:
-{
-  "decision": "refine_search",
-  "reasoning": "Why this alternative query is more effective",
-  "tool_call": {
-    "tool_name": "search_internet",
-    "query": "alternative search query"
-  }
-}
-- To proceed to final response:
-{
-  "decision": "synthesize",
-  "reasoning": "Information status evaluated"
-}`;
+        const eventSources: EventSourceArticle[] = crawledArticles.map((a) => ({
+          name: a.source_name || "Direct Web",
+          title: a.title,
+          url: a.source_url,
+          bias: a.author_bias_rating || "center",
+          raw_text: a.raw_text,
+          published_at: a.published_at,
+          highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
+        }));
 
-          const refineRes = await deepseekProvider.generateCompletion(refinementPrompt, {
-            systemPrompt,
-            temperature: 0.1,
-            maxTokens: 300,
-          });
+        executedTools.push({
+          tool_name: "crawl_web_page",
+          query: targetUrl,
+          results_summary: crawledArticles.length > 0 ? `Crawled full article from ${crawledArticles[0].source_name}.` : "Could not extract body text from page.",
+          items_retrieved: crawledArticles.length,
+          sources: eventSources,
+        });
 
-          const parsedRefine = JSON.parse(refineRes.text.replace(/```json\n?|\n?```/g, "").trim());
-          if (parsedRefine?.tool_call?.query && String(parsedRefine.tool_call.query).trim() !== currentQuery) {
-            currentQuery = String(parsedRefine.tool_call.query).trim();
-            continue;
-          }
-        } catch (e) {
-          console.warn("Tool refinement evaluation error:", e);
+        yield {
+          type: "tool_complete",
+          tool_name: "crawl_web_page",
+          query: targetUrl,
+          summary: crawledArticles.length > 0 ? `Crawled full article from ${crawledArticles[0].source_name}.` : "Could not extract body text from page.",
+          sources: eventSources,
+        };
+
+        if (crawledArticles.length > 0) {
+          finalPrompt += `\n\n[DIRECT WEB CRAWL OBSERVATION FOR "${targetUrl}"]:
+Source: [${crawledArticles[0].source_name}](${targetUrl})
+Title: "${crawledArticles[0].title}"
+Full Extracted Text: ${crawledArticles[0].raw_text}`;
         }
       }
 
-      break;
+      // If we haven't reached the turn limit, ask the LLM to evaluate epistemic sufficiency & decide whether to explore further
+      if (turn < MAX_TOOL_TURNS - 1 && deepseekProvider.isConfigured()) {
+        try {
+          const userInquiry = history[history.length - 1]?.content || "";
+          const sufficiencyPrompt = `${finalPrompt}
+
+EPISTEMIC SUFFICIENCY & MULTI-TURN EXPLORATION EVALUATION:
+User Inquiry: "${userInquiry}"
+
+Examine the accumulated observations above carefully.
+Evaluate whether ALL dimensions of the user's inquiry are thoroughly answered with specific empirical facts.
+
+COMPOUND INQUIRY REQUIREMENT:
+If the user's inquiry contains multiple questions (e.g. "What is X, and how has it been received?"):
+- Check if BOTH the version/fact AND the reception/reviews/testing feedback have been found.
+- If the current observations only cover one aspect (e.g. the version number is found, but user feedback, safety reviews, or community reception are still missing), you MUST choose "explore" to execute a targeted search (e.g. "Tesla FSD v14 user reception reviews" or "Tesla FSD v14.3.8 impressions test") before synthesizing!
+
+Output strict JSON:
+- If ALL questions are thoroughly answered with verified evidence:
+{
+  "decision": "synthesize",
+  "reasoning": "All dimensions of the inquiry are thoroughly grounded in the observations."
+}
+- If information is missing or search snippets were too brief:
+{
+  "decision": "explore",
+  "reasoning": "What specific information is still missing and how to find it",
+  "tool_call": {
+    "tool_name": "search_internet" (to search a missing aspect) OR "crawl_web_page" (with the specific URL of a promising search result above to read its full text)
+    "query": "targeted search query OR specific URL to crawl"
+  }
+}`;
+
+          const evalRes = await deepseekProvider.generateCompletion(sufficiencyPrompt, {
+            systemPrompt,
+            temperature: 0.1,
+            maxTokens: 800,
+          });
+
+          let parsedEval: any = null;
+          const jsonMatch = evalRes.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              parsedEval = JSON.parse(jsonMatch[0]);
+            } catch {}
+          }
+
+          if (parsedEval?.decision === "explore" && parsedEval?.tool_call?.query) {
+            const toolName = parsedEval.tool_call.tool_name === "crawl_web_page" ? "crawl_web_page" : "search_internet";
+            const param = String(parsedEval.tool_call.query).trim();
+            if (param.length > 0) {
+              nextToolAction = {
+                tool_name: toolName,
+                param,
+              };
+            }
+          }
+        } catch (e) {
+          console.warn("Sufficiency evaluation error:", e);
+        }
+      }
     }
 
     // Epistemic grounding directives based on overall tool execution findings
@@ -526,7 +613,7 @@ Output strict JSON:
     // Step 3: Stream tokens to client
     const extractor = new JsonMessageStreamExtractor();
     let accumulatedJson = "";
-    const streamGen = deepseekProvider.generateStream(finalPrompt, { systemPrompt, temperature: 0.5 });
+    const streamGen = deepseekProvider.generateStream(finalPrompt, { systemPrompt, temperature: 0.5, maxTokens: 4096 });
 
     for await (const chunk of streamGen) {
       accumulatedJson += chunk;

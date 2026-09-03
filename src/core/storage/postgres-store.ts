@@ -16,6 +16,8 @@ import {
   UsageEvent,
   UsageLimitStatus,
   SupportTicket,
+  DirectSource,
+  DirectSourceStatus,
 } from "../types/contracts";
 import { DataPersistenceStore } from "./persistence";
 import { SEED_DATA_STATE } from "./seed-state";
@@ -37,6 +39,7 @@ export class PostgresStore {
   private memoryUsers: Map<string, AppUser> = new Map();
   private memoryUserUsage: Map<string, UserUsageMetrics> = new Map();
   private memorySupportTickets: Map<string, SupportTicket> = new Map();
+  private memoryDirectSources: Map<string, DirectSource> = new Map();
 
   private diskFilePath: string;
 
@@ -226,6 +229,9 @@ export class PostgresStore {
         if (parsed.supportTickets) {
           for (const [k, v] of Object.entries(parsed.supportTickets)) this.memorySupportTickets.set(k, v as any);
         }
+        if (parsed.directSources) {
+          for (const [k, v] of Object.entries(parsed.directSources)) this.memoryDirectSources.set(k, v as any);
+        }
       }
     } catch (err) {
       console.warn("PostgresStore: Could not load disk cache:", err);
@@ -243,6 +249,7 @@ export class PostgresStore {
         users: Object.fromEntries(this.memoryUsers),
         userUsage: Object.fromEntries(this.memoryUserUsage),
         supportTickets: Object.fromEntries(this.memorySupportTickets),
+        directSources: Object.fromEntries(this.memoryDirectSources),
         lastUpdated: new Date().toISOString(),
       };
       const tmpPath = `${this.diskFilePath}.${process.pid}.${Date.now()}.tmp`;
@@ -966,7 +973,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(
-          `INSERT INTO agent_trace_logs (trace_id, session_id, node_name, input_summary, output_summary, reasoning_rationale, latency_ms, llm_tokens_used, metadata, timestamp)
+          `INSERT INTO agent_trace_logs (trace_id, session_id, node_name, input_summary, output_summary, reasoning_rationale, latency_ms, llm_tokens_used, metadata, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             trace.trace_id,
@@ -992,8 +999,8 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT trace_id, session_id, node_name, input_summary, output_summary, reasoning_rationale, latency_ms, llm_tokens_used, metadata, timestamp
-           FROM agent_trace_logs ORDER BY timestamp DESC LIMIT $1`,
+          `SELECT trace_id, session_id, node_name, input_summary, output_summary, reasoning_rationale, latency_ms, llm_tokens_used, metadata, created_at
+           FROM agent_trace_logs ORDER BY created_at DESC LIMIT $1`,
           [limit]
         );
         return res.rows.map((row) => ({
@@ -1006,7 +1013,7 @@ export class PostgresStore {
           latency_ms: row.latency_ms,
           llm_tokens_used: row.llm_tokens_used,
           metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata || {},
-          timestamp: row.timestamp?.toISOString() || new Date().toISOString(),
+          timestamp: row.created_at?.toISOString() || new Date().toISOString(),
         }));
       } catch (err) {
         console.warn("PostgresStore: Error querying traces:", err);
@@ -1817,6 +1824,177 @@ export class PostgresStore {
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, limit);
   }
+
+  // --- Canonical Direct Sources (RSS Feeds & Authoritative WWW Links) ---
+  public async getDirectSourcesForTopic(topic: string): Promise<DirectSource[]> {
+    await this.ensureInitialized();
+    const cleanTopic = topic.toLowerCase().trim();
+
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT id, topic, source_type, url, title, publisher_name, status, reliability_score, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at
+           FROM direct_sources
+           WHERE LOWER(topic) = $1 OR $1 ILIKE '%' || LOWER(topic) || '%' OR LOWER(topic) ILIKE '%' || $1 || '%'
+           ORDER BY reliability_score DESC, created_at DESC`,
+          [cleanTopic]
+        );
+        if (res.rows.length > 0) {
+          return res.rows.map((r) => ({
+            id: r.id,
+            topic: r.topic,
+            source_type: r.source_type,
+            url: r.url,
+            title: r.title,
+            publisher_name: r.publisher_name,
+            status: r.status,
+            reliability_score: Number(r.reliability_score),
+            last_crawled_at: r.last_crawled_at?.toISOString?.() || r.last_crawled_at,
+            last_successful_content_at: r.last_successful_content_at?.toISOString?.() || r.last_successful_content_at,
+            etag: r.etag,
+            last_modified: r.last_modified,
+            consecutive_failures: Number(r.consecutive_failures || 0),
+            created_at: r.created_at?.toISOString?.() || r.created_at || new Date().toISOString(),
+          }));
+        }
+      } catch (err) {
+        console.warn("PostgresStore: Error querying direct sources:", err);
+      }
+    }
+
+    // Memory fallback with fuzzy topic matching
+    return Array.from(this.memoryDirectSources.values()).filter((s) => {
+      const sTopic = s.topic.toLowerCase();
+      return sTopic === cleanTopic || sTopic.includes(cleanTopic) || cleanTopic.includes(sTopic);
+    });
+  }
+
+  public async saveDirectSource(source: DirectSource): Promise<void> {
+    await this.ensureInitialized();
+    this.memoryDirectSources.set(source.id, source);
+    this.saveToDisk();
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `INSERT INTO direct_sources (id, topic, source_type, url, title, publisher_name, status, reliability_score, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT (url) DO UPDATE SET
+             status = EXCLUDED.status,
+             reliability_score = EXCLUDED.reliability_score,
+             last_crawled_at = EXCLUDED.last_crawled_at,
+             last_successful_content_at = EXCLUDED.last_successful_content_at,
+             etag = EXCLUDED.etag,
+             last_modified = EXCLUDED.last_modified,
+             consecutive_failures = EXCLUDED.consecutive_failures`,
+          [
+            source.id,
+            source.topic,
+            source.source_type,
+            source.url,
+            source.title,
+            source.publisher_name,
+            source.status,
+            source.reliability_score,
+            source.last_crawled_at || null,
+            source.last_successful_content_at || null,
+            source.etag || null,
+            source.last_modified || null,
+            source.consecutive_failures,
+            source.created_at,
+          ]
+        );
+      } catch (err) {
+        console.warn("PostgresStore: Error saving direct source:", err);
+      }
+    }
+  }
+
+  public async updateDirectSourceStatus(
+    id: string,
+    update: {
+      status?: DirectSourceStatus;
+      reliabilityScore?: number;
+      lastCrawledAt?: string;
+      lastSuccessfulContentAt?: string;
+      etag?: string;
+      lastModified?: string;
+      consecutiveFailures?: number;
+    }
+  ): Promise<void> {
+    await this.ensureInitialized();
+    const source = this.memoryDirectSources.get(id);
+    if (source) {
+      if (update.status !== undefined) source.status = update.status;
+      if (update.reliabilityScore !== undefined) source.reliability_score = update.reliabilityScore;
+      if (update.lastCrawledAt !== undefined) source.last_crawled_at = update.lastCrawledAt;
+      if (update.lastSuccessfulContentAt !== undefined) source.last_successful_content_at = update.lastSuccessfulContentAt;
+      if (update.etag !== undefined) source.etag = update.etag;
+      if (update.lastModified !== undefined) source.last_modified = update.lastModified;
+      if (update.consecutiveFailures !== undefined) source.consecutive_failures = update.consecutiveFailures;
+      this.saveToDisk();
+    }
+
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `UPDATE direct_sources SET
+             status = COALESCE($1, status),
+             reliability_score = COALESCE($2, reliability_score),
+             last_crawled_at = COALESCE($3, last_crawled_at),
+             last_successful_content_at = COALESCE($4, last_successful_content_at),
+             etag = COALESCE($5, etag),
+             last_modified = COALESCE($6, last_modified),
+             consecutive_failures = COALESCE($7, consecutive_failures)
+           WHERE id = $8`,
+          [
+            update.status || null,
+            update.reliabilityScore ?? null,
+            update.lastCrawledAt || null,
+            update.lastSuccessfulContentAt || null,
+            update.etag || null,
+            update.lastModified || null,
+            update.consecutiveFailures ?? null,
+            id,
+          ]
+        );
+      } catch (err) {
+        console.warn("PostgresStore: Error updating direct source status:", err);
+      }
+    }
+  }
+
+  public async getAllDirectSources(): Promise<DirectSource[]> {
+    await this.ensureInitialized();
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT id, topic, source_type, url, title, publisher_name, status, reliability_score, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at
+           FROM direct_sources ORDER BY created_at DESC`
+        );
+        return res.rows.map((r) => ({
+          id: r.id,
+          topic: r.topic,
+          source_type: r.source_type,
+          url: r.url,
+          title: r.title,
+          publisher_name: r.publisher_name,
+          status: r.status,
+          reliability_score: Number(r.reliability_score),
+          last_crawled_at: r.last_crawled_at?.toISOString?.() || r.last_crawled_at,
+          last_successful_content_at: r.last_successful_content_at?.toISOString?.() || r.last_successful_content_at,
+          etag: r.etag,
+          last_modified: r.last_modified,
+          consecutive_failures: Number(r.consecutive_failures || 0),
+          created_at: r.created_at?.toISOString?.() || r.created_at || new Date().toISOString(),
+        }));
+      } catch (err) {
+        console.warn("PostgresStore: Error querying all direct sources:", err);
+      }
+    }
+    return Array.from(this.memoryDirectSources.values());
+  }
 }
 
 export const postgresStore = PostgresStore.getInstance();
+

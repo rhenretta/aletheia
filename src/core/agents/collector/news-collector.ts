@@ -1,17 +1,21 @@
-import { RawArticle } from "../../types/contracts";
+import { RawArticle, DirectSource } from "../../types/contracts";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
 import { traceLogger } from "../../observability/trace-logger";
+import { postgresStore } from "../../storage/postgres-store";
+import { DirectContentCrawler } from "../../ingestion/direct-crawler";
+import { DirectSourceScoutAgent } from "../scout/direct-source-scout";
 
 export interface CollectorResult {
   topic: string;
   articles: RawArticle[];
   source_perspectives: string[];
+  ingestion_channel?: string;
 }
 
 export class NewsCollector {
   /**
-   * Autonomously collects live real-world news across multiple publishers for the requested topics.
-   * Free, zero API keys required, fails fast if unable to fetch.
+   * Autonomously collects live real-world news and facts across canonical direct sources and open web wires.
+   * Prioritizes Direct RSS/WWW sources; uses search engines judiciously as fallback.
    */
   public static async collectForTopics(topics: string[]): Promise<CollectorResult[]> {
     if (!topics || topics.length === 0) {
@@ -25,9 +29,67 @@ export class NewsCollector {
     const settled = await Promise.allSettled(
       uniqueTopics.map(async (topic) => {
         const startTime = Date.now();
-        // Clean query: remove complex punctuation for RSS search
         const cleanQuery = topic.replace(/[()[\]{}]/g, "").trim();
-        const articles: RawArticle[] = await FreeNewsFetcher.searchNews(cleanQuery, 6);
+
+        let articles: RawArticle[] = [];
+        let channel = "Live Multi-Source Open Feeds (Bing RSS / Google News)";
+
+        // 1. DIRECT-FIRST INGESTION: Check registered canonical direct sources for this topic
+        try {
+          const directSources = await postgresStore.getDirectSourcesForTopic(topic);
+          const activeSources = directSources.filter((s) => s.status === "active");
+
+          if (activeSources.length > 0) {
+            const directArticles: RawArticle[] = [];
+            for (const src of activeSources) {
+              const crawlRes = await DirectContentCrawler.crawl(src, 3);
+              if (crawlRes.articles.length > 0) {
+                directArticles.push(...crawlRes.articles);
+                // Update source freshness
+                postgresStore.updateDirectSourceStatus(src.id, {
+                  lastCrawledAt: new Date().toISOString(),
+                  lastSuccessfulContentAt: new Date().toISOString(),
+                  etag: crawlRes.etag,
+                  lastModified: crawlRes.lastModified,
+                  consecutiveFailures: 0,
+                }).catch(() => {});
+              } else if (crawlRes.errorMessage) {
+                postgresStore.updateDirectSourceStatus(src.id, {
+                  lastCrawledAt: new Date().toISOString(),
+                  consecutiveFailures: (src.consecutive_failures || 0) + 1,
+                  status: (src.consecutive_failures || 0) >= 2 ? "failing" : "active",
+                }).catch(() => {});
+              }
+            }
+
+            if (directArticles.length >= 2) {
+              articles = directArticles.slice(0, 6);
+              channel = `Direct Canonical Sources (${activeSources.map((s) => s.publisher_name).join(", ")})`;
+            }
+          } else {
+            // Trigger background scout to discover and register direct sources for this topic
+            DirectSourceScoutAgent.scoutForTopic(topic).catch((err) =>
+              console.warn(`Background Scout error for "${topic}":`, err)
+            );
+          }
+        } catch (err) {
+          console.warn(`Direct source check error for "${topic}":`, err);
+        }
+
+        // 2. JUDICIOUS FALLBACK: If direct sources yielded insufficient items, query live search engine
+        if (articles.length < 2) {
+          const searchArticles = await FreeNewsFetcher.searchNews(cleanQuery, 6);
+          if (searchArticles.length > 0) {
+            // Merge direct and search results
+            const seenUrls = new Set(articles.map((a) => a.source_url));
+            for (const a of searchArticles) {
+              if (!seenUrls.has(a.source_url)) {
+                seenUrls.add(a.source_url);
+                articles.push(a);
+              }
+            }
+          }
+        }
 
         if (articles.length === 0) {
           throw new Error(`Zero articles found for ${topic}`);
@@ -40,7 +102,7 @@ export class NewsCollector {
           node_name: "node_a_epistemology",
           input_summary: {
             topic,
-            ingestion_channel: "Live Multi-Source Open Feeds (Google News RSS)",
+            ingestion_channel: channel,
             articles_requested: 6,
           },
           output_summary: {
@@ -53,9 +115,7 @@ export class NewsCollector {
             },
             headlines: articles.map((a: RawArticle) => a.title),
           },
-          reasoning_rationale: `Free News Ingestion Engine pulled ${articles.length} live articles for "${topic}" across ${
-            new Set(articles.map((a: RawArticle) => a.source_name)).size
-          } distinct publications. Ready for Epistemology delta analysis.`,
+          reasoning_rationale: `Ingestion Engine pulled ${articles.length} live articles for "${topic}" via ${channel}. Ready for Epistemology delta analysis.`,
           latency_ms: latency,
           llm_tokens_used: 0,
           metadata: {
@@ -70,6 +130,7 @@ export class NewsCollector {
           topic,
           articles,
           source_perspectives: sources,
+          ingestion_channel: channel,
         };
       })
     );
