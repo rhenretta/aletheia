@@ -231,6 +231,68 @@ export default function AletheiaHome() {
     } catch {}
   };
 
+  const renderBoldSegments = (text: string, keyPrefix: string): React.ReactNode => {
+    const boldRegex = /\*\*([^*]+)\*\*/g;
+    const subParts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let bMatch: RegExpExecArray | null;
+
+    while ((bMatch = boldRegex.exec(text)) !== null) {
+      if (bMatch.index > lastIndex) {
+        subParts.push(text.substring(lastIndex, bMatch.index));
+      }
+      subParts.push(
+        <strong key={`${keyPrefix}-b-${bMatch.index}`} className="font-semibold text-white">
+          {bMatch[1]}
+        </strong>
+      );
+      lastIndex = boldRegex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+      subParts.push(text.substring(lastIndex));
+    }
+
+    return <React.Fragment key={keyPrefix}>{subParts}</React.Fragment>;
+  };
+
+  const renderFormattedMessageContent = (content: string): React.ReactNode => {
+    if (!content) return null;
+
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIdx = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = linkRegex.exec(content)) !== null) {
+      if (match.index > lastIdx) {
+        parts.push(renderBoldSegments(content.substring(lastIdx, match.index), `txt-${lastIdx}`));
+      }
+      const label = match[1];
+      const url = match[2];
+      parts.push(
+        <a
+          key={`link-${match.index}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-cyan-400 hover:text-cyan-200 underline underline-offset-2 font-medium inline-flex items-center gap-0.5 transition-colors mx-0.5 bg-cyan-950/50 hover:bg-cyan-900/70 px-1.5 py-0.5 rounded border border-cyan-500/30"
+          title={`Visit original source: ${url}`}
+        >
+          <span>{label}</span>
+          <ExternalLink className="w-2.5 h-2.5 opacity-80 inline ml-0.5" />
+        </a>
+      );
+      lastIdx = linkRegex.lastIndex;
+    }
+
+    if (lastIdx < content.length) {
+      parts.push(renderBoldSegments(content.substring(lastIdx), `txt-${lastIdx}`));
+    }
+
+    return parts;
+  };
+
   const defaultWelcomeMessage: ChatMessage = {
     id: "welcome-msg",
     role: "assistant",
@@ -900,7 +962,7 @@ export default function AletheiaHome() {
                           tool_name: data.tool_name,
                           query: data.query,
                           results_summary: data.summary || "Retrieved live sources",
-                          items_retrieved: data.sources?.length || 5,
+                          items_retrieved: Array.isArray(data.sources) ? data.sources.length : (data.items_retrieved ?? 0),
                           sources: data.sources || [],
                         },
                       ],
@@ -2764,13 +2826,13 @@ export default function AletheiaHome() {
                                   className="p-2.5 rounded-xl bg-cyan-950/70 border border-cyan-500/40 text-[10px] font-mono text-cyan-300 space-y-2 shadow-md shadow-black/20"
                                 >
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${tool.items_retrieved > 0 ? "bg-emerald-400" : "bg-cyan-400 animate-ping"}`} />
+                                    <span className={`w-1.5 h-1.5 rounded-full ${tool.items_retrieved > 0 ? "bg-emerald-400" : (tool.results_summary && !tool.results_summary.includes("Searching") ? "bg-slate-500" : "bg-cyan-400 animate-ping")}`} />
                                     <span className="font-bold">
                                       {tool.tool_name === "search_internet" ? "🌐 Live Web Wire Search:" : "🧠 Local Knowledge Lookup:"}
                                     </span>
                                     <span className="text-slate-300 truncate max-w-[200px]" title={tool.query}>"{tool.query}"</span>
-                                    <span className={`font-bold ml-auto ${tool.items_retrieved > 0 ? "text-emerald-400" : "text-cyan-400 animate-pulse"}`}>
-                                      {tool.items_retrieved > 0 ? `(${tool.items_retrieved} sources)` : "Searching live..."}
+                                    <span className={`font-bold ml-auto ${tool.items_retrieved > 0 ? "text-emerald-400" : (tool.results_summary && !tool.results_summary.includes("Searching") ? "text-slate-400" : "text-cyan-400 animate-pulse")}`}>
+                                      {tool.items_retrieved > 0 ? `(${tool.items_retrieved} sources)` : (tool.results_summary && !tool.results_summary.includes("Searching") ? "(0 sources found)" : "Searching live...")}
                                     </span>
                                   </div>
 
@@ -2813,7 +2875,9 @@ export default function AletheiaHome() {
                             </div>
                           )}
                           <div className="p-3.5 rounded-2xl text-xs sm:text-sm leading-relaxed bg-slate-900/90 text-slate-200 border border-white/10 rounded-tl-none whitespace-pre-wrap">
-                            {msg.content || (
+                            {msg.content ? (
+                              renderFormattedMessageContent(msg.content)
+                            ) : (
                               <span className="text-cyan-300 font-mono text-xs flex items-center gap-2 animate-pulse py-1">
                                 <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                                 <span>Searching wire & synthesizing response...</span>
@@ -2855,7 +2919,7 @@ export default function AletheiaHome() {
                               Re: {msg.attached_story.headline}
                             </div>
                           )}
-                          {msg.content}
+                          {renderFormattedMessageContent(msg.content)}
                         </div>
                       )}
                       {msg.role === "user" && (

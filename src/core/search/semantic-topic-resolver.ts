@@ -49,7 +49,7 @@ export class SemanticTopicResolver {
 
     // If no LLM configured or empty history, use semantic graph heuristics
     if (!deepseekProvider.isConfigured() || (lastUserMessage.trim().length === 0 && chatHistory.length === 0)) {
-      return this.heuristicFallbackResolution(unifiedNode, lastUserMessage, attachedStory);
+      return this.heuristicFallbackResolution(unifiedNode, lastUserMessage, attachedStory, chatHistory);
     }
 
     try {
@@ -146,34 +146,21 @@ ${storyInfo}`;
       const cleanJson = result.text.replace(/```json\n?|\n?```/g, "").trim();
       const parsed = JSON.parse(cleanJson);
 
-      const selectedTopics: SelectedTopicContext[] = (parsed.selected_topics || []).map((st: any) => {
-        const canonical = existingTopics[st.topic_name];
-        return {
-          topic_name: st.topic_name,
-          relevance_score: typeof st.relevance_score === "number" ? st.relevance_score : 0.85,
-          relevance_rationale: st.relevance_rationale || "Direct semantic relevance to active discussion.",
-          why_they_care: canonical?.why_they_care || "Evolving interest in this domain.",
-          calibrated_depth: canonical?.technical_depth || parsed.calibrated_overall_depth || "practitioner",
-          curiosity_vectors: canonical?.curiosity_vectors || [],
-          graph_connection_type: st.graph_connection_type || "direct_match",
-          connecting_node: st.connecting_node || undefined,
-        };
-      });
-
-      // Fallback if model returned empty selected topics: pick highest weight canonical topic
-      if (selectedTopics.length === 0 && Object.keys(existingTopics).length > 0) {
-        const topTopicName = Object.entries(existingTopics).sort(([, a], [, b]) => b.weight - a.weight)[0][0];
-        const canonical = existingTopics[topTopicName];
-        selectedTopics.push({
-          topic_name: topTopicName,
-          relevance_score: 0.7,
-          relevance_rationale: "Default top affinity baseline topic in knowledge graph.",
-          why_they_care: canonical.why_they_care,
-          calibrated_depth: canonical.technical_depth,
-          curiosity_vectors: canonical.curiosity_vectors || [],
-          graph_connection_type: "direct_match",
+      const selectedTopics: SelectedTopicContext[] = (parsed.selected_topics || [])
+        .filter((st: any) => st.topic_name && existingTopics[st.topic_name] && (typeof st.relevance_score !== "number" || st.relevance_score >= 0.50))
+        .map((st: any) => {
+          const canonical = existingTopics[st.topic_name];
+          return {
+            topic_name: st.topic_name,
+            relevance_score: typeof st.relevance_score === "number" ? st.relevance_score : 0.85,
+            relevance_rationale: st.relevance_rationale || "Direct semantic relevance to active discussion.",
+            why_they_care: canonical?.why_they_care || "Evolving interest in this domain.",
+            calibrated_depth: canonical?.technical_depth || parsed.calibrated_overall_depth || "practitioner",
+            curiosity_vectors: canonical?.curiosity_vectors || [],
+            graph_connection_type: st.graph_connection_type || "direct_match",
+            connecting_node: st.connecting_node || undefined,
+          };
         });
-      }
 
       return {
         identified_discussion_subject: parsed.identified_discussion_subject || "General Inquiry",
@@ -187,7 +174,7 @@ ${storyInfo}`;
       };
     } catch (err) {
       console.warn("SemanticTopicResolver LLM error, falling back to heuristic graph resolution:", err);
-      return this.heuristicFallbackResolution(unifiedNode, lastUserMessage, attachedStory);
+      return this.heuristicFallbackResolution(unifiedNode, lastUserMessage, attachedStory, chatHistory);
     }
   }
 
@@ -197,10 +184,12 @@ ${storyInfo}`;
   private static heuristicFallbackResolution(
     unifiedNode: UnifiedTopicNode,
     lastUserMessage: string = "",
-    attachedStory?: AttachedStoryContext
+    attachedStory?: AttachedStoryContext,
+    chatHistory: Array<{ role: string; content: string }> = []
   ): SemanticTopicResolutionResult {
     const existingTopics = unifiedNode.topics || {};
-    const combinedText = `${lastUserMessage} ${attachedStory?.headline || ""} ${attachedStory?.topic || ""}`.toLowerCase();
+    const historyText = chatHistory.map((m) => m.content).join(" ");
+    const combinedText = `${lastUserMessage} ${historyText} ${attachedStory?.headline || ""} ${attachedStory?.topic || ""}`.toLowerCase();
 
     const selectedTopics: SelectedTopicContext[] = [];
 
@@ -208,15 +197,13 @@ ${storyInfo}`;
       const nameMatch = combinedText.includes(topicName.toLowerCase());
       const vectorMatch = (meta.curiosity_vectors || []).some((v) => combinedText.includes(v.toLowerCase()));
 
-      if (nameMatch || vectorMatch || meta.weight >= 0.8) {
+      if (nameMatch || vectorMatch) {
         selectedTopics.push({
           topic_name: topicName,
-          relevance_score: nameMatch ? 0.95 : vectorMatch ? 0.85 : meta.weight * 0.7,
+          relevance_score: nameMatch ? 0.95 : 0.85,
           relevance_rationale: nameMatch
             ? "Exact topic match in text."
-            : vectorMatch
-            ? "Curiosity vector semantic overlap."
-            : "High baseline affinity weight.",
+            : "Curiosity vector semantic overlap.",
           why_they_care: meta.why_they_care,
           calibrated_depth: meta.technical_depth,
           curiosity_vectors: meta.curiosity_vectors || [],

@@ -13,17 +13,19 @@ export class FreeNewsFetcher {
 
     let text = input.replace(/<!\[CDATA\[(.*?)\]\]>/gs, "$1");
 
-    // Decode HTML entities (run twice to catch double-encoded entities like &amp;lt;)
+    // Decode HTML entities (run twice to catch double-encoded entities)
     for (let i = 0; i < 2; i++) {
       text = text
         .replace(/&lt;/gi, "<")
         .replace(/&gt;/gi, ">")
         .replace(/&quot;/gi, '"')
         .replace(/&#39;/gi, "'")
+        .replace(/&#x27;/gi, "'")
         .replace(/&apos;/gi, "'")
         .replace(/&amp;/gi, "&")
         .replace(/&nbsp;/gi, " ")
-        .replace(/&#\d+;/g, " ");
+        .replace(/&#x([0-9a-fA-F]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)));
     }
 
     // Strip all HTML tags like <a ...>, <font ...>, <div>, etc.
@@ -42,7 +44,9 @@ export class FreeNewsFetcher {
   }
 
   /**
-   * Fetches real live news articles for a given topic across multiple publishers
+   * Fetches real live news articles for a given topic across multiple publishers.
+   * Leverages LiveSearchEngine for substantive descriptive snippets and Google News RSS for wire coverage.
+   * Contains zero hardcoded word-stripping or stop-word heuristics.
    */
   public static async searchNews(topic: string, maxArticles: number = 8): Promise<RawArticle[]> {
     if (!topic || topic.trim().length === 0) {
@@ -54,30 +58,20 @@ export class FreeNewsFetcher {
       .replace(/\s+/g, " ")
       .trim();
 
-    // 1. Try initial query
-    let articles = await this.fetchRssForQuery(cleanTopic);
-
-    // 2. If 0 articles found, try relaxed / simplified keyword query
-    if (articles.length === 0) {
-      const stopWords = new Set([
-        "what", "is", "going", "on", "with", "how", "has", "the", "in", "last",
-        "month", "why", "where", "when", "about", "from", "and", "or", "for",
-        "they", "them", "their", "youd", "think", "wouldnt", "be", "able",
-        "to", "hold", "off", "much", "longer", "right", "now", "it"
-      ]);
-
-      const substantiveTerms = cleanTopic
-        .split(/\s+/)
-        .filter((w) => w.length > 2 && !stopWords.has(w.toLowerCase()))
-        .slice(0, 3)
-        .join(" ");
-
-      if (substantiveTerms && substantiveTerms !== cleanTopic) {
-        articles = await this.fetchRssForQuery(substantiveTerms);
+    // 1. First priority: LiveSearchEngine for rich empirical snippets
+    try {
+      const { LiveSearchEngine } = await import("./live-search-engine");
+      const liveArticles = await LiveSearchEngine.search(cleanTopic, maxArticles);
+      if (liveArticles && liveArticles.length > 0) {
+        return liveArticles.slice(0, maxArticles);
       }
+    } catch (err) {
+      console.warn(`FreeNewsFetcher: LiveSearchEngine fallback to RSS for "${cleanTopic}":`, err);
     }
 
-    return articles.slice(0, maxArticles);
+    // 2. Direct RSS feed search for the query without heuristic string mangling
+    const rssArticles = await this.fetchRssForQuery(cleanTopic);
+    return rssArticles.slice(0, maxArticles);
   }
 
   private static async fetchRssForQuery(query: string): Promise<RawArticle[]> {

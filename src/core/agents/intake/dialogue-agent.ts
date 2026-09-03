@@ -8,6 +8,7 @@ import {
   AgenticContextFlowStep,
   GeneratedMessageContext,
   EventSourceArticle,
+  RawArticle,
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
@@ -268,12 +269,23 @@ REAL-TIME TEMPORAL & SPATIAL GROUNDING (CRITICAL):
 - USER REGION / LOCATION: ${locationStr}
 - REAL-WORLD TIMESTAMP: ${clientContext?.clientTime || now.toISOString()}
 
-CHRONOLOGICAL INTEGRITY & FACT-CHECKING RULES:
+CHRONOLOGICAL INTEGRITY, INLINE CITATIONS & FACT-CHECKING RULES:
 1. FACTUAL GROUNDING & ANTI-HALLUCINATION:
    - Check the publication date of any attached article against today's date (${currentDateStr}). If an article was published weeks or months ago, its expectations may be historical or superseded by subsequent real-world milestones.
    - Ground current project/mission status, metrics, and timelines in the retrieved real-time wire search results.
    - If an earlier turn in conversation history contained an inaccurate statement or hallucinated event, CORRECT IT FACTUALLY rather than accepting or compounding the mistake.
    - Explicitly clarify the timeline if an article's claim reflects an older phase compared to the current real-world status as of ${currentDateStr}.
+
+2. INLINE CITATION MANDATE (CRITICAL):
+   - EVERY factual statement, milestone claim, status update, or hardware expectation MUST include an inline markdown hyperlink to the specific original article reporting it: [Source Name](URL).
+   - Only use real URLs provided in the live search observations or attached story. NEVER invent URLs.
+
+3. GRANULAR CLAIM DECOMPOSITION & ZERO EXTRAPOLATION:
+   - When an inquiry asks about multiple entities, claims, or milestones (e.g. "both a booster catch and a ship catch"):
+     * Verify each claim independently against the retrieved search passages.
+     * If search passages confirm Claim A, cite the source [Source Name](URL).
+     * If search passages make NO mention of Claim B (or indicate it is uncertain/delayed), you MUST explicitly state that there is no verified evidence or reporting for Claim B.
+     * You are STRICTLY FORBIDDEN from guessing, extrapolating, or assuming that an unmentioned entity or milestone is taking place based on past mission precedent. State the absence of verified evidence factually.
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING: Use known user interests and knowledge graph anchors to SUBTLY SHAPE the conversation. Never echo or narrate profile traits ("As someone who..."). Never end with formulaic questions.
@@ -392,52 +404,122 @@ Output strict JSON:
       }
     }
 
-    // If the model autonomously decided it needs external live wire data:
-    if (toolDecision?.tool_call?.tool_name === "search_internet" && toolDecision.tool_call.query) {
-      const toolQuery = String(toolDecision.tool_call.query).trim();
-      yield { type: "tool_start", tool_name: "search_internet", query: toolQuery };
+    // Agentic Tool Loop: Evaluate information sufficiency, execute tools, observe outputs, and optionally refine queries (max 2 iterations)
+    let totalItemsFound = 0;
+    const MAX_TOOL_TURNS = 2;
+    let currentQuery = toolDecision?.tool_call?.query ? String(toolDecision.tool_call.query).trim() : null;
 
+    for (let turn = 0; turn < MAX_TOOL_TURNS && currentQuery; turn++) {
+      yield { type: "tool_start", tool_name: "search_internet", query: currentQuery };
+
+      let liveArticles: RawArticle[] = [];
       try {
-        const liveArticles = await FreeNewsFetcher.searchNews(toolQuery, 5);
-        const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
-          name: a.source_name || "News Wire",
-          title: a.title,
-          url: a.source_url,
-          bias: a.author_bias_rating || "center",
-          raw_text: a.raw_text,
-          published_at: a.published_at,
-          highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
-        }));
-
-        executedTools.push({
-          tool_name: "search_internet",
-          query: toolQuery,
-          results_summary: `Retrieved ${liveArticles.length} live sources.`,
-          items_retrieved: liveArticles.length,
-          sources: eventSources,
-        });
-
-        yield {
-          type: "tool_complete",
-          tool_name: "search_internet",
-          query: toolQuery,
-          summary: `Retrieved ${liveArticles.length} live sources.`,
-          sources: eventSources,
-        };
-
-        if (liveArticles.length > 0) {
-          finalPrompt += `\n\n[REAL-TIME LIVE WIRE SEARCH RESULTS FOR "${toolQuery}" (FETCHED AT ${now.toISOString()})]:
-${liveArticles.map((a, i) => `${i + 1}. "${a.title}" (${a.source_name}, Published: ${a.published_at || 'Recent'})
-Summary: ${a.raw_text.slice(0, 300)}
-URL: ${a.source_url}`).join("\n\n")}
-
-CRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
-- Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
-- Ground your response EXCLUSIVELY and FACTUALLY in the live search results above.
-- If the user is asking about an attached article's claim, explicitly compare that claim with the live search results above and clarify whether it reflects historical plans or the latest current status.`;
-        }
+        liveArticles = await FreeNewsFetcher.searchNews(currentQuery, 5);
       } catch (err) {
-        console.warn("Live search execution error:", err);
+        console.warn(`Agentic search error for "${currentQuery}":`, err);
+      }
+
+      totalItemsFound += liveArticles.length;
+
+      const eventSources: EventSourceArticle[] = liveArticles.map((a) => ({
+        name: a.source_name || "News Wire",
+        title: a.title,
+        url: a.source_url,
+        bias: a.author_bias_rating || "center",
+        raw_text: a.raw_text,
+        published_at: a.published_at,
+        highlighted_passages: a.raw_text ? [a.raw_text.slice(0, 200)] : [],
+      }));
+
+      executedTools.push({
+        tool_name: "search_internet",
+        query: currentQuery,
+        results_summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
+        items_retrieved: liveArticles.length,
+        sources: eventSources,
+      });
+
+      yield {
+        type: "tool_complete",
+        tool_name: "search_internet",
+        query: currentQuery,
+        summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
+        sources: eventSources,
+      };
+
+      if (liveArticles.length > 0) {
+        finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}" (${liveArticles.length} SOURCES)]:
+${liveArticles.map((a, i) => `Source ${i + 1}: [${a.source_name}](${a.source_url})
+Title: "${a.title}" (Published: ${a.published_at || 'Recent'})
+Passage: ${a.raw_text}`).join("\n\n")}`;
+      } else {
+        finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}"]:
+Zero sources found. No verified global news or reporting matched this exact query.`;
+      }
+
+      // If turn 0 yielded 0 results, give the LLM one opportunity to agentically refine its query
+      if (turn === 0 && liveArticles.length === 0 && deepseekProvider.isConfigured()) {
+        try {
+          const refinementPrompt = `${finalPrompt}
+
+TOOL OBSERVATION ANALYSIS:
+Your previous search query "${currentQuery}" returned 0 results from live global wire search.
+Evaluate whether you need to try an alternative query formulation (e.g. focusing on primary entities/subject without modifier phrases), or proceed to synthesize your response.
+
+Output strict JSON:
+- To refine search with an alternative query:
+{
+  "decision": "refine_search",
+  "reasoning": "Why this alternative query is more effective",
+  "tool_call": {
+    "tool_name": "search_internet",
+    "query": "alternative search query"
+  }
+}
+- To proceed to final response:
+{
+  "decision": "synthesize",
+  "reasoning": "Information status evaluated"
+}`;
+
+          const refineRes = await deepseekProvider.generateCompletion(refinementPrompt, {
+            systemPrompt,
+            temperature: 0.1,
+            maxTokens: 300,
+          });
+
+          const parsedRefine = JSON.parse(refineRes.text.replace(/```json\n?|\n?```/g, "").trim());
+          if (parsedRefine?.tool_call?.query && String(parsedRefine.tool_call.query).trim() !== currentQuery) {
+            currentQuery = String(parsedRefine.tool_call.query).trim();
+            continue;
+          }
+        } catch (e) {
+          console.warn("Tool refinement evaluation error:", e);
+        }
+      }
+
+      break;
+    }
+
+    // Epistemic grounding directives based on overall tool execution findings
+    if (executedTools.length > 0) {
+      if (totalItemsFound === 0) {
+        finalPrompt += `\n\nCRITICAL REAL-TIME GROUNDING INSTRUCTIONS:
+- Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
+- EMPIRICAL VERIFICATION RESULT: Live wire search across global reporting returned NO verified announcements, official documentation, or confirmed reports supporting the inquired claims as of ${currentDateStr}.
+- You MUST explicitly state that this claim is unverified, unconfirmed, or speculative.
+- Do NOT assume, extrapolate, or assert planned mission parameters or status from static memory. If there is no verified public confirmation, clearly tell the user so.`;
+      } else {
+        finalPrompt += `\n\nCRITICAL REAL-TIME GROUNDING & INLINE CITATION MANDATE:
+- Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
+- Ground your response EXCLUSIVELY and FACTUALLY in the empirical search passages above.
+- MANDATORY INLINE CITATIONS: Every factual claim, status update, milestone, or timeline assertion MUST include an inline markdown link to the specific original article reporting it, e.g. [Source Name](URL).
+- GRANULAR CLAIM DECOMPOSITION: If the inquiry involves multiple components (e.g. both X and Y):
+  * Check each component independently against the passages above.
+  * For any component supported by a passage: Cite the exact source link [Source Name](URL).
+  * For any component NOT explicitly confirmed in the passages: You MUST explicitly state that there is NO verified reporting or documentation confirming it.
+  * ABSOLUTE PROHIBITION ON EXTRAPOLATION: NEVER assume an unmentioned component is happening based on past precedent. If articles only report a ship catch, DO NOT assert that a booster catch is happening unless a cited source explicitly states it.
+- Never invent URLs. Only use URLs provided in the live search observation passages above.`;
       }
     }
 

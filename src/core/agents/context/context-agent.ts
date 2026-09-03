@@ -62,6 +62,45 @@ export class ContextAgent {
 
     const calibratedDepth: TechnicalDepth = semanticResult.calibrated_overall_depth || "practitioner";
 
+    // Topic-scoped safeguard filtering: retain universal safeguards, exclude inactive topic-specific baggage
+    const activeTopicNames = new Set(
+      semanticResult.selected_topics.map((t) => t.topic_name.toLowerCase())
+    );
+    const activeSubject = (semanticResult.identified_discussion_subject || "").toLowerCase();
+    const userMessageLower = lastUserMessage.toLowerCase();
+
+    // Identify registered topics not active in the current turn
+    const inactiveTopics = Object.keys(unifiedNode.topics || {}).filter(
+      (t) =>
+        !activeTopicNames.has(t.toLowerCase()) &&
+        !activeSubject.includes(t.toLowerCase()) &&
+        !userMessageLower.includes(t.toLowerCase())
+    );
+
+    const filterSafeguards = (items: string[]): string[] => {
+      return items.filter((item) => {
+        const itemLower = item.toLowerCase();
+        // Check if this item is explicitly anchored to an inactive topic
+        const isAnchoredToInactive = inactiveTopics.some((inactive) => {
+          const inactiveWords = inactive.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+          return inactiveWords.length > 0 && inactiveWords.every((w) => itemLower.includes(w));
+        });
+        return !isAnchoredToInactive;
+      });
+    };
+
+    const activeSensitivities = filterSafeguards(psych.sensitivities || []);
+    const activeBoundaries = filterSafeguards(psych.boundaries || []);
+
+    // Calibrate emotional trajectory: if discussion has pivoted to a novel domain, avoid bleeding old topic posture
+    const isNovelTopic = semanticResult.selected_topics.length === 0;
+    const emotionalTrajectory = isNovelTopic
+      ? psych.emotional_trajectory &&
+        !inactiveTopics.some((t) => psych.emotional_trajectory!.toLowerCase().includes(t.toLowerCase()))
+        ? psych.emotional_trajectory
+        : "Discerning and analytical, seeking factual substantiation"
+      : psych.emotional_trajectory;
+
     // 2. Build topic motivations list from AI-selected topics and active graph connections
     const whyTheyCareLines = semanticResult.selected_topics.map((t) => {
       const connStr =
@@ -175,7 +214,7 @@ export class ContextAgent {
    - Semantic Rationale: ${semanticResult.semantic_reasoning_summary}
 
 2. EMOTIONAL TRAJECTORY & PEER TONE:
-   - Current user psychological state: "${psych.emotional_trajectory}".
+   - Current user psychological state: "${emotionalTrajectory}".
    - Communication tone: "${psych.communication_style}".
 
 3. INTELLECTUAL CALIBRATION & DEPTH:
@@ -183,12 +222,12 @@ export class ContextAgent {
    - Frame explanations directly at this level without patronizing or over-simplifying.
 
 4. ACTIVATED GRAPH TOPICS & MOTIVATIONS (WHY THEY CARE):
-${whyTheyCareLines.length > 0 ? whyTheyCareLines.join("\n") : "   * General inquiry without pre-assigned domain anchors."}
+${whyTheyCareLines.length > 0 ? whyTheyCareLines.join("\n") : "   * Novel domain without pre-assigned knowledge graph anchors."}
 ${intersectionLines.length > 0 ? `\nACTIVE GRAPH INTERSECTIONS:\n${intersectionLines.join("\n")}` : ""}
 
 5. ACTIVE PSYCHOLOGICAL SAFEGUARDS & BOUNDARIES:
-   - SENSITIVITIES: ${(psych.sensitivities || []).join("; ") || "None specified"}
-   - HARD BOUNDARIES: ${(psych.boundaries || []).join("; ") || "Never speak out of turn; strict factual substantiation; zero artificial condescension"}
+   - SENSITIVITIES: ${activeSensitivities.join("; ") || "None specified"}
+   - HARD BOUNDARIES: ${activeBoundaries.join("; ") || "Never speak out of turn; strict factual substantiation; zero artificial condescension"}
 
 6. INVISIBLE STEERING (CRITICAL NEGATIVE CONSTRAINTS):
    - Let known user values subtly direct your answers rather than announcing or narrating connections.
@@ -200,7 +239,7 @@ ${intersectionLines.length > 0 ? `\nACTIVE GRAPH INTERSECTIONS:\n${intersectionL
 ${relevantStoriesSection}
 `.trim();
 
-    const pedagogicalGuidance = `Frame responses with ${calibratedDepth} depth on '${semanticResult.identified_discussion_subject}', respecting sensitivities: [${(psych.sensitivities || []).join(", ")}].`;
+    const pedagogicalGuidance = `Frame responses with ${calibratedDepth} depth on '${semanticResult.identified_discussion_subject}', respecting sensitivities: [${activeSensitivities.join(", ")}].`;
 
     const latency = Date.now() - startTime;
 
@@ -219,12 +258,12 @@ ${relevantStoriesSection}
       },
       output_summary: {
         identified_discussion_subject: semanticResult.identified_discussion_subject,
-        emotional_trajectory: psych.emotional_trajectory,
+        emotional_trajectory: emotionalTrajectory,
         calibrated_depth: calibratedDepth,
         selected_topics_count: semanticResult.selected_topics.length,
         selected_topics: semanticResult.selected_topics.map((t) => t.topic_name),
         retrieved_stories_count: retrievedStories.length,
-        safeguards_active: (psych.sensitivities || []).length + (psych.boundaries || []).length,
+        safeguards_active: activeSensitivities.length + activeBoundaries.length,
       },
       reasoning_rationale: semanticResult.semantic_reasoning_summary,
       latency_ms: latency,
@@ -237,8 +276,8 @@ ${relevantStoriesSection}
 
     return {
       empath_instructions: empathInstructions,
-      active_sensitivities: psych.sensitivities || [],
-      active_boundaries: psych.boundaries || [],
+      active_sensitivities: activeSensitivities,
+      active_boundaries: activeBoundaries,
       calibrated_depth: calibratedDepth,
       why_they_care_context: whyTheyCareLines,
       pedagogical_guidance: pedagogicalGuidance,
