@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   Sparkles,
   ArrowRight,
@@ -19,6 +20,11 @@ import {
   Lock,
   CreditCard,
   Check,
+  Terminal,
+  Briefcase,
+  BookOpen,
+  HeartPulse,
+  Scale,
 } from "lucide-react";
 import {
   trackLandingCta,
@@ -92,6 +98,14 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
         </div>
 
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300">
+          <a
+            href="#editions"
+            onClick={() => trackLandingCta("Nav Editions", "header")}
+            className="text-cyan-300 font-semibold hover:text-white transition flex items-center gap-1.5"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <span>5 Editions</span>
+          </a>
           <a
             href="#how-it-works"
             onClick={() => trackLandingCta("Nav How It Works", "header")}
@@ -291,6 +305,199 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </button>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* Specialized Editions Showcase */}
+        <section id="editions" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto border-t border-white/5">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Tailored for Your Values</span>
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
+              5 Specialized Editions Built for Different Minds
+            </h2>
+            <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto mt-2">
+              Explore how Aletheia shapes intelligence specifically for your profession, cognitive style, and worldview.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+            {/* 1. Tech */}
+            <Link
+              href="/tech"
+              className="group rounded-2xl p-5 bg-slate-900/60 border border-cyan-500/30 hover:border-cyan-400/80 transition-all duration-300 flex flex-col justify-between space-y-4 hover:shadow-xl hover:shadow-cyan-500/10"
+            >
+              <div className="space-y-3">
+                <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
+                  <img
+                    src="/images/landing/personas/tech-hero.jpg"
+                    alt="Engineers and AI Researchers Edition"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase text-cyan-400 font-bold flex items-center gap-1.5">
+                    <Terminal className="w-4 h-4" />
+                    Engineers & AI
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/40 font-mono">
+                    Zero PR Hype
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white group-hover:text-cyan-300 transition">
+                  Raw Signal & Architecture
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  ArXiv preprints, direct GitHub commit grounding, and technical telemetry stripped of corporate marketing buzzwords.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-cyan-300 group-hover:translate-x-1 transition">
+                <span>View Tech Edition</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+
+            {/* 2. Business */}
+            <Link
+              href="/business"
+              className="group rounded-2xl p-5 bg-slate-900/60 border border-amber-500/30 hover:border-amber-400/80 transition-all duration-300 flex flex-col justify-between space-y-4 hover:shadow-xl hover:shadow-amber-500/10"
+            >
+              <div className="space-y-3">
+                <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
+                  <img
+                    src="/images/landing/personas/business-hero.jpg"
+                    alt="Executives and Investors Edition"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase text-amber-400 font-bold flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4" />
+                    Executives & VCs
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-500/40 font-mono">
+                    Strategic Alpha
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white group-hover:text-amber-300 transition">
+                  90-Second Decision Dossiers
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Macroeconomic consequence modeling, regulatory risk quantification, and spoken audio synthesis that saves 250+ hours yearly.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300 group-hover:translate-x-1 transition">
+                <span>View Executive Edition</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+
+            {/* 3. Scholar */}
+            <Link
+              href="/scholar"
+              className="group rounded-2xl p-5 bg-slate-900/60 border border-violet-500/30 hover:border-violet-400/80 transition-all duration-300 flex flex-col justify-between space-y-4 hover:shadow-xl hover:shadow-violet-500/10"
+            >
+              <div className="space-y-3">
+                <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
+                  <img
+                    src="/images/landing/personas/scholar-hero.jpg"
+                    alt="Scholars and Academics Edition"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase text-violet-400 font-bold flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4" />
+                    Scholars & Thinkers
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-violet-950 text-violet-300 border border-violet-500/40 font-mono">
+                    Dialectic Rigor
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white group-hover:text-violet-300 transition">
+                  Archival Provenance Trees
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Multi-wire citation trees, Hegelian dialectic synthesis, and chronological story memory that defies the amnesiac 24-hour churn.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-300 group-hover:translate-x-1 transition">
+                <span>View Scholar Edition</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+
+            {/* 4. Wellness */}
+            <Link
+              href="/wellness"
+              className="group rounded-2xl p-5 bg-slate-900/60 border border-teal-500/30 hover:border-teal-400/80 transition-all duration-300 flex flex-col justify-between space-y-4 hover:shadow-xl hover:shadow-teal-500/10"
+            >
+              <div className="space-y-3">
+                <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
+                  <img
+                    src="/images/landing/personas/wellness-hero.jpg"
+                    alt="Mindful Readers Edition"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase text-teal-400 font-bold flex items-center gap-1.5">
+                    <HeartPulse className="w-4 h-4" />
+                    Mindful Readers
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-teal-950 text-teal-300 border border-teal-500/40 font-mono">
+                    Calm Sanctuary
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white group-hover:text-teal-300 transition">
+                  Doomscroll Detox Sanctuary
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Protect your nervous system with finite news cards, adjustable cognitive load, and zero adrenaline triggers.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-teal-300 group-hover:translate-x-1 transition">
+                <span>View Wellness Edition</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
+
+            {/* 5. Policy */}
+            <Link
+              href="/policy"
+              className="group rounded-2xl p-5 bg-slate-900/60 border border-orange-500/30 hover:border-orange-400/80 transition-all duration-300 flex flex-col justify-between space-y-4 hover:shadow-xl hover:shadow-orange-500/10"
+            >
+              <div className="space-y-3">
+                <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
+                  <img
+                    src="/images/landing/personas/policy-hero.jpg"
+                    alt="Watchdogs and Press Edition"
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono uppercase text-orange-400 font-bold flex items-center gap-1.5">
+                    <Scale className="w-4 h-4" />
+                    Watchdogs & Press
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-500/40 font-mono">
+                    Bias Audit
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white group-hover:text-orange-300 transition">
+                  Discrepancy & Radar Engine
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Cross-spectrum wire comparison, timeline flip-flop tracking, and unverified claim isolation for civic minds.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-300 group-hover:translate-x-1 transition">
+                <span>View Watchdog Edition</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
+            </Link>
           </div>
         </section>
 
@@ -783,7 +990,31 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-white/10 bg-slate-950 px-4 sm:px-8 py-8 text-center text-xs text-slate-400 space-y-3">
+      <footer className="relative z-10 border-t border-white/10 bg-slate-950 px-4 sm:px-8 py-10 text-center text-xs text-slate-400 space-y-6">
+        {/* Editions Links */}
+        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-4 sm:gap-8 pb-6 border-b border-white/5 text-[11px]">
+          <Link href="/tech" className="hover:text-cyan-400 transition flex items-center gap-1.5">
+            <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Tech & AI Edition</span>
+          </Link>
+          <Link href="/business" className="hover:text-amber-400 transition flex items-center gap-1.5">
+            <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+            <span>Executive & VC Edition</span>
+          </Link>
+          <Link href="/scholar" className="hover:text-violet-400 transition flex items-center gap-1.5">
+            <BookOpen className="w-3.5 h-3.5 text-violet-400" />
+            <span>Scholar & Academic Edition</span>
+          </Link>
+          <Link href="/wellness" className="hover:text-teal-400 transition flex items-center gap-1.5">
+            <HeartPulse className="w-3.5 h-3.5 text-teal-400" />
+            <span>Mindful Reading Edition</span>
+          </Link>
+          <Link href="/policy" className="hover:text-orange-400 transition flex items-center gap-1.5">
+            <Scale className="w-3.5 h-3.5 text-orange-400" />
+            <span>Watchdog & Press Edition</span>
+          </Link>
+        </div>
+
         <div className="flex items-center justify-center gap-2">
           <div className="w-5 h-5 rounded-md bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center font-bold text-[11px]">
             α
