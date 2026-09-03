@@ -25,6 +25,7 @@ import {
   BookOpen,
   HeartPulse,
   Scale,
+  LifeBuoy,
 } from "lucide-react";
 import {
   trackLandingCta,
@@ -1013,6 +1014,10 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
             <Scale className="w-3.5 h-3.5 text-orange-400" />
             <span>Watchdog & Press Edition</span>
           </Link>
+          <Link href="/support" className="hover:text-cyan-400 transition flex items-center gap-1.5">
+            <LifeBuoy className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Support & Help</span>
+          </Link>
         </div>
 
         <div className="flex items-center justify-center gap-2">
@@ -1025,8 +1030,12 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
         <p className="max-w-md mx-auto text-slate-400">
           Built to restore trust, clarity, and depth to human knowledge. Clean facts, zero clickbait, private by design.
         </p>
-        <div className="pt-2 text-[11px] text-slate-400">
-          © {new Date().getFullYear()} Aletheia. All rights reserved.
+        <div className="pt-2 flex items-center justify-center gap-3 text-[11px] text-slate-400">
+          <span>© {new Date().getFullYear()} Aletheia. All rights reserved.</span>
+          <span>•</span>
+          <Link href="/support" className="text-cyan-400 hover:text-cyan-300 transition">
+            Contact Support
+          </Link>
         </div>
       </footer>
     </div>

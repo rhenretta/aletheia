@@ -779,4 +779,46 @@ export interface UsageLimitStatus {
   reason?: string;
 }
 
+export type SupportCategory =
+  | "bug_report"
+  | "feature_request"
+  | "ai_feed_synthesis"
+  | "account_billing"
+  | "general_inquiry";
+
+export interface SupportTicketMetadata {
+  userId?: string;
+  userEmail?: string;
+  tier?: string;
+  url?: string;
+  userAgent?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  includeDiagnostics?: boolean;
+  [key: string]: any;
+}
+
+export interface SupportTicket {
+  id: string;
+  user_id?: string | null;
+  name: string;
+  email: string;
+  category: SupportCategory;
+  subject: string;
+  message: string;
+  metadata: SupportTicketMetadata;
+  status: "open" | "in_progress" | "resolved" | "closed";
+  created_at: string;
+}
+
+export interface SupportTicketPayload {
+  name: string;
+  email: string;
+  category: SupportCategory;
+  subject: string;
+  message: string;
+  metadata?: SupportTicketMetadata;
+}
+
+
 

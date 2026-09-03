@@ -15,6 +15,7 @@ import {
   UserUsageMetrics,
   UsageEvent,
   UsageLimitStatus,
+  SupportTicket,
 } from "../types/contracts";
 import { DataPersistenceStore } from "./persistence";
 import { SEED_DATA_STATE } from "./seed-state";
@@ -35,6 +36,7 @@ export class PostgresStore {
   private memoryTraces: AgentTraceLog[] = [];
   private memoryUsers: Map<string, AppUser> = new Map();
   private memoryUserUsage: Map<string, UserUsageMetrics> = new Map();
+  private memorySupportTickets: Map<string, SupportTicket> = new Map();
 
   private diskFilePath: string;
 
@@ -221,6 +223,9 @@ export class PostgresStore {
         if (parsed.userUsage) {
           for (const [k, v] of Object.entries(parsed.userUsage)) this.memoryUserUsage.set(k, v as any);
         }
+        if (parsed.supportTickets) {
+          for (const [k, v] of Object.entries(parsed.supportTickets)) this.memorySupportTickets.set(k, v as any);
+        }
       }
     } catch (err) {
       console.warn("PostgresStore: Could not load disk cache:", err);
@@ -237,6 +242,7 @@ export class PostgresStore {
         factCache: Object.fromEntries(this.memoryFactCache),
         users: Object.fromEntries(this.memoryUsers),
         userUsage: Object.fromEntries(this.memoryUserUsage),
+        supportTickets: Object.fromEntries(this.memorySupportTickets),
         lastUpdated: new Date().toISOString(),
       };
       const tmpPath = `${this.diskFilePath}.${process.pid}.${Date.now()}.tmp`;
@@ -1721,6 +1727,96 @@ export class PostgresStore {
     };
   }
 
+  public async saveSupportTicket(
+    ticketData: Omit<SupportTicket, "id" | "created_at" | "status"> & {
+      id?: string;
+      status?: "open" | "in_progress" | "resolved" | "closed";
+    }
+  ): Promise<SupportTicket> {
+    await this.ensureInitialized();
+    const id = ticketData.id || crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+
+    const ticket: SupportTicket = {
+      id,
+      user_id: ticketData.user_id || null,
+      name: ticketData.name,
+      email: ticketData.email,
+      category: ticketData.category,
+      subject: ticketData.subject,
+      message: ticketData.message,
+      metadata: ticketData.metadata || {},
+      status: ticketData.status || "open",
+      created_at: createdAt,
+    };
+
+    // Cache in memory
+    this.memorySupportTickets.set(id, ticket);
+    this.saveToDisk();
+
+    // Persist to PostgreSQL if connected
+    if (this.pool && this.isConnected) {
+      try {
+        await this.pool.query(
+          `INSERT INTO support_tickets (id, user_id, name, email, category, subject, message, metadata, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (id) DO UPDATE SET
+             status = EXCLUDED.status,
+             metadata = EXCLUDED.metadata`,
+          [
+            ticket.id,
+            ticket.user_id,
+            ticket.name,
+            ticket.email,
+            ticket.category,
+            ticket.subject,
+            ticket.message,
+            JSON.stringify(ticket.metadata),
+            ticket.status,
+            ticket.created_at,
+          ]
+        );
+      } catch (err) {
+        console.warn("PostgresStore: Could not persist support ticket to PostgreSQL, preserved in memory/disk:", err);
+      }
+    }
+
+    return ticket;
+  }
+
+  public async getSupportTickets(limit = 50): Promise<SupportTicket[]> {
+    await this.ensureInitialized();
+
+    if (this.pool && this.isConnected) {
+      try {
+        const res = await this.pool.query(
+          `SELECT id, user_id, name, email, category, subject, message, metadata, status, created_at
+           FROM support_tickets
+           ORDER BY created_at DESC
+           LIMIT $1`,
+          [limit]
+        );
+        return res.rows.map((row) => ({
+          id: row.id,
+          user_id: row.user_id,
+          name: row.name,
+          email: row.email,
+          category: row.category,
+          subject: row.subject,
+          message: row.message,
+          metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata || {},
+          status: row.status,
+          created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+        }));
+      } catch (err) {
+        console.warn("PostgresStore: Error querying support tickets from PostgreSQL, falling back to memory:", err);
+      }
+    }
+
+    return Array.from(this.memorySupportTickets.values())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit);
+  }
 }
 
 export const postgresStore = PostgresStore.getInstance();

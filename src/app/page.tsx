@@ -57,6 +57,7 @@ import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import UserManagerModal from "@/components/UserManagerModal";
 import SubscriptionModal from "@/components/SubscriptionModal";
+import SupportModal from "@/components/SupportModal";
 import ReadOnlyBanner from "@/components/ReadOnlyBanner";
 import UserMenu from "@/components/UserMenu";
 import LandingPage from "@/components/LandingPage";
@@ -117,6 +118,7 @@ export default function AletheiaHome() {
   const isEffectiveAdmin = isAdmin && !viewingAsUser;
 
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [userLimitStatus, setUserLimitStatus] = useState<UsageLimitStatus | null>(null);
   const [currentUserTier, setCurrentUserTier] = useState<UserTier>("free");
   const [currentUserData, setCurrentUserData] = useState<AppUser | null>(null);
@@ -1376,6 +1378,7 @@ export default function AletheiaHome() {
             tier={currentUserTier}
             limitStatus={userLimitStatus}
             onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+            onOpenSupportModal={() => setIsSupportModalOpen(true)}
             onOpenDevTools={() => setIsDevToolsOpen(!isDevToolsOpen)}
             isDevToolsOpen={isDevToolsOpen}
             selectedContext={selectedContext}
@@ -3432,6 +3435,14 @@ export default function AletheiaHome() {
         limitStatus={userLimitStatus}
         isAdmin={isEffectiveAdmin}
         onSuccess={fetchUserUsage}
+      />
+
+      {/* User Support / Feedback Modal */}
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+        session={session}
+        tier={currentUserTier}
       />
       </div>
     </div>

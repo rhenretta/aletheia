@@ -18,6 +18,8 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.1125.0",
+    "@aws-sdk/client-sns": "^3.1125.0",
     "@google/generative-ai": "^0.24.0",
     "@langchain/core": "^0.3.40",
     "@langchain/langgraph": "^0.2.45",

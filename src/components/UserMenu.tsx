@@ -16,6 +16,7 @@ import {
   EyeOff,
   Sparkles,
   CreditCard,
+  LifeBuoy,
 } from "lucide-react";
 import { ContextualSelection, AppUser, UserTier, UsageLimitStatus } from "@/core/types/contracts";
 import { trackSubscriptionFunnel, trackAuthAction, trackEvent } from "@/lib/analytics";
@@ -28,6 +29,7 @@ export interface UserMenuProps {
   tier?: UserTier;
   limitStatus?: UsageLimitStatus | null;
   onOpenSubscriptionModal?: () => void;
+  onOpenSupportModal?: () => void;
   onOpenDevTools: () => void;
   isDevToolsOpen: boolean;
   selectedContext: ContextualSelection | null;
@@ -48,6 +50,7 @@ export default function UserMenu({
   tier = "free",
   limitStatus,
   onOpenSubscriptionModal,
+  onOpenSupportModal,
   onOpenDevTools,
   isDevToolsOpen,
   selectedContext,
@@ -371,8 +374,38 @@ export default function UserMenu({
             </div>
           )}
 
-          {/* Quick Links */}
-          <div className="py-1.5">
+          {/* Quick Links & Support */}
+          <div className="py-1.5 space-y-0.5">
+            {/* Help & Support Form Modal */}
+            {onOpenSupportModal ? (
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenSupportModal();
+                }}
+                className="w-full px-3 py-2 rounded-xl text-xs font-mono text-slate-300 hover:bg-slate-900 hover:text-white flex items-center justify-between transition text-left"
+              >
+                <div className="flex items-center gap-2.5">
+                  <LifeBuoy className="w-4 h-4 text-cyan-400" />
+                  <span>Help & Support</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 font-mono">
+                  Feedback
+                </span>
+              </button>
+            ) : (
+              <a
+                href="/support"
+                onClick={() => setIsOpen(false)}
+                className="w-full px-3 py-2 rounded-xl text-xs font-mono text-slate-300 hover:bg-slate-900 hover:text-white flex items-center justify-between transition"
+              >
+                <div className="flex items-center gap-2.5">
+                  <LifeBuoy className="w-4 h-4 text-cyan-400" />
+                  <span>Help & Support</span>
+                </div>
+              </a>
+            )}
+
             <a
               href="https://ciclops.io"
               target="_blank"

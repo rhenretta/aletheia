@@ -159,5 +159,20 @@ ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_tokens_used BIGIN
 ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS period_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
 ALTER TABLE user_usage_metrics ADD COLUMN IF NOT EXISTS lifetime_cost_usd NUMERIC(8, 4) NOT NULL DEFAULT 0.0000;
 
+-- 10. Support Tickets Table
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(128),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    category VARCHAR(64) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(32) NOT NULL DEFAULT 'open',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
 
-
+CREATE INDEX IF NOT EXISTS idx_support_tickets_email ON support_tickets(email);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_category ON support_tickets(category);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets(created_at);
