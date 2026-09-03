@@ -14,7 +14,7 @@ export const metadata: Metadata = {
         url: "/images/landing/personas/tech-hero.jpg",
         width: 1280,
         height: 720,
-        alt: "Aletheia Tech Edition — Verified intelligence for builders",
+        alt: "Aletheia for Tech & AI — Verified intelligence for builders",
       },
     ],
   },

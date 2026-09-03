@@ -70,7 +70,7 @@ export default function TechLandingClient() {
         <section className="px-4 sm:px-6 lg:px-8 pt-12 sm:pt-20 pb-16 max-w-6xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono mb-6 shadow-sm shadow-cyan-500/10">
             <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-            <span>ALETHEIA // TECH & AI RESEARCH EDITION</span>
+            <span>ALETHEIA FOR DEVELOPERS & RESEARCHERS</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-[1.12]">

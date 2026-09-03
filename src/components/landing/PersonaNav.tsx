@@ -104,7 +104,7 @@ export default function PersonaNav({ currentPersona, accentColor = "cyan" }: Per
             className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-slate-200 transition"
           >
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span className="text-slate-400">Edition:</span>
+            <span className="text-slate-400">For:</span>
             <span className="font-semibold text-white">{activePersonaObj.title}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isPersonaMenuOpen ? "rotate-180" : ""}`} />
           </button>
@@ -112,7 +112,7 @@ export default function PersonaNav({ currentPersona, accentColor = "cyan" }: Per
           {isPersonaMenuOpen && (
             <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-slate-900 border border-white/15 p-2 shadow-2xl backdrop-blur-2xl z-50 space-y-1">
               <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold border-b border-white/5">
-                Switch Audience Lens
+                Tailored Perspectives
               </div>
               {PERSONAS.map((p) => {
                 const Icon = p.icon;
@@ -144,7 +144,7 @@ export default function PersonaNav({ currentPersona, accentColor = "cyan" }: Per
                   onClick={() => setIsPersonaMenuOpen(false)}
                   className="flex items-center justify-between px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/5 transition"
                 >
-                  <span>General Edition</span>
+                  <span>Platform Overview</span>
                   <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -222,7 +222,7 @@ export default function PersonaNav({ currentPersona, accentColor = "cyan" }: Per
       {isMobileMenuOpen && (
         <div className="absolute top-full left-0 right-0 bg-slate-950/95 border-b border-white/10 p-4 space-y-4 backdrop-blur-2xl md:hidden z-50">
           <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
-            All Audience Editions
+            Tailored Perspectives
           </div>
           <div className="grid grid-cols-1 gap-2">
             {PERSONAS.map((p) => {

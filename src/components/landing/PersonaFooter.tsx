@@ -7,7 +7,7 @@ import { Terminal, Briefcase, BookOpen, HeartPulse, Scale, ArrowRight } from "lu
 export default function PersonaFooter() {
   return (
     <footer className="relative z-10 border-t border-white/10 bg-slate-950 px-4 sm:px-8 py-12 text-xs text-slate-400 space-y-8">
-      {/* 5 Editions Directory */}
+      {/* Persona Perspectives Directory */}
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-6 border-b border-white/5 pb-10">
         <div>
           <Link href="/tech" className="flex items-center gap-1.5 text-slate-200 font-semibold mb-2 hover:text-cyan-400 transition">
@@ -71,7 +71,7 @@ export default function PersonaFooter() {
 
         <div className="flex items-center gap-6 text-[11px] text-slate-400">
           <Link href="/" className="hover:text-white transition">
-            Main Edition
+            Main Platform
           </Link>
           <Link href="/#pricing" className="hover:text-white transition">
             Pricing

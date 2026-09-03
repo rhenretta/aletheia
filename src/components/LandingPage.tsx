@@ -100,12 +100,11 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
 
         <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-300">
           <a
-            href="#editions"
-            onClick={() => trackLandingCta("Nav Editions", "header")}
-            className="text-cyan-300 font-semibold hover:text-white transition flex items-center gap-1.5"
+            href="#perspectives"
+            onClick={() => trackLandingCta("Nav Perspectives", "header")}
+            className="hover:text-cyan-300 transition"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            <span>5 Editions</span>
+            Who It&apos;s For
           </a>
           <a
             href="#how-it-works"
@@ -309,18 +308,18 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
           </div>
         </section>
 
-        {/* Specialized Editions Showcase */}
-        <section id="editions" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto border-t border-white/5">
+        {/* Tailored Perspectives Showcase */}
+        <section id="perspectives" className="py-16 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto border-t border-white/5">
           <div className="text-center mb-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono mb-3">
               <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Tailored for Your Values</span>
+              <span>One Engine • Tailored Workflows</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-              5 Specialized Editions Built for Different Minds
+              One Unified Platform. Tailored to How You Think.
             </h2>
             <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto mt-2">
-              Explore how Aletheia shapes intelligence specifically for your profession, cognitive style, and worldview.
+              There is only one Aletheia — but whether you build models, allocate capital, research history, or protect your peace, see how our interface adapts to your focus.
             </p>
           </div>
 
@@ -334,7 +333,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
                   <img
                     src="/images/landing/personas/tech-hero.jpg"
-                    alt="Engineers and AI Researchers Edition"
+                    alt="Aletheia for Engineers and AI Researchers"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                 </div>
@@ -355,7 +354,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-cyan-300 group-hover:translate-x-1 transition">
-                <span>View Tech Edition</span>
+                <span>Explore for Engineers</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </Link>
@@ -369,7 +368,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
                   <img
                     src="/images/landing/personas/business-hero.jpg"
-                    alt="Executives and Investors Edition"
+                    alt="Aletheia for Executives and Investors"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                 </div>
@@ -390,7 +389,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300 group-hover:translate-x-1 transition">
-                <span>View Executive Edition</span>
+                <span>Explore for Executives</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </Link>
@@ -404,7 +403,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
                   <img
                     src="/images/landing/personas/scholar-hero.jpg"
-                    alt="Scholars and Academics Edition"
+                    alt="Aletheia for Scholars and Academics"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                 </div>
@@ -425,7 +424,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-300 group-hover:translate-x-1 transition">
-                <span>View Scholar Edition</span>
+                <span>Explore for Scholars</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </Link>
@@ -439,7 +438,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
                   <img
                     src="/images/landing/personas/wellness-hero.jpg"
-                    alt="Mindful Readers Edition"
+                    alt="Aletheia for Mindful Readers"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                 </div>
@@ -460,7 +459,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-teal-300 group-hover:translate-x-1 transition">
-                <span>View Wellness Edition</span>
+                <span>Explore for Mindful Readers</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </Link>
@@ -474,7 +473,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 <div className="rounded-xl overflow-hidden aspect-video border border-white/10 bg-slate-950">
                   <img
                     src="/images/landing/personas/policy-hero.jpg"
-                    alt="Watchdogs and Press Edition"
+                    alt="Aletheia for Watchdogs and Press"
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
                 </div>
@@ -495,7 +494,7 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-300 group-hover:translate-x-1 transition">
-                <span>View Watchdog Edition</span>
+                <span>Explore for Watchdogs</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </div>
             </Link>
@@ -992,27 +991,27 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/10 bg-slate-950 px-4 sm:px-8 py-10 text-center text-xs text-slate-400 space-y-6">
-        {/* Editions Links */}
+        {/* Persona Perspective Links */}
         <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-4 sm:gap-8 pb-6 border-b border-white/5 text-[11px]">
           <Link href="/tech" className="hover:text-cyan-400 transition flex items-center gap-1.5">
             <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Tech & AI Edition</span>
+            <span>For Engineers & AI</span>
           </Link>
           <Link href="/business" className="hover:text-amber-400 transition flex items-center gap-1.5">
             <Briefcase className="w-3.5 h-3.5 text-amber-400" />
-            <span>Executive & VC Edition</span>
+            <span>For Executives & VCs</span>
           </Link>
           <Link href="/scholar" className="hover:text-violet-400 transition flex items-center gap-1.5">
             <BookOpen className="w-3.5 h-3.5 text-violet-400" />
-            <span>Scholar & Academic Edition</span>
+            <span>For Scholars & Academics</span>
           </Link>
           <Link href="/wellness" className="hover:text-teal-400 transition flex items-center gap-1.5">
             <HeartPulse className="w-3.5 h-3.5 text-teal-400" />
-            <span>Mindful Reading Edition</span>
+            <span>For Mindful Readers</span>
           </Link>
           <Link href="/policy" className="hover:text-orange-400 transition flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-orange-400" />
-            <span>Watchdog & Press Edition</span>
+            <span>For Watchdogs & Press</span>
           </Link>
           <Link href="/support" className="hover:text-cyan-400 transition flex items-center gap-1.5">
             <LifeBuoy className="w-3.5 h-3.5 text-cyan-400" />

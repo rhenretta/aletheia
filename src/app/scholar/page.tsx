@@ -14,7 +14,7 @@ export const metadata: Metadata = {
         url: "/images/landing/personas/scholar-hero.jpg",
         width: 1280,
         height: 720,
-        alt: "Aletheia Scholar Edition — Epistemic rigor and archival provenance",
+        alt: "Aletheia for Scholars & Academics — Epistemic rigor and archival provenance",
       },
     ],
   },

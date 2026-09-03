@@ -14,7 +14,7 @@ export const metadata: Metadata = {
         url: "/images/landing/personas/business-hero.jpg",
         width: 1280,
         height: 720,
-        alt: "Aletheia Executive Edition — Strategic intelligence for decision makers",
+        alt: "Aletheia for Executives & Investors — Strategic intelligence for decision makers",
       },
     ],
   },

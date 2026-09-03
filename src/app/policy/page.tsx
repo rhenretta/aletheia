@@ -14,7 +14,7 @@ export const metadata: Metadata = {
         url: "/images/landing/personas/policy-hero.jpg",
         width: 1280,
         height: 720,
-        alt: "Aletheia Watchdog Edition — Independent verification and discrepancy tracking",
+        alt: "Aletheia for Watchdogs & Policy — Independent verification and discrepancy tracking",
       },
     ],
   },

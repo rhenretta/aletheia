@@ -14,7 +14,7 @@ export const metadata: Metadata = {
         url: "/images/landing/personas/wellness-hero.jpg",
         width: 1280,
         height: 720,
-        alt: "Aletheia Wellness Edition — Mindful news without the anxiety",
+        alt: "Aletheia for Mindful Readers — Mindful news without the anxiety",
       },
     ],
   },
