@@ -5,6 +5,7 @@ import {
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { NewsCollector } from "../collector/news-collector";
+import { TopicRelevanceFilter } from "./topic-relevance-filter";
 
 export interface DiscoveryCuratedBatch {
   selected_queries: string[];
@@ -112,7 +113,17 @@ export class DiscoveryAgent {
       acceptedArticles.push(article);
     }
 
-    const latency = Date.now() - startTime;
+    // 4. Semantic Relevance & Homonym/Acronym Collision Filtering
+    const relevanceResult = await TopicRelevanceFilter.filterArticles(acceptedArticles);
+    for (const rej of relevanceResult.rejected) {
+      rejectionReasons.push({
+        title: rej.article.title,
+        source: rej.article.source_name,
+        reason: rej.reason,
+      });
+    }
+
+    const finalCuratedArticles = relevanceResult.accepted;
 
     // Log structured trace for Observability
     traceLogger.logTrace({
@@ -128,12 +139,12 @@ export class DiscoveryAgent {
       },
       output_summary: {
         candidates_scanned: candidateArticles.length,
-        articles_accepted: acceptedArticles.length,
+        articles_accepted: finalCuratedArticles.length,
         articles_rejected: rejectionReasons.length,
         top_rejections: rejectionReasons.slice(0, 3),
       },
-      reasoning_rationale: `Curated ${acceptedArticles.length} high-signal articles for topics [${queries.join(", ")}]. Enforced strict quality filter, rejecting ${rejectionReasons.length} low-signal/sensationalist items.`,
-      latency_ms: latency,
+      reasoning_rationale: `Curated ${finalCuratedArticles.length} high-signal articles for topics [${queries.join(", ")}]. Enforced strict quality & topic relevance filter, rejecting ${rejectionReasons.length} off-topic/homonym/low-signal items.`,
+      latency_ms: Date.now() - startTime,
       metadata: {
         queries,
         rejection_reasons: rejectionReasons,
@@ -143,7 +154,7 @@ export class DiscoveryAgent {
     return {
       selected_queries: queries,
       candidate_articles_count: candidateArticles.length,
-      accepted_articles: acceptedArticles,
+      accepted_articles: finalCuratedArticles,
       rejected_articles_count: rejectionReasons.length,
       rejection_reasons: rejectionReasons,
       trace_id: traceId,

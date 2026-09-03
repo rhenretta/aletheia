@@ -88,8 +88,27 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
     for (const article of cleanedArticles) {
       const artText = (article.title + " " + article.raw_text).toLowerCase();
 
-      // Determine best matching canonical topic
+      // Determine best matching canonical topic with semantic verification
       let bestTopic = article.topic_category || "";
+      if (bestTopic) {
+        // Verify semantic coherence between article text and topic_category
+        const topicTerms = bestTopic
+          .toLowerCase()
+          .split(/[\s,/-]+/)
+          .filter((t) => t.length > 2 && !["the", "and", "for", "with", "from", "that"].includes(t));
+        if (topicTerms.length >= 2) {
+          const matchedTerms = topicTerms.filter((term) => artText.includes(term));
+          // If the article matches 0 terms, or matches only 1 short acronym while missing all other context,
+          // do not trust the raw query tag
+          if (
+            matchedTerms.length === 0 ||
+            (matchedTerms.length === 1 && matchedTerms[0].length <= 4 && topicTerms.length >= 3)
+          ) {
+            bestTopic = "";
+          }
+        }
+      }
+
       if (!bestTopic && canonicalUserTopics.length > 0) {
         let bestScore = 0;
         for (const topic of canonicalUserTopics) {
