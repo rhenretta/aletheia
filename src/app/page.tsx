@@ -296,6 +296,19 @@ export default function AletheiaHome() {
     return parts;
   };
 
+  const formatTopicBadge = (topic: string): string => {
+    if (!topic) return "General Intelligence";
+    const cleaned = topic
+      .replace(/\bsite:[^\s]+/gi, "")
+      .replace(/\bwhen:[^\s]+/gi, "")
+      .replace(/\binurl:[^\s]+/gi, "")
+      .replace(/\bsource:[^\s]+/gi, "")
+      .replace(/\bfiletype:[^\s]+/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return cleaned.length > 0 ? cleaned : topic;
+  };
+
   const defaultWelcomeMessage: ChatMessage = {
     id: "welcome-msg",
     role: "assistant",
@@ -1823,7 +1836,7 @@ export default function AletheiaHome() {
                 >
                   <Filter className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="max-w-[150px] truncate">
-                    {selectedTopicFilter === "all" ? "All Topics" : selectedTopicFilter}
+                    {selectedTopicFilter === "all" ? "All Topics" : formatTopicBadge(selectedTopicFilter)}
                   </span>
                   <ChevronDown className="w-3 h-3 text-slate-400" />
                 </button>
@@ -1866,7 +1879,7 @@ export default function AletheiaHome() {
                                 : "text-slate-300 hover:bg-slate-900"
                             }`}
                           >
-                            <span className="truncate pr-2">{topic}</span>
+                            <span className="truncate pr-2">{formatTopicBadge(topic)}</span>
                             <span className="text-slate-500">({count})</span>
                           </button>
                         );
@@ -2171,7 +2184,7 @@ export default function AletheiaHome() {
                     <Filter className="w-4 h-4 text-cyan-400 flex-shrink-0" />
                     <span>
                       <span className="text-slate-400">Filtering by Topic:</span>{" "}
-                      <strong className="text-cyan-300 font-bold text-sm font-mono">&quot;{selectedTopicFilter}&quot;</strong>
+                      <strong className="text-cyan-300 font-bold text-sm font-mono">&quot;{formatTopicBadge(selectedTopicFilter)}&quot;</strong>
                       <span className="text-cyan-400/90 text-xs ml-2 font-mono px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/30">
                         {filteredFeedCards.length} {filteredFeedCards.length === 1 ? "story" : "stories"}
                       </span>
@@ -2301,7 +2314,7 @@ export default function AletheiaHome() {
                           title={`Filter feed by "${card.topic}"`}
                         >
                           <Filter className="w-3 h-3 text-cyan-400" />
-                          <span>{card.topic}</span>
+                          <span>{formatTopicBadge(card.topic)}</span>
                         </button>
                         <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -2555,7 +2568,7 @@ export default function AletheiaHome() {
                                 className="px-2 py-0.5 rounded-md bg-slate-950/80 hover:bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-semibold cursor-pointer transition"
                                 title={`Filter feed by "${card.topic}"`}
                               >
-                                {card.topic}
+                                {formatTopicBadge(card.topic)}
                               </button>
                               <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
                                 {card.sources[0]?.name || "Verified Wire"}

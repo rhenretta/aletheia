@@ -228,7 +228,7 @@ export class LiveSearchEngine {
             raw_text: snippet ? `${rawTitle}. ${snippet}` : rawTitle,
             author_bias_rating: "center",
             published_at: publishedAt,
-            topic_category: query,
+            topic_category: LiveSearchEngine.cleanTopicCategory(query),
           });
         }
       }
@@ -330,12 +330,27 @@ export class LiveSearchEngine {
             raw_text: snippet ? `${title}. ${snippet}` : title,
             author_bias_rating: "center",
             published_at: new Date().toISOString(),
-            topic_category: query,
+            topic_category: LiveSearchEngine.cleanTopicCategory(query),
           });
         }
       }
     }
 
     return articles;
+  }
+
+  /**
+   * Strips search operators (site:, when:, inurl:) to extract clean human-readable topic name
+   */
+  public static cleanTopicCategory(query: string): string {
+    const cleaned = query
+      .replace(/\bsite:[^\s]+/gi, "")
+      .replace(/\bwhen:[^\s]+/gi, "")
+      .replace(/\binurl:[^\s]+/gi, "")
+      .replace(/\bsource:[^\s]+/gi, "")
+      .replace(/\bfiletype:[^\s]+/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return cleaned.length > 0 ? cleaned : query;
   }
 }

@@ -33,7 +33,15 @@ Key values & mindset: Seeks autonomy, reduction of friction, sanctuary/isolation
     // Synthesize all atomic cards in parallel
     const rawCards = await Promise.all(
       facts.map(async (fact): Promise<SynthesizedEventCard | null> => {
-        const cleanTopic = FreeNewsFetcher.cleanHtml(fact.topic);
+        let cleanTopic = FreeNewsFetcher.cleanHtml(fact.topic)
+          .replace(/\bsite:[^\s]+/gi, "")
+          .replace(/\bwhen:[^\s]+/gi, "")
+          .replace(/\binurl:[^\s]+/gi, "")
+          .replace(/\bsource:[^\s]+/gi, "")
+          .replace(/\bfiletype:[^\s]+/gi, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!cleanTopic) cleanTopic = fact.topic;
         const cleanFacts = (fact.agreed_facts || [])
           .map((f) => FreeNewsFetcher.cleanHtml(f))
           .filter((f) => f.length > 15);

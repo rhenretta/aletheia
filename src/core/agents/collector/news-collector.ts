@@ -56,7 +56,12 @@ export class NewsCollector {
                 : await DirectContentCrawler.crawl(src, 3);
 
               if (crawlRes.articles.length > 0) {
-                directArticles.push(...crawlRes.articles);
+                for (const a of crawlRes.articles) {
+                  directArticles.push({
+                    ...a,
+                    topic_category: topic,
+                  });
+                }
                 // Update source freshness
                 postgresStore.updateDirectSourceStatus(src.id, {
                   lastCrawledAt: new Date().toISOString(),
@@ -101,7 +106,10 @@ export class NewsCollector {
             for (const a of searchArticles) {
               if (!seenUrls.has(a.source_url)) {
                 seenUrls.add(a.source_url);
-                articles.push(a);
+                articles.push({
+                  ...a,
+                  topic_category: topic,
+                });
               }
             }
           }

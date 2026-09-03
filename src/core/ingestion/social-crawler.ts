@@ -114,6 +114,7 @@ export class SocialContentCrawler {
                 source_name: `Reddit (${subMatch ? `r/${subMatch[1]}` : "community"})`,
                 content_format: "discussion_thread",
                 platform: "reddit",
+                topic_category: source.topic,
               })),
             };
           }
@@ -240,6 +241,7 @@ export class SocialContentCrawler {
                 source_name: `Bluesky (${handle ? `@${handle}` : "practitioners"})`,
                 content_format: "social_post",
                 platform: "bluesky",
+                topic_category: source.topic,
               })),
             };
           }
