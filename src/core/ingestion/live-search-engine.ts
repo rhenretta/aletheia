@@ -77,7 +77,7 @@ export class LiveSearchEngine {
   }
 
   /**
-   * Internal search orchestrator: tries DDG first (rich organic web trackers/blogs), then Bing RSS
+   * Internal search orchestrator: tries DDG first, then Bing RSS, then Google News RSS
    */
   private static async executeSearch(query: string, maxResults: number): Promise<RawArticle[]> {
     const combined: RawArticle[] = [];
@@ -102,7 +102,7 @@ export class LiveSearchEngine {
       return combined.slice(0, maxResults);
     }
 
-    // 2. Bing RSS Web Search (structured RSS XML fallback)
+    // 2. Bing RSS Web Search (structured RSS XML fallback with relevance checking)
     try {
       const bingArticles = await this.queryBingRss(query, maxResults);
       for (const a of bingArticles) {
@@ -113,6 +113,23 @@ export class LiveSearchEngine {
       }
     } catch (err) {
       console.warn(`LiveSearchEngine: Bing RSS search error for "${query}":`, err);
+    }
+
+    if (combined.length >= 2) {
+      return combined.slice(0, maxResults);
+    }
+
+    // 3. Google News RSS fallback (for breaking news and technical journalism)
+    try {
+      const rssArticles = await FreeNewsFetcher.fetchRssForQuery(query);
+      for (const a of rssArticles) {
+        if (!seenUrls.has(a.source_url)) {
+          seenUrls.add(a.source_url);
+          combined.push(a);
+        }
+      }
+    } catch (err) {
+      console.warn(`LiveSearchEngine: Google News RSS fallback error for "${query}":`, err);
     }
 
     return combined.slice(0, maxResults);
@@ -178,6 +195,19 @@ export class LiveSearchEngine {
             ) {
               continue;
             }
+
+            // Relevance verification: Result must match specific non-trivial query terms
+            const nonTrivialTerms = query
+              .toLowerCase()
+              .split(/\s+/)
+              .filter((t) => t.length > 2 && !["the", "and", "for", "with", "from", "that", "been", "how", "has"].includes(t));
+            if (nonTrivialTerms.length > 1) {
+              const fullSnippet = `${rawTitle} ${snippet}`.toLowerCase();
+              const matchedCount = nonTrivialTerms.filter((term) => fullSnippet.includes(term)).length;
+              if (matchedCount < Math.min(2, nonTrivialTerms.length)) {
+                continue;
+              }
+            }
           } catch {}
 
           let sourceName = "Web Source";
@@ -231,16 +261,16 @@ export class LiveSearchEngine {
 
       clearTimeout(timeoutId);
 
-      // Status 202 is an anti-bot challenge: trip circuit breaker for 5 minutes
+      // Status 202 is an anti-bot challenge: trip circuit breaker for 30 seconds
       if (response.status === 202 || !response.ok) {
-        this.ddgCircuitBreakerUntil = Date.now() + 5 * 60 * 1000;
+        this.ddgCircuitBreakerUntil = Date.now() + 30 * 1000;
         return [];
       }
 
       const html = await response.text();
       // If the body is a challenge page without search results, trip circuit breaker
       if (html.includes("anomaly-modal") || !html.includes("result__a")) {
-        this.ddgCircuitBreakerUntil = Date.now() + 5 * 60 * 1000;
+        this.ddgCircuitBreakerUntil = Date.now() + 30 * 1000;
         return [];
       }
 

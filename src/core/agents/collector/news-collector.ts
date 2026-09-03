@@ -3,7 +3,9 @@ import { FreeNewsFetcher } from "../../ingestion/rss-search";
 import { traceLogger } from "../../observability/trace-logger";
 import { postgresStore } from "../../storage/postgres-store";
 import { DirectContentCrawler } from "../../ingestion/direct-crawler";
+import { SocialContentCrawler } from "../../ingestion/social-crawler";
 import { DirectSourceScoutAgent } from "../scout/direct-source-scout";
+import { SocialSourceScoutAgent } from "../scout/social-source-scout";
 
 export interface CollectorResult {
   topic: string;
@@ -15,7 +17,7 @@ export interface CollectorResult {
 export class NewsCollector {
   /**
    * Autonomously collects live real-world news and facts across canonical direct sources and open web wires.
-   * Prioritizes Direct RSS/WWW sources; uses search engines judiciously as fallback.
+   * Prioritizes Direct RSS/WWW and Social sources; uses search engines judiciously as fallback.
    */
   public static async collectForTopics(topics: string[]): Promise<CollectorResult[]> {
     if (!topics || topics.length === 0) {
@@ -34,7 +36,7 @@ export class NewsCollector {
         let articles: RawArticle[] = [];
         let channel = "Live Multi-Source Open Feeds (Bing RSS / Google News)";
 
-        // 1. DIRECT-FIRST INGESTION: Check registered canonical direct sources for this topic
+        // 1. DIRECT-FIRST INGESTION: Check registered canonical direct & social sources for this topic
         try {
           const directSources = await postgresStore.getDirectSourcesForTopic(topic);
           const activeSources = directSources.filter((s) => s.status === "active");
@@ -42,7 +44,17 @@ export class NewsCollector {
           if (activeSources.length > 0) {
             const directArticles: RawArticle[] = [];
             for (const src of activeSources) {
-              const crawlRes = await DirectContentCrawler.crawl(src, 3);
+              const isSocial =
+                src.source_type === "reddit_community" ||
+                src.source_type === "bluesky_profile" ||
+                src.source_type === "social_feed" ||
+                src.platform === "reddit" ||
+                src.platform === "bluesky";
+
+              const crawlRes = isSocial
+                ? await SocialContentCrawler.crawl(src, 3)
+                : await DirectContentCrawler.crawl(src, 3);
+
               if (crawlRes.articles.length > 0) {
                 directArticles.push(...crawlRes.articles);
                 // Update source freshness
@@ -56,6 +68,7 @@ export class NewsCollector {
               } else if (crawlRes.errorMessage) {
                 postgresStore.updateDirectSourceStatus(src.id, {
                   lastCrawledAt: new Date().toISOString(),
+                  lastSuccessfulContentAt: undefined,
                   consecutiveFailures: (src.consecutive_failures || 0) + 1,
                   status: (src.consecutive_failures || 0) >= 2 ? "failing" : "active",
                 }).catch(() => {});
@@ -67,9 +80,12 @@ export class NewsCollector {
               channel = `Direct Canonical Sources (${activeSources.map((s) => s.publisher_name).join(", ")})`;
             }
           } else {
-            // Trigger background scout to discover and register direct sources for this topic
+            // Trigger background scouts to discover and register canonical feeds & social hubs for this topic
             DirectSourceScoutAgent.scoutForTopic(topic).catch((err) =>
               console.warn(`Background Scout error for "${topic}":`, err)
+            );
+            SocialSourceScoutAgent.scoutForTopic(topic).catch((err) =>
+              console.warn(`Background Social Scout error for "${topic}":`, err)
             );
           }
         } catch (err) {

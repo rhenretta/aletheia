@@ -13,6 +13,8 @@ export interface RawArticle {
   author?: string;
   topic_category?: string;
   image_url?: string;
+  content_format?: "news_article" | "social_post" | "discussion_thread";
+  platform?: "reddit" | "bluesky" | "substack" | "youtube" | "fediverse" | "open_web";
 }
 
 export const RawArticleSchema = z.object({
@@ -25,6 +27,8 @@ export const RawArticleSchema = z.object({
   author: z.string().optional(),
   topic_category: z.string().optional(),
   image_url: z.string().optional(),
+  content_format: z.enum(["news_article", "social_post", "discussion_thread"]).optional(),
+  platform: z.enum(["reddit", "bluesky", "substack", "youtube", "fediverse", "open_web"]).optional(),
 });
 
 /**
@@ -825,8 +829,22 @@ export interface SupportTicketPayload {
 /**
  * Direct Source Discovery & Ingestion Contracts
  */
-export type DirectSourceType = "rss_feed" | "www_page";
+export type DirectSourceType =
+  | "rss_feed"
+  | "www_page"
+  | "reddit_community"
+  | "bluesky_profile"
+  | "social_feed";
+
 export type DirectSourceStatus = "active" | "failing" | "pending_validation" | "inactive";
+
+export interface SocialSourceMetadata {
+  platform: "reddit" | "bluesky" | "substack" | "youtube" | "fediverse" | "open_web";
+  handle_or_identifier: string;
+  profile_name?: string;
+  curated_topics?: string[];
+  role_description?: string; // e.g. "Community Subreddit", "Industry Analyst", "Research Lead"
+}
 
 export interface DirectSource {
   id: string;
@@ -843,12 +861,22 @@ export interface DirectSource {
   last_modified?: string;
   consecutive_failures: number;
   created_at: string;
+  platform?: "reddit" | "bluesky" | "substack" | "youtube" | "fediverse" | "open_web";
+  metadata?: SocialSourceMetadata;
 }
+
+export const SocialSourceMetadataSchema = z.object({
+  platform: z.enum(["reddit", "bluesky", "substack", "youtube", "fediverse", "open_web"]),
+  handle_or_identifier: z.string(),
+  profile_name: z.string().optional(),
+  curated_topics: z.array(z.string()).optional(),
+  role_description: z.string().optional(),
+});
 
 export const DirectSourceSchema = z.object({
   id: z.string(),
   topic: z.string(),
-  source_type: z.enum(["rss_feed", "www_page"]),
+  source_type: z.enum(["rss_feed", "www_page", "reddit_community", "bluesky_profile", "social_feed"]),
   url: z.string().url(),
   title: z.string(),
   publisher_name: z.string(),
@@ -860,6 +888,8 @@ export const DirectSourceSchema = z.object({
   last_modified: z.string().optional(),
   consecutive_failures: z.number().int().nonnegative(),
   created_at: z.string(),
+  platform: z.enum(["reddit", "bluesky", "substack", "youtube", "fediverse", "open_web"]).optional(),
+  metadata: SocialSourceMetadataSchema.optional(),
 });
 
 

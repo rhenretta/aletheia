@@ -74,7 +74,7 @@ export class FreeNewsFetcher {
     return rssArticles.slice(0, maxArticles);
   }
 
-  private static async fetchRssForQuery(query: string): Promise<RawArticle[]> {
+  public static async fetchRssForQuery(query: string): Promise<RawArticle[]> {
     if (!query || query.trim().length === 0) return [];
 
     // Try fresh news (last 7 days) first, then fallback to last 30 days, then unrestricted

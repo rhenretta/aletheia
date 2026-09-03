@@ -1825,7 +1825,7 @@ export class PostgresStore {
       .slice(0, limit);
   }
 
-  // --- Canonical Direct Sources (RSS Feeds & Authoritative WWW Links) ---
+  // --- Canonical Direct Sources (RSS Feeds, WWW Links, & Social Profiles) ---
   public async getDirectSourcesForTopic(topic: string): Promise<DirectSource[]> {
     await this.ensureInitialized();
     const cleanTopic = topic.toLowerCase().trim();
@@ -1833,7 +1833,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT id, topic, source_type, url, title, publisher_name, status, reliability_score, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at
+          `SELECT id, topic, source_type, url, title, publisher_name, status, reliability_score, platform, metadata, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at
            FROM direct_sources
            WHERE LOWER(topic) = $1 OR $1 ILIKE '%' || LOWER(topic) || '%' OR LOWER(topic) ILIKE '%' || $1 || '%'
            ORDER BY reliability_score DESC, created_at DESC`,
@@ -1849,6 +1849,8 @@ export class PostgresStore {
             publisher_name: r.publisher_name,
             status: r.status,
             reliability_score: Number(r.reliability_score),
+            platform: r.platform || undefined,
+            metadata: typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata || undefined,
             last_crawled_at: r.last_crawled_at?.toISOString?.() || r.last_crawled_at,
             last_successful_content_at: r.last_successful_content_at?.toISOString?.() || r.last_successful_content_at,
             etag: r.etag,
@@ -1877,11 +1879,13 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         await this.pool.query(
-          `INSERT INTO direct_sources (id, topic, source_type, url, title, publisher_name, status, reliability_score, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          `INSERT INTO direct_sources (id, topic, source_type, url, title, publisher_name, status, reliability_score, platform, metadata, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            ON CONFLICT (url) DO UPDATE SET
              status = EXCLUDED.status,
              reliability_score = EXCLUDED.reliability_score,
+             platform = EXCLUDED.platform,
+             metadata = EXCLUDED.metadata,
              last_crawled_at = EXCLUDED.last_crawled_at,
              last_successful_content_at = EXCLUDED.last_successful_content_at,
              etag = EXCLUDED.etag,
@@ -1896,6 +1900,8 @@ export class PostgresStore {
             source.publisher_name,
             source.status,
             source.reliability_score,
+            source.platform || null,
+            JSON.stringify(source.metadata || {}),
             source.last_crawled_at || null,
             source.last_successful_content_at || null,
             source.etag || null,
@@ -1969,7 +1975,7 @@ export class PostgresStore {
     if (this.pool && this.isConnected) {
       try {
         const res = await this.pool.query(
-          `SELECT id, topic, source_type, url, title, publisher_name, status, reliability_score, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at
+          `SELECT id, topic, source_type, url, title, publisher_name, status, reliability_score, platform, metadata, last_crawled_at, last_successful_content_at, etag, last_modified, consecutive_failures, created_at
            FROM direct_sources ORDER BY created_at DESC`
         );
         return res.rows.map((r) => ({
@@ -1981,6 +1987,8 @@ export class PostgresStore {
           publisher_name: r.publisher_name,
           status: r.status,
           reliability_score: Number(r.reliability_score),
+          platform: r.platform || undefined,
+          metadata: typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata || undefined,
           last_crawled_at: r.last_crawled_at?.toISOString?.() || r.last_crawled_at,
           last_successful_content_at: r.last_successful_content_at?.toISOString?.() || r.last_successful_content_at,
           etag: r.etag,

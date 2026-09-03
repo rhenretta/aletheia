@@ -177,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_support_tickets_email ON support_tickets(email);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_category ON support_tickets(category);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_created_at ON support_tickets(created_at);
 
--- 11. Canonical Direct RSS & WWW Sources Table
+-- 11. Canonical Direct RSS, WWW & Social Media Sources Table
 CREATE TABLE IF NOT EXISTS direct_sources (
     id VARCHAR(128) PRIMARY KEY,
     topic TEXT NOT NULL,
@@ -187,6 +187,8 @@ CREATE TABLE IF NOT EXISTS direct_sources (
     publisher_name TEXT NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'pending_validation',
     reliability_score NUMERIC(4, 3) NOT NULL DEFAULT 1.000,
+    platform VARCHAR(64),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     last_crawled_at TIMESTAMPTZ,
     last_successful_content_at TIMESTAMPTZ,
     etag TEXT,
@@ -197,4 +199,6 @@ CREATE TABLE IF NOT EXISTS direct_sources (
 
 CREATE INDEX IF NOT EXISTS idx_direct_sources_topic ON direct_sources(topic);
 CREATE INDEX IF NOT EXISTS idx_direct_sources_status ON direct_sources(status);
+CREATE INDEX IF NOT EXISTS idx_direct_sources_platform ON direct_sources(platform);
+CREATE INDEX IF NOT EXISTS idx_direct_sources_metadata ON direct_sources USING GIN (metadata);
 

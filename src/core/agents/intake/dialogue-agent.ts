@@ -537,7 +537,11 @@ User Inquiry: "${userInquiry}"
 Examine the accumulated observations above carefully.
 Evaluate whether ALL dimensions of the user's inquiry are thoroughly answered with specific empirical facts.
 
-COMPOUND INQUIRY REQUIREMENT:
+EXPLORATION MANDATES:
+1. NON-GROUNDED OBSERVATIONS:
+If the search observations returned only generic company homepages, Wikipedia entries, or irrelevant overviews that do NOT contain the specific version numbers, user feedback, or facts asked by the user, you MUST NOT synthesize an unhelpful "I cannot confirm" or "the search results don't specify" response! You MUST choose "explore" with an alternative or refined query (e.g. appending "reviews", "owner impressions", "release notes", or trying alternative keyword combinations) to actively find the answer.
+
+2. COMPOUND INQUIRY REQUIREMENT:
 If the user's inquiry contains multiple questions (e.g. "What is X, and how has it been received?"):
 - Check if BOTH the version/fact AND the reception/reviews/testing feedback have been found.
 - If the current observations only cover one aspect (e.g. the version number is found, but user feedback, safety reviews, or community reception are still missing), you MUST choose "explore" to execute a targeted search (e.g. "Tesla FSD v14 user reception reviews" or "Tesla FSD v14.3.8 impressions test") before synthesizing!
@@ -548,7 +552,7 @@ Output strict JSON:
   "decision": "synthesize",
   "reasoning": "All dimensions of the inquiry are thoroughly grounded in the observations."
 }
-- If information is missing or search snippets were too brief:
+- If information is missing, or if observations only contain generic homepages:
 {
   "decision": "explore",
   "reasoning": "What specific information is still missing and how to find it",
