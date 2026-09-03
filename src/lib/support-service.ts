@@ -61,8 +61,11 @@ export class SupportService {
   }
 
   public static async sendSupportTicket(ticket: SupportTicket): Promise<SendSupportTicketResult> {
-    const fromEmail = process.env.SES_FROM_EMAIL || "rhenretta@gmail.com";
+    const fromEmail = process.env.SES_FROM_EMAIL || "support@ciclops.io";
     const toEmail = process.env.SUPPORT_EMAIL || "rhenretta@gmail.com";
+    const sourceAddress = fromEmail.includes("<")
+      ? fromEmail
+      : `Aletheia Support <${fromEmail}>`;
     const categoryLabel = this.getCategoryLabel(ticket.category);
     const subjectLine = `[Aletheia Support] [${categoryLabel}] ${ticket.subject}`;
 
@@ -169,7 +172,7 @@ Reply directly to this email to respond to ${ticket.email}.
     try {
       const ses = this.getSESClient();
       const sendCommand = new SendEmailCommand({
-        Source: fromEmail,
+        Source: sourceAddress,
         Destination: {
           ToAddresses: [toEmail],
         },

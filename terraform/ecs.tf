@@ -235,7 +235,9 @@ resource "aws_ecs_task_definition" "app" {
         { name = "COOKIE_DOMAIN", value = ".${var.domain_name}" },
         { name = "NEXTAUTH_URL", value = "https://${var.subdomain}.${var.domain_name}" },
         { name = "ADMIN_EMAILS", value = var.admin_emails },
-        { name = "NEXT_PUBLIC_GA_MEASUREMENT_ID", value = var.ga_measurement_id }
+        { name = "NEXT_PUBLIC_GA_MEASUREMENT_ID", value = var.ga_measurement_id },
+        { name = "SES_FROM_EMAIL", value = "support@${var.domain_name}" },
+        { name = "SUPPORT_EMAIL", value = "rhenretta@gmail.com" }
       ]
 
       secrets = [
