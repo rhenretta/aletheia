@@ -171,12 +171,17 @@ Reply directly to this email to respond to ${ticket.email}.
     // 1. Dispatch via Amazon SES
     try {
       const ses = this.getSESClient();
+      const replyToAddress =
+        ticket.name && ticket.name.trim() && ticket.name.trim() !== ticket.email.trim()
+          ? `"${ticket.name.trim().replace(/"/g, "")}" <${ticket.email.trim()}>`
+          : ticket.email.trim();
+
       const sendCommand = new SendEmailCommand({
         Source: sourceAddress,
         Destination: {
           ToAddresses: [toEmail],
         },
-        ReplyToAddresses: [ticket.email],
+        ReplyToAddresses: [replyToAddress],
         Message: {
           Subject: {
             Data: subjectLine,
