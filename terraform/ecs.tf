@@ -179,6 +179,32 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 }
 
+resource "aws_iam_role_policy" "ecs_task_ses_sns" {
+  name = "${var.app_name}-ses-sns-policy"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sns:Publish"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # ECS Task Definition
 resource "aws_ecs_task_definition" "app" {
   family                   = "${var.app_name}-task"
