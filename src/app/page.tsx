@@ -35,6 +35,7 @@ import {
   Users,
   EyeOff,
   CreditCard,
+  Loader2,
 } from "lucide-react";
 import {
   NewsStateContext,
@@ -1996,12 +1997,19 @@ export default function AletheiaHome() {
                   return (
                     <div
                       key={bIdx}
-                      className={`glass-panel rounded-2xl p-5 border transition duration-200 space-y-4 ${
-                        isEscalating || isHighVelocity
+                      className={`glass-panel rounded-2xl p-5 border transition-all duration-300 space-y-4 relative overflow-hidden ${
+                        isSynthesizingThis
+                          ? "border-cyan-500/60 shadow-xl shadow-cyan-950/40 ring-1 ring-cyan-500/30"
+                          : isEscalating || isHighVelocity
                           ? "border-cyan-500/40 shadow-lg shadow-cyan-950/30"
                           : "border-white/10 hover:border-white/20"
                       }`}
                     >
+                      {/* Ambient Top Scanning Line when refreshing */}
+                      {isSynthesizingThis && (
+                        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-indigo-500 animate-pulse z-10" />
+                      )}
+
                       {/* Topic Header & Dynamic Badges */}
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1.5 max-w-2xl">
@@ -2083,17 +2091,23 @@ export default function AletheiaHome() {
                           <button
                             onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign)}
                             disabled={isSynthesizingThis}
-                            className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition disabled:opacity-50 shadow-sm ${
-                              brief.velocity_status === "dormant"
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition shadow-sm ${
+                              isSynthesizingThis
+                                ? "bg-cyan-500/20 border-cyan-400/50 text-cyan-200 cursor-wait"
+                                : brief.velocity_status === "dormant"
                                 ? "bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/40 text-cyan-200"
                                 : "bg-indigo-500/20 hover:bg-indigo-500/30 border-indigo-500/30 text-indigo-200"
                             }`}
-                            title={brief.velocity_status === "dormant" ? "Scan live news wires for modern updates" : "Get a fresh AI catch-up for this topic"}
+                            title={isSynthesizingThis ? "Updating intelligence in background" : brief.velocity_status === "dormant" ? "Scan live news wires for modern updates" : "Get a fresh AI catch-up for this topic"}
                           >
-                            <Sparkles className={`w-3.5 h-3.5 ${brief.velocity_status === "dormant" ? "text-cyan-400" : "text-indigo-400"} ${isSynthesizingThis ? "animate-spin" : ""}`} />
+                            {isSynthesizingThis ? (
+                              <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                            ) : (
+                              <Sparkles className={`w-3.5 h-3.5 ${brief.velocity_status === "dormant" ? "text-cyan-400" : "text-indigo-400"}`} />
+                            )}
                             <span>
                               {isSynthesizingThis
-                                ? "Searching live wires..."
+                                ? "Refreshing in background..."
                                 : brief.velocity_status === "dormant"
                                 ? "Check Live Updates"
                                 : "Catch up with AI"}
@@ -2101,6 +2115,30 @@ export default function AletheiaHome() {
                           </button>
                         </div>
                       </div>
+
+                      {/* In-Progress Refreshing Indicator Banner */}
+                      {isSynthesizingThis && (
+                        <div className="p-3 rounded-xl bg-gradient-to-r from-cyan-950/70 via-slate-900/80 to-indigo-950/70 border border-cyan-500/40 text-cyan-200 text-xs flex items-center justify-between gap-3 shadow-inner shadow-cyan-950/40 animate-in fade-in duration-300">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-400"></span>
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 truncate">
+                              <span className="font-semibold text-cyan-100 flex items-center gap-1.5">
+                                <Loader2 className="w-3 h-3 text-cyan-400 animate-spin flex-shrink-0" />
+                                Updating Topic Brief
+                              </span>
+                              <span className="text-[11px] text-cyan-300/80 truncate">
+                                Synthesizing live wire intelligence in background...
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium uppercase tracking-wider bg-cyan-900/60 border border-cyan-400/40 text-cyan-300 flex-shrink-0">
+                            Interactive
+                          </span>
+                        </div>
+                      )}
 
                       {/* Dormant / Quiet Topic Notice */}
                       {brief.velocity_status === "dormant" && (
