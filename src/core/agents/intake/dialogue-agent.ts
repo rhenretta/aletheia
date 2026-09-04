@@ -5,6 +5,7 @@ import {
   InterestIntersection,
   AdjacentCuriosityFrontier,
   AttachedStoryContext,
+  AttachedTopicBriefContext,
   AgenticContextFlowStep,
   GeneratedMessageContext,
   EventSourceArticle,
@@ -34,6 +35,7 @@ export interface ChatMessage {
   trace_id?: string;
   context_trace_id?: string;
   attached_story?: AttachedStoryContext;
+  attached_topic_brief?: AttachedTopicBriefContext;
   tool_executions?: ToolExecution[];
   agent_internal_rationale?: {
     user_emotional_state_detected?: string;
@@ -175,7 +177,8 @@ export class DialogueAgent {
       timeZone?: string;
       localFormatted?: string;
       location?: string;
-    }
+    },
+    attachedTopicBrief?: AttachedTopicBriefContext
   ): AsyncGenerator<DialogueStreamEvent, DialogueResponse> {
     const startTime = Date.now();
     const executedTools: ToolExecution[] = [];
@@ -256,7 +259,8 @@ export class DialogueAgent {
       history.map((m) => ({ role: m.role, content: m.content })),
       lastUserMessage,
       attachedStory,
-      relevantStories
+      relevantStories,
+      attachedTopicBrief
     );
 
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
@@ -297,7 +301,11 @@ CRITICAL CONVERSATIONAL PRINCIPLES:
      * "matched_event_ids": Array of relevant event IDs from local feed stories
      * "filter_reason": Short reason (e.g. "Focusing on active discussion of Topic Name")
    - If the conversation is a general greeting or meta-query without a topic focus, set "is_active": false.
-4. OUTPUT STRICT JSON adhering to:
+4. TOPIC EXTRACTION INTEGRITY (SUBSTANTIVE REAL-WORLD DOMAIN VS. COGNITIVE/RHETORICAL FRAME):
+   - A trackable topic MUST represent a concrete, ongoing real-world subject domain, technology, industry, organization, public figure, product, or event field that can be monitored via news wires and journalistic reporting (e.g., "Renewable Energy Infrastructure", "Quantum Computing", "Commercial Spaceflight", "Solid-State Battery Technology").
+   - STRICT PROHIBITION: NEVER extract cognitive thinking styles, epistemic inquiry modes, statistical analysis methods, or rhetorical/debate framing devices as trackable topics (e.g., NEVER extract "Evidence Evaluation", "Critical Thinking", "Statistical Inference", "Fact Verification", "Anecdotal Comparison", "Debate Analysis", "Methodology").
+   - When a user applies an analytical framework or compares evidence types (e.g., comparing personal trial anecdotes vs double-blind clinical statistics in oncology), the TOPIC is strictly the underlying real-world subject domain (e.g., "Immunotherapy Oncology" or "mRNA Therapeutics"). The cognitive methodology belongs in the conversational response or curiosity vectors, NEVER as an independent user topic.
+5. OUTPUT STRICT JSON adhering to:
 {
   "agent_internal_rationale": {
     "user_emotional_state_detected": "User mindset",
@@ -349,6 +357,34 @@ ${contextFraming.empath_instructions}`;
 ${(attachedStory.fact_bullets || []).map((f) => `  * ${f}`).join("\n")}`
       : "";
 
+    const topicBriefContext = attachedTopicBrief
+      ? `\nATTACHED LIVING EVENT TOPIC DOSSIER UNDER DISCUSSION:
+- Event Topic: "${attachedTopicBrief.topic_title}" (Parent Domain: "${attachedTopicBrief.parent_interest}")
+- Lifecycle State: ${attachedTopicBrief.lifecycle_label} (${attachedTopicBrief.lifecycle_phase}) · Gravity: ${attachedTopicBrief.gravity_score}/100
+- Current Focus ("The Now"): ${attachedTopicBrief.current_focus}
+- Executive Summary: ${attachedTopicBrief.executive_summary}
+${
+  attachedTopicBrief.public_sentiment
+    ? `- Community Sentiment & Public Reception:
+  * Tone: ${attachedTopicBrief.public_sentiment.tone.toUpperCase()}
+  * Consensus: ${attachedTopicBrief.public_sentiment.summary}
+  * Representative Public Quotes:
+${attachedTopicBrief.public_sentiment.representative_quotes.map((q) => `    • "${q.quote}" [${q.speaker_or_community}]`).join("\n")}`
+    : ""
+}
+${
+  attachedTopicBrief.historical_arc && attachedTopicBrief.historical_arc.length > 0
+    ? `- Anchored Historical Arc:
+${attachedTopicBrief.historical_arc.map((m) => `  * [${m.time_label}] ${m.milestone}`).join("\n")}`
+    : ""
+}
+${
+  attachedTopicBrief.key_facts && attachedTopicBrief.key_facts.length > 0
+    ? `- Verified Key Facts:
+${attachedTopicBrief.key_facts.map((f) => `  * ${f}`).join("\n")}`
+    : ""}`
+      : "";
+
     const currentFeedContext =
       relevantStories.length > 0
         ? `\nCURRENT FILTERED FEED STORIES FOR THIS TOPIC (${relevantStories.length} articles):
@@ -358,7 +394,7 @@ ${s.fact_bullets && s.fact_bullets.length > 0 ? `Key Facts: ${s.fact_bullets.joi
         : "";
 
     const formattedHistory = history.map((m) => `${m.role === "assistant" ? "ALETHEIA" : "USER"}: ${m.content}`).join("\n\n");
-    let finalPrompt = `${knownContext}${storyContext}${currentFeedContext}\n\nConversation History:\n${formattedHistory}`;
+    let finalPrompt = `${knownContext}${storyContext}${topicBriefContext}${currentFeedContext}\n\nConversation History:\n${formattedHistory}`;
 
     // First, let DeepSeek evaluate whether local context is sufficient or if a live search tool is required
     const toolEvaluationPrompt = `${finalPrompt}
@@ -371,7 +407,7 @@ EVALUATION MANDATE:
 1. If the inquiry is a general reflection or is 100% answered with complete accuracy by the verified local articles above, output the final conversational JSON directly.
 2. If the user's inquiry touches upon real-world developments, current status, roadmap, upcoming milestones, recent news, or future expectations, AND the local context above lacks verified reporting from ${now.getFullYear()} covering this exact point, your pre-training knowledge is OUTDATED. You MUST execute a "search_internet" tool call to ground yourself in the live wire before generating a response.
 3. NEVER answer questions about the current state of ongoing real-world technologies, companies, or events from static memory without live wire verification.
-4. QUERY FORMULATION MANDATE: Keep search queries concise, objective, and entity-focused (e.g. "Tesla FSD latest version", "SpaceX Starship upcoming flight"). Do NOT append current calendar months (e.g. "September 2026") or conversational question words unless the user explicitly requested that specific month, as exact month strings severely over-constrain search engines.
+4. QUERY FORMULATION MANDATE: Keep search queries concise, objective, and entity-focused (e.g. "[Entity Name] latest developments", "[Technology Name] benchmark results"). Do NOT append current calendar months (e.g. "September 2026") or conversational question words unless the user explicitly requested that specific month, as exact month strings severely over-constrain search engines.
 
 Output strict JSON:
 - To call search tool:
@@ -544,7 +580,7 @@ If the search observations returned only generic company homepages, Wikipedia en
 2. COMPOUND INQUIRY REQUIREMENT:
 If the user's inquiry contains multiple questions (e.g. "What is X, and how has it been received?"):
 - Check if BOTH the version/fact AND the reception/reviews/testing feedback have been found.
-- If the current observations only cover one aspect (e.g. the version number is found, but user feedback, safety reviews, or community reception are still missing), you MUST choose "explore" to execute a targeted search (e.g. "Tesla FSD v14 user reception reviews" or "Tesla FSD v14.3.8 impressions test") before synthesizing!
+- If the current observations only cover one aspect (e.g. the version number is found, but user feedback, safety reviews, or community reception are still missing), you MUST choose "explore" to execute a targeted search (e.g. "[Subject] [Version] user reception reviews" or "[Subject] [Attribute] impressions test") before synthesizing!
 
 Output strict JSON:
 - If ALL questions are thoroughly answered with verified evidence:
@@ -816,9 +852,10 @@ Output strict JSON:
       timeZone?: string;
       localFormatted?: string;
       location?: string;
-    }
+    },
+    attachedTopicBrief?: AttachedTopicBriefContext
   ): Promise<DialogueResponse> {
-    const stream = this.chatStream(history, currentGraph, attachedStory, currentStories, clientContext);
+    const stream = this.chatStream(history, currentGraph, attachedStory, currentStories, clientContext, attachedTopicBrief);
     let finalResp: DialogueResponse | null = null;
     for await (const event of stream) {
       if (event.type === "meta") finalResp = event.data;

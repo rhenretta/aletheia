@@ -25,7 +25,7 @@ export class TopicRelevanceFilter {
 
   /**
    * Evaluates a batch of candidate articles for semantic relevance against their assigned topic.
-   * Eliminates homonyms, acronym collisions (e.g., airport code FSD vs Full Self-Driving),
+   * Eliminates homonyms, acronym collisions (e.g., airport code or ticker vs domain acronym),
    * and transactional aggregator listings.
    */
   public static async filterArticles(
@@ -57,7 +57,7 @@ export class TopicRelevanceFilter {
         }
       } catch {}
 
-      // Fast semantic token check: If topic has specific context (e.g. "FSD 14 3 7 reception"),
+      // Fast semantic token check: If topic has specific multi-token context,
       // an article with zero overlap beyond a single short acronym is highly suspect
       const topicTerms = targetTopic
         .toLowerCase()

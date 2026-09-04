@@ -99,13 +99,17 @@ export class SocialContentCrawler {
       }
 
       if (!response.ok) {
-        // Fallback to indexed live search for this subreddit & topic
+        // Fallback to indexed live search for this subreddit & topic with strict recency
         try {
           const { LiveSearchEngine } = await import("./live-search-engine");
           let subQuery = "site:reddit.com";
           const subMatch = source.url.match(/\/r\/([^/]+)/);
           if (subMatch) subQuery += `/r/${subMatch[1]}`;
-          const searchArticles = await LiveSearchEngine.search(`${subQuery} ${source.topic}`, maxPosts);
+          const searchArticles = await LiveSearchEngine.search(`${subQuery} ${source.topic}`, {
+            maxResults: maxPosts,
+            timeWindow: "month",
+            maxAgeDays: 60,
+          });
           if (searchArticles.length > 0) {
             return {
               source,
@@ -130,12 +134,20 @@ export class SocialContentCrawler {
       const data = await response.json();
       const children = data?.data?.children || [];
       const articles: RawArticle[] = [];
+      const now = Date.now();
+      const maxAgeMs = 60 * 24 * 60 * 60 * 1000; // 60 days cutoff
 
       for (const child of children) {
         const post = child?.data;
         if (!post) continue;
         // Ignore stickied megathreads
         if (post.stickied) continue;
+
+        // Skip stale posts older than 60 days to prevent surfacing multi-year-old threads
+        if (post.created_utc) {
+          const postAgeMs = now - post.created_utc * 1000;
+          if (postAgeMs > maxAgeMs) continue;
+        }
 
         const title = String(post.title || "").trim();
         if (title.length < 5) continue;
@@ -231,7 +243,11 @@ export class SocialContentCrawler {
           const { LiveSearchEngine } = await import("./live-search-engine");
           const searchArticles = await LiveSearchEngine.search(
             `site:bsky.app ${handle ? `@${handle}` : ""} ${source.topic}`,
-            maxPosts
+            {
+              maxResults: maxPosts,
+              timeWindow: "month",
+              maxAgeDays: 60,
+            }
           );
           if (searchArticles.length > 0) {
             return {
@@ -257,6 +273,8 @@ export class SocialContentCrawler {
       const data = await response.json();
       const feed = data?.feed || (data?.posts ? data.posts.map((p: any) => ({ post: p })) : []);
       const articles: RawArticle[] = [];
+      const now = Date.now();
+      const maxAgeMs = 60 * 24 * 60 * 60 * 1000;
 
       for (const item of feed) {
         const post = item?.post;
@@ -279,7 +297,10 @@ export class SocialContentCrawler {
         let publishedAt = new Date().toISOString();
         if (record?.createdAt) {
           const d = new Date(record.createdAt);
-          if (!isNaN(d.getTime())) publishedAt = d.toISOString();
+          if (!isNaN(d.getTime())) {
+            publishedAt = d.toISOString();
+            if (now - d.getTime() > maxAgeMs) continue; // Skip stale post
+          }
         }
 
         articles.push({

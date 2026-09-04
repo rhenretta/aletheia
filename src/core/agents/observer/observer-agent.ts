@@ -119,6 +119,11 @@ IRONCLAD GUARDRAILS & NEGATIVE CONSTRAINTS:
 - If the user has only asked an open-ended conversational prompt (e.g. "What should we talk about", "Hello", "Tell me the news"), "tool_calls" MUST BE EMPTY ([]).
 - ONLY add a topic if the user actively introduced it or articulated substantive curiosity/opinions about it.
 - The "evidence" field MUST contain the exact verbatim substring from the USER showing their explicit statement.
+- SUBSTANTIVE REAL-WORLD DOMAIN INTEGRITY: A trackable topic MUST represent a concrete, ongoing real-world subject domain, technology, industry, organization, public figure, product, or event field (e.g., "Autonomous Vehicles", "Commercial Spaceflight", "Solid-State Batteries"). NEVER extract cognitive thinking styles, epistemic inquiry modes, statistical analysis methods, or rhetorical/debate framing devices as trackable topics (e.g., NEVER create topics like "Evidence Evaluation", "Critical Thinking", "Statistical Inference", "Fact Verification", "Anecdotal Comparison", "Debate Analysis"). When a user evaluates evidence or compares anecdotes to statistics, that analytical lens belongs inside "why_they_care" or "living_narrative" of the underlying domain topic, NEVER as an independent topic.
+- CANONICAL TOPIC CONVERGENCE (DO NOT SPLINTER EXISTING INTERESTS): If the user discusses a sub-aspect, new question, specific version, safety data, benchmark, or milestone of an interest that is ALREADY present in their knowledge graph (e.g., discussing safety benchmarks, version updates, or pilot data when an established topic already exists in the graph):
+  * You MUST emit an 'update_topic' tool call for the existing canonical topic!
+  * You are STRICTLY FORBIDDEN from emitting 'create_topic' for splinter variations (e.g. do NOT create '[Topic] Sub-Feature', '[Topic] Benchmark Results', '[Topic] Updates', or '[Topic] Perspectives').
+  * Fold the new angle into the existing topic's 'curiosity_vectors', 'evolution_insight', 'why_they_care', and 'living_narrative'.
 
 === EXISTING LIVING TOPIC DOSSIERS IN KNOWLEDGE GRAPH ===
 ${serializedDossiers}
@@ -374,8 +379,8 @@ Output strict JSON:
       }
     }
 
-    // Step 3: Background knowledge graph harmonization (only triggers on extreme graph saturation >= 25 topics)
-    if (Object.keys(adaptedNode.topics || {}).length >= 25) {
+    // Step 3: Background knowledge graph harmonization (triggers when topics >= 4 to prevent splinter fragmentation)
+    if (Object.keys(adaptedNode.topics || {}).length >= 4) {
       try {
         const harmResult = await InterestHarmonizer.harmonize(adaptedNode, "background_observer");
         if (harmResult.changed) {

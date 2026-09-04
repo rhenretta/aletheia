@@ -3,12 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/core/auth/auth-options";
 import { DialogueAgent, ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import { postgresStore } from "@/core/storage/postgres-store";
-import { AttachedStoryContext, UnifiedTopicNode } from "@/core/types/contracts";
+import { AttachedStoryContext, AttachedTopicBriefContext, UnifiedTopicNode } from "@/core/types/contracts";
 import { ObserverAgent } from "@/core/agents/observer/observer-agent";
 import { DiscoveryAgent } from "@/core/agents/discovery/discovery-agent";
 import { executeAletheiaPipeline } from "@/core/graph/state-graph";
 
 import { isReadOnlyRequest, readOnlyForbiddenResponse } from "@/core/auth/read-only-guard";
+import { calculateSemanticAffinity } from "@/core/matching/semantic-matcher";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,10 +19,11 @@ export async function POST(req: NextRequest) {
 
     const session = await getServerSession(authOptions);
     const body = await req.json();
-    const { history, userId, attachedStory, currentStories, clientContext } = body as {
+    const { history, userId, attachedStory, attachedTopicBrief, currentStories, clientContext } = body as {
       history: ChatMessage[];
       userId?: string;
       attachedStory?: AttachedStoryContext;
+      attachedTopicBrief?: AttachedTopicBriefContext;
       currentStories?: Array<{
         event_id: string;
         headline: string;
@@ -82,7 +84,8 @@ export async function POST(req: NextRequest) {
             unifiedNode,
             attachedStory,
             currentStories,
-            clientContext
+            clientContext,
+            attachedTopicBrief
           );
 
           let finalResponse: any = null;
@@ -117,6 +120,7 @@ export async function POST(req: NextRequest) {
                 trace_id: finalResponse.trace_id,
                 context_trace_id: finalResponse.context_trace_id,
                 attached_story: attachedStory,
+                attached_topic_brief: attachedTopicBrief,
                 tool_executions: finalResponse.tool_executions,
                 agent_internal_rationale: finalResponse.agent_internal_rationale,
                 context_generated: finalResponse.context_generated,
@@ -134,19 +138,50 @@ export async function POST(req: NextRequest) {
               console.warn("Chat route: Observer adaptation failed:", err);
             }
 
-            // 3. Ensure any validated extracted topics are merged into unifiedNode
+            // 3. Ensure any validated extracted topics are merged into unifiedNode (resolving to existing canonical topics)
             if (finalResponse.extracted_topics && finalResponse.extracted_topics.length > 0) {
               unifiedNode.topics = unifiedNode.topics || {};
               for (const t of finalResponse.extracted_topics) {
                 if (t.topic && typeof t.topic === "string") {
-                  const existing = unifiedNode.topics[t.topic];
-                  unifiedNode.topics[t.topic] = {
+                  let targetTopic = t.topic;
+                  let existing = unifiedNode.topics[t.topic];
+
+                  // Resolve to existing canonical topic if one matches
+                  if (!existing) {
+                    for (const [existingTopic, meta] of Object.entries(unifiedNode.topics)) {
+                      const affinity = calculateSemanticAffinity(
+                        {
+                          event_id: "match",
+                          topic: t.topic,
+                          headline: t.topic,
+                          summary: t.reasoning || "",
+                          verified_entities: [t.topic],
+                        } as any,
+                        existingTopic,
+                        unifiedNode
+                      );
+                      if (affinity.is_match && affinity.score >= 0.25) {
+                        targetTopic = existingTopic;
+                        existing = meta;
+                        break;
+                      }
+                    }
+                  }
+
+                  const updatedCuriosity = Array.from(
+                    new Set([...(existing?.curiosity_vectors || []), t.topic])
+                  ).filter(Boolean);
+
+                  unifiedNode.topics[targetTopic] = {
                     weight: Number(Math.min(1.0, Math.max(0.2, (existing?.weight || t.weight || 0.6) + 0.05)).toFixed(2)),
-                    why_they_care: t.reasoning || existing?.why_they_care || "Expressed substantive interest during conversation.",
+                    why_they_care: existing?.why_they_care || t.reasoning || "Expressed substantive interest during conversation.",
                     technical_depth: existing?.technical_depth || "practitioner",
-                    curiosity_vectors: existing?.curiosity_vectors || [t.topic],
+                    curiosity_vectors: updatedCuriosity.length > 0 ? updatedCuriosity : [targetTopic],
                     last_discussed_at: new Date().toISOString(),
                   };
+
+                  // Update extracted topic canonical name for downstream routing
+                  t.topic = targetTopic;
                 }
               }
               await postgresStore.saveUnifiedTopicNode(unifiedNode);

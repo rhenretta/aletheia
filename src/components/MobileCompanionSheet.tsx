@@ -17,17 +17,21 @@ import {
   Compass,
   FileText,
   AlertTriangle,
+  Flame,
   Minimize2,
   Maximize2,
 } from "lucide-react";
 import {
   AttachedStoryContext,
+  AttachedTopicBriefContext,
   TopicMetadata,
   TopicEvolutionEntry,
   UnifiedTopicNode,
   UserKnowledgeGraph,
 } from "@/core/types/contracts";
 import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
+import { renderFormattedMessageContent } from "@/components/FormattedMessage";
+
 
 interface MobileCompanionSheetProps {
   isOpen: boolean;
@@ -47,6 +51,8 @@ interface MobileCompanionSheetProps {
   chatScrollContainerRef: React.RefObject<HTMLDivElement>;
   attachedStory: AttachedStoryContext | null;
   setAttachedStory: (story: AttachedStoryContext | null) => void;
+  attachedTopicBrief?: AttachedTopicBriefContext | null;
+  setAttachedTopicBrief?: (brief: AttachedTopicBriefContext | null) => void;
   unifiedTopicNode: UnifiedTopicNode | null;
   userGraph: UserKnowledgeGraph | null;
   extractedTopics: Array<{ topic: string; weight: number; reasoning: string }>;
@@ -82,6 +88,8 @@ export default function MobileCompanionSheet({
   chatScrollContainerRef,
   attachedStory,
   setAttachedStory,
+  attachedTopicBrief,
+  setAttachedTopicBrief,
   unifiedTopicNode,
   userGraph,
   extractedTopics,
@@ -99,6 +107,7 @@ export default function MobileCompanionSheet({
   isAdmin = false,
 }: MobileCompanionSheetProps) {
   const [isStoryExpanded, setIsStoryExpanded] = useState(false);
+  const [isTopicBriefExpanded, setIsTopicBriefExpanded] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [expandedTopicTimelines, setExpandedTopicTimelines] = useState<Set<string>>(new Set());
   const mobileInputRef = useRef<HTMLInputElement>(null);
@@ -157,6 +166,28 @@ export default function MobileCompanionSheet({
                   >
                     <X className="w-3 h-3" />
                   </button>
+                </div>
+              )}
+
+              {/* Attached Topic Brief Pill if active */}
+              {attachedTopicBrief && (
+                <div className="px-2.5 py-1 rounded-xl bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-between text-[11px] text-cyan-200">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Sparkles className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+                    <span className="truncate font-medium">{attachedTopicBrief.lifecycle_label} · {attachedTopicBrief.topic_title}</span>
+                  </div>
+                  {setAttachedTopicBrief && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAttachedTopicBrief(null);
+                      }}
+                      className="p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition flex-shrink-0"
+                      title="Detach Topic Brief"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -266,6 +297,110 @@ export default function MobileCompanionSheet({
                   </button>
                 </div>
               </div>
+
+              {/* Attached Topic Brief Collapsible Context Bar */}
+              {companionTab === "chat" && attachedTopicBrief && (
+                <div className="rounded-xl bg-cyan-950/70 border border-cyan-500/40 overflow-hidden text-xs">
+                  <div
+                    onClick={() => setIsTopicBriefExpanded((prev) => !prev)}
+                    className="p-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-cyan-900/40 transition"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                      <div className="truncate">
+                        <div className="text-cyan-200 font-bold truncate">
+                          {attachedTopicBrief.topic_title}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
+                          {attachedTopicBrief.parent_interest} · {attachedTopicBrief.lifecycle_label} · {attachedTopicBrief.gravity_score} Gravity
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {isTopicBriefExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-cyan-400" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
+                      )}
+                      {setAttachedTopicBrief && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAttachedTopicBrief(null);
+                          }}
+                          className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition"
+                          title="Detach Topic Brief"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {isTopicBriefExpanded && (
+                    <div className="p-3 bg-slate-950/90 border-t border-cyan-500/20 space-y-2.5 max-h-56 overflow-y-auto font-sans">
+                      {/* Current Focus */}
+                      <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-[11px] text-cyan-200 space-y-1">
+                        <div className="font-mono uppercase font-bold text-[10px] text-cyan-400 flex items-center gap-1">
+                          <Flame className="w-3 h-3 text-amber-400" />
+                          The Now · Current Focus
+                        </div>
+                        <p className="leading-relaxed">{attachedTopicBrief.current_focus}</p>
+                      </div>
+
+                      {/* Executive Summary */}
+                      <p className="text-slate-300 text-xs leading-relaxed">
+                        {attachedTopicBrief.executive_summary}
+                      </p>
+
+                      {/* Public Sentiment */}
+                      {attachedTopicBrief.public_sentiment && (
+                        <div className="space-y-1.5 pt-1 border-t border-white/5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono uppercase text-slate-400">
+                              Community Sentiment
+                            </span>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                              {attachedTopicBrief.public_sentiment.tone}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 italic">
+                            &quot;{attachedTopicBrief.public_sentiment.summary}&quot;
+                          </p>
+                          {attachedTopicBrief.public_sentiment.representative_quotes.length > 0 && (
+                            <div className="space-y-1 pt-1">
+                              {attachedTopicBrief.public_sentiment.representative_quotes.map((q, qIdx) => (
+                                <div key={qIdx} className="text-[11px] text-slate-300 pl-2 border-l-2 border-cyan-500/40">
+                                  &quot;{q.quote}&quot; <span className="text-[10px] font-mono text-cyan-400">— [{q.speaker_or_community}]</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Historical Arc */}
+                      {attachedTopicBrief.historical_arc && attachedTopicBrief.historical_arc.length > 0 && (
+                        <div className="space-y-1.5 pt-1 border-t border-white/5">
+                          <span className="text-[10px] font-mono uppercase text-slate-400">
+                            Anchored Historical Arc
+                          </span>
+                          <div className="space-y-1">
+                            {attachedTopicBrief.historical_arc.map((m, mIdx) => (
+                              <div key={mIdx} className="text-[11px] text-slate-300 flex items-start gap-1.5">
+                                <span className="text-[9px] font-mono text-cyan-400 bg-cyan-950 px-1 py-0.2 rounded border border-cyan-800/40 flex-shrink-0 mt-0.5">
+                                  {m.time_label}
+                                </span>
+                                <span className="line-clamp-2">{m.milestone}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Attached Story Collapsible Context Bar */}
               {companionTab === "chat" && attachedStory && (
@@ -404,7 +539,7 @@ export default function MobileCompanionSheet({
                             )}
 
                             <div className="p-3.5 rounded-2xl leading-relaxed bg-slate-900/90 text-slate-200 border border-white/10 rounded-tl-none whitespace-pre-wrap">
-                              {msg.content}
+                              {renderFormattedMessageContent(msg.content)}
                             </div>
 
                             {isAdmin && (
@@ -429,7 +564,7 @@ export default function MobileCompanionSheet({
                                 Re: {msg.attached_story.headline}
                               </div>
                             )}
-                            {msg.content}
+                            {renderFormattedMessageContent(msg.content)}
                           </div>
                         )}
 

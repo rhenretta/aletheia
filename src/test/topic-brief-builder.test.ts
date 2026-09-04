@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildTopicBriefs } from "../core/matching/topic-brief-builder";
-import { SynthesizedEventCard, UnifiedTopicNode } from "../core/types/contracts";
+import { enrichSectionSourceUrls } from "../core/matching/topic-brief-synthesizer";
+import { SynthesizedEventCard, UnifiedTopicNode, DynamicBriefSection } from "../core/types/contracts";
 
 describe("TopicBriefBuilder & Dual-View Aggregator", () => {
   const mockNode: UnifiedTopicNode = {
@@ -165,5 +166,164 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     expect(spaceXBrief!.all_sources.length).toBe(2);
     expect(spaceXBrief!.all_sources.some((s) => s.name === "South China Morning Post")).toBe(true);
     expect(spaceXBrief!.all_sources.some((s) => s.name === "Yahoo News")).toBe(true);
+  });
+
+  it("prioritizes active recency over dormant topics even if dormant has more unseen cards", () => {
+    const cards: SynthesizedEventCard[] = [
+      // Ancient topic from 82 days ago with 3 cards
+      {
+        event_id: "evt_old_1",
+        topic: "Ancient Subject",
+        headline: "Historical Event A (v1)",
+        personalized_framing: "Historical framing",
+        summary: "Something from months ago.",
+        fact_bullets: ["Old fact"],
+        disputed_claims: [],
+        verified_entities: ["Ancient Subject"],
+        sources: [{ name: "Old Source", url: "https://example.com/1", bias: "center", raw_text: "..." }],
+        format: "bulleted_distillation",
+        published_at: new Date(Date.now() - 82 * 24 * 60 * 60 * 1000).toISOString(),
+        recency_label: "82d ago",
+      },
+      {
+        event_id: "evt_old_2",
+        topic: "Ancient Subject",
+        headline: "Historical Event B",
+        personalized_framing: "Historical framing",
+        summary: "Something from months ago.",
+        fact_bullets: ["Old fact"],
+        disputed_claims: [],
+        verified_entities: ["Ancient Subject"],
+        sources: [{ name: "Old Source", url: "https://example.com/2", bias: "center", raw_text: "..." }],
+        format: "bulleted_distillation",
+        published_at: new Date(Date.now() - 85 * 24 * 60 * 60 * 1000).toISOString(),
+        recency_label: "85d ago",
+      },
+      // Fresh active topic from 2 hours ago with 1 card
+      {
+        event_id: "evt_fresh_1",
+        topic: "Active Subject",
+        headline: "Breaking Development Today",
+        personalized_framing: "Fresh framing",
+        summary: "Something happening right now.",
+        fact_bullets: ["New fact"],
+        disputed_claims: [],
+        verified_entities: ["Active Subject"],
+        sources: [{ name: "Live Wire", url: "https://example.com/wire", bias: "center", raw_text: "..." }],
+        format: "bulleted_distillation",
+        published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        recency_label: "2h ago",
+      },
+    ];
+
+    const briefs = buildTopicBriefs(cards, null, {
+      seen_story_ids: {},
+      seen_topics: {},
+    });
+
+    const activeBrief = briefs.find((b) => b.topic === "Active Subject")!;
+    const ancientBrief = briefs.find((b) => b.topic === "Ancient Subject")!;
+
+    expect(activeBrief.velocity_status).toBe("breaking");
+    expect(ancientBrief.velocity_status).toBe("dormant");
+
+    // The fresh active brief MUST rank ahead of the dormant 82-day-old brief
+    const activeIndex = briefs.indexOf(activeBrief);
+    const ancientIndex = briefs.indexOf(ancientBrief);
+    expect(activeIndex).toBeLessThan(ancientIndex);
+  });
+
+  it("enriches all dynamic sections with valid original source URLs", () => {
+    const rawSections: DynamicBriefSection[] = [
+      {
+        id: "sec_dev",
+        section_type: "key_developments",
+        title: "Key Developments",
+        layout_style: "bullets",
+        content: {
+          bullets: [
+            { title: "Destroyers Redeployed", text: "Ships stationed at Hormuz.", source: "Reuters" },
+            { title: "Air Defense Active", text: "New sensors online.", source: "CBS News" },
+          ],
+        },
+      },
+      {
+        id: "sec_chrono",
+        section_type: "real_world_chronology",
+        title: "Chronology",
+        layout_style: "timeline",
+        content: {
+          milestones: [
+            { time_label: "Aug 2026", milestone: "Carrier group enters gulf", source_name: "Reuters" },
+          ],
+        },
+      },
+      {
+        id: "sec_pulse",
+        section_type: "community_pulse",
+        title: "Reactions",
+        layout_style: "quote_cards",
+        content: {
+          quotes: [
+            { quote: "Major deterrence upgrade", speaker_or_community: "Reuters", platform: "news" },
+          ],
+        },
+      },
+      {
+        id: "sec_tensions",
+        section_type: "critical_tensions",
+        title: "Tensions",
+        layout_style: "callout",
+        content: {
+          tensions: [
+            {
+              topic_tension: "Escalation vs Deterrence",
+              thesis: "High readiness prevents attack",
+              antithesis: "High readiness increases miscalculation risk",
+              source: "CBS News",
+            },
+          ],
+        },
+      },
+      {
+        id: "sec_catalysts",
+        section_type: "catalysts_outlook",
+        title: "What to Watch",
+        layout_style: "grid",
+        content: {
+          catalysts: [
+            {
+              event: "Joint naval exercises scheduled",
+              timeframe: "Next month",
+              significance: "Will test response coordination",
+              source: "Reuters",
+            },
+          ],
+        },
+      },
+    ];
+
+    const sources = [
+      { name: "Reuters", url: "https://reuters.com/article/naval-1", bias: "center" as const },
+      { name: "CBS News", url: "https://cbsnews.com/article/redsea-2", bias: "center" as const },
+    ];
+
+    const enriched = enrichSectionSourceUrls(rawSections, mockCards, sources);
+
+    // Verify key_developments
+    expect(enriched[0].content.bullets?.[0].source_url).toBe("https://reuters.com/article/naval-1");
+    expect(enriched[0].content.bullets?.[1].source_url).toBe("https://cbsnews.com/article/redsea-2");
+
+    // Verify real_world_chronology
+    expect(enriched[1].content.milestones?.[0].source_url).toBe("https://reuters.com/article/naval-1");
+
+    // Verify community_pulse
+    expect(enriched[2].content.quotes?.[0].url).toBe("https://reuters.com/article/naval-1");
+
+    // Verify critical_tensions
+    expect(enriched[3].content.tensions?.[0].source_url).toBe("https://cbsnews.com/article/redsea-2");
+
+    // Verify catalysts_outlook
+    expect(enriched[4].content.catalysts?.[0].source_url).toBe("https://reuters.com/article/naval-1");
   });
 });

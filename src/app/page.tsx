@@ -45,6 +45,7 @@ import {
   PureFactObject,
   SynthesizedEventCard,
   AttachedStoryContext,
+  AttachedTopicBriefContext,
   ContextualSelection,
   EventSourceArticle,
   AppUser,
@@ -57,12 +58,15 @@ import SourceReaderModal from "@/components/SourceReaderModal";
 import MobileCompanionSheet from "@/components/MobileCompanionSheet";
 import UserManagerModal from "@/components/UserManagerModal";
 import SubscriptionModal from "@/components/SubscriptionModal";
+import { renderFormattedMessageContent } from "@/components/FormattedMessage";
 import SupportModal from "@/components/SupportModal";
 import ReadOnlyBanner from "@/components/ReadOnlyBanner";
 import UserMenu from "@/components/UserMenu";
 import LandingPage from "@/components/LandingPage";
 import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
+import { DynamicBriefSectionRenderer } from "@/components/briefs/DynamicBriefSectionRenderer";
+import { LLMTopicBriefDesign } from "@/core/types/contracts";
 import { useSession, signIn, signOut } from "next-auth/react";
 import {
   trackAuthAction,
@@ -230,71 +234,6 @@ export default function AletheiaHome() {
     } catch {}
   };
 
-  const renderBoldSegments = (text: string, keyPrefix: string): React.ReactNode => {
-    const boldRegex = /\*\*([^*]+)\*\*/g;
-    const subParts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let bMatch: RegExpExecArray | null;
-
-    while ((bMatch = boldRegex.exec(text)) !== null) {
-      if (bMatch.index > lastIndex) {
-        subParts.push(text.substring(lastIndex, bMatch.index));
-      }
-      subParts.push(
-        <strong key={`${keyPrefix}-b-${bMatch.index}`} className="font-semibold text-white">
-          {bMatch[1]}
-        </strong>
-      );
-      lastIndex = boldRegex.lastIndex;
-    }
-
-    if (lastIndex < text.length) {
-      subParts.push(text.substring(lastIndex));
-    }
-
-    return <React.Fragment key={keyPrefix}>{subParts}</React.Fragment>;
-  };
-
-  const renderFormattedMessageContent = (content: string): React.ReactNode => {
-    if (!content) return null;
-
-    // Normalize orphan punctuation like " [link] ." -> " [link]."
-    const normalizedContent = content.replace(/\s+([.,;:!?])/g, "$1");
-
-    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-    const parts: React.ReactNode[] = [];
-    let lastIdx = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = linkRegex.exec(normalizedContent)) !== null) {
-      if (match.index > lastIdx) {
-        parts.push(renderBoldSegments(normalizedContent.substring(lastIdx, match.index), `txt-${lastIdx}`));
-      }
-      const label = match[1];
-      const url = match[2];
-      parts.push(
-        <a
-          key={`link-${match.index}`}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-cyan-400 hover:text-cyan-200 underline underline-offset-2 font-medium inline-flex items-center gap-0.5 transition-colors mx-0.5 bg-cyan-950/50 hover:bg-cyan-900/70 px-1.5 py-0.5 rounded border border-cyan-500/30 max-w-full align-middle text-xs"
-          title={`Visit original source: ${url}`}
-        >
-          <span className="truncate max-w-[280px]">{label}</span>
-          <ExternalLink className="w-2.5 h-2.5 opacity-80 inline ml-0.5 flex-shrink-0" />
-        </a>
-      );
-      lastIdx = linkRegex.lastIndex;
-    }
-
-    if (lastIdx < normalizedContent.length) {
-      parts.push(renderBoldSegments(normalizedContent.substring(lastIdx), `txt-${lastIdx}`));
-    }
-
-    return parts;
-  };
-
   const formatTopicBadge = (topic: string): string => {
     if (!topic) return "General Intelligence";
     const cleaned = topic
@@ -306,6 +245,19 @@ export default function AletheiaHome() {
       .replace(/\s+/g, " ")
       .trim();
     return cleaned.length > 0 ? cleaned : topic;
+  };
+
+  const formatArchetypeBadge = (archetype?: string): string | null => {
+    if (!archetype) return null;
+    const map: Record<string, string> = {
+      regulatory_controversy: "Debate",
+      technical_deep_dive: "Deep Dive",
+      breaking_chronology: "Timeline",
+      field_synthesis: "Overview",
+      investigative_timeline: "Timeline",
+      empirical_investigation: "Deep Dive",
+    };
+    return map[archetype] || archetype.replace(/_/g, " ");
   };
 
   const defaultWelcomeMessage: ChatMessage = {
@@ -320,6 +272,7 @@ export default function AletheiaHome() {
   const [inputPrompt, setInputPrompt] = useState("");
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [attachedStory, setAttachedStory] = useState<AttachedStoryContext | null>(null);
+  const [attachedTopicBrief, setAttachedTopicBrief] = useState<AttachedTopicBriefContext | null>(null);
   const [selectedReadingSource, setSelectedReadingSource] = useState<{
     source: EventSourceArticle;
     card: SynthesizedEventCard;
@@ -339,7 +292,7 @@ export default function AletheiaHome() {
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<
     "all" | "revealed_preference" | "thematic_intersection" | "curiosity_frontier"
   >("all");
-  const [activeViewMode, setActiveViewMode] = useState<"stories" | "briefs">("stories");
+  const [activeViewMode, setActiveViewMode] = useState<"stories" | "briefs">("briefs");
   const [cognitiveLoad, setCognitiveLoad] = useState<"low" | "balanced" | "deep_dive">("balanced");
   const [isTopicDropdownOpen, setIsTopicDropdownOpen] = useState(false);
   const [aiFeedFilter, setAiFeedFilter] = useState<{
@@ -357,6 +310,58 @@ export default function AletheiaHome() {
   // Expandable Stories State (Accordion/Expansion per card)
   const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
   const [expandedTopicTimelines, setExpandedTopicTimelines] = useState<Set<string>>(new Set());
+
+  // Dynamic LLM-Designed Topic Briefs State
+  const [llmBriefDesigns, setLlmBriefDesigns] = useState<Record<string, LLMTopicBriefDesign>>({});
+  const [synthesizingBriefTopics, setSynthesizingBriefTopics] = useState<Set<string>>(new Set());
+
+  const handleSynthesizeBriefWithAI = async (
+    topic: string,
+    cards: SynthesizedEventCard[] = [],
+    sources: EventSourceArticle[] = [],
+    previousDesign?: LLMTopicBriefDesign | null
+  ) => {
+    if (synthesizingBriefTopics.has(topic)) return;
+    setSynthesizingBriefTopics((prev) => new Set(prev).add(topic));
+    try {
+      const res = await fetch("/api/briefs/synthesize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          cards,
+          sources,
+          previousDesign: previousDesign || llmBriefDesigns[topic] || null,
+          userId: effectiveUserId,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.design) {
+        setLlmBriefDesigns((prev) => ({ ...prev, [topic]: json.design }));
+        // If the multi-agent evolution flow retrieved new cards, merge them into the feed
+        if (json.new_cards && json.new_cards.length > 0) {
+          setPipelineResult((prev) => {
+            if (!prev) return prev;
+            const existingIds = new Set((prev.feed_cards || []).map((c: any) => c.event_id));
+            const newOnes = json.new_cards.filter((c: any) => !existingIds.has(c.event_id));
+            if (newOnes.length === 0) return prev;
+            return {
+              ...prev,
+              feed_cards: [...newOnes, ...(prev.feed_cards || [])],
+            };
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Error synthesizing brief with AI:", e);
+    } finally {
+      setSynthesizingBriefTopics((prev) => {
+        const next = new Set(prev);
+        next.delete(topic);
+        return next;
+      });
+    }
+  };
 
   const toggleCardExpansion = (eventId: string) => {
     setExpandedCardIds((prev) => {
@@ -421,6 +426,22 @@ export default function AletheiaHome() {
         const localCached = localStorage.getItem(`aletheia_chat_session_${effectiveUserId}`);
         if (localCached) {
           const parsed = JSON.parse(localCached);
+          if (parsed.pipelineResult?.feed_cards) {
+            parsed.pipelineResult.feed_cards = parsed.pipelineResult.feed_cards.filter(
+              (c: any) => !c.topic?.toLowerCase().includes("evidence evaluation")
+            );
+          }
+          if (parsed.unifiedTopicNode?.topics?.["Evidence Evaluation"]) {
+            delete parsed.unifiedTopicNode.topics["Evidence Evaluation"];
+          }
+          if (parsed.userGraph?.topic_weights?.["Evidence Evaluation"]) {
+            delete parsed.userGraph.topic_weights["Evidence Evaluation"];
+          }
+          if (parsed.extractedTopics) {
+            parsed.extractedTopics = parsed.extractedTopics.filter(
+              (t: any) => !t.topic?.toLowerCase().includes("evidence evaluation")
+            );
+          }
           if (parsed.messages && parsed.messages.length > 0) setMessages(parsed.messages);
           if (parsed.unifiedTopicNode) setUnifiedTopicNode(parsed.unifiedTopicNode);
           if (parsed.userGraph) setUserGraph(parsed.userGraph);
@@ -726,6 +747,19 @@ export default function AletheiaHome() {
           };
         });
 
+        // Invalidate cached brief design for this topic so it regenerates with the new cards
+        setLlmBriefDesigns((prev) => {
+          const next = { ...prev };
+          const target = (canonicalTopic || curationQuery).toLowerCase().trim();
+          for (const key of Object.keys(next)) {
+            const cleanKey = key.toLowerCase().trim();
+            if (cleanKey.includes(target) || target.includes(cleanKey)) {
+              delete next[key];
+            }
+          }
+          return next;
+        });
+
         if (json.unified_topic_node) {
           setUnifiedTopicNode(json.unified_topic_node);
         } else if (json.data?.unified_topic_node) {
@@ -875,6 +909,7 @@ export default function AletheiaHome() {
         content: "",
         timestamp: new Date().toISOString(),
         attached_story: attachedStory || undefined,
+        attached_topic_brief: attachedTopicBrief || undefined,
       };
 
       setMessages([...newHistory, initialBotMessage]);
@@ -886,6 +921,7 @@ export default function AletheiaHome() {
           history: newHistory,
           userId: effectiveUserId,
           attachedStory: attachedStory || undefined,
+          attachedTopicBrief: attachedTopicBrief || undefined,
           currentStories: currentStoriesPayload,
           clientContext,
         }),
@@ -1144,6 +1180,7 @@ export default function AletheiaHome() {
       sources: card.sources,
     };
     setAttachedStory(storyContext);
+    setAttachedTopicBrief(null);
     setCompanionTab("chat");
     setIsMobileCompanionOpen(true);
 
@@ -1153,6 +1190,40 @@ export default function AletheiaHome() {
       event_id: card.event_id,
       topic: card.topic,
       card,
+    });
+  };
+
+  // Attach an evolving event topic dossier to the conversational companion
+  const handleDiscussTopicBrief = (brief: TopicBrief) => {
+    trackCompanionChat("context_attach", {
+      storyTitle: brief.title,
+      topic: brief.parent_interest,
+    });
+    const briefContext: AttachedTopicBriefContext = {
+      brief_id: brief.id,
+      topic_title: brief.title,
+      parent_interest: brief.parent_interest,
+      lifecycle_phase: brief.lifecycle_phase,
+      lifecycle_label: brief.lifecycle_label,
+      gravity_score: brief.gravity_score,
+      current_focus: brief.current_focus,
+      executive_summary: brief.narrative_full_text || brief.living_narrative || brief.why_they_care,
+      public_sentiment: brief.public_sentiment,
+      historical_arc: brief.historical_arc,
+      key_facts: brief.key_highlights.flatMap((h) => h.facts).slice(0, 5),
+      sources: brief.all_sources.map((s) => ({ name: s.name, url: s.url, bias: s.bias })),
+    };
+    setAttachedTopicBrief(briefContext);
+    setAttachedStory(null);
+    setCompanionTab("chat");
+    setIsMobileCompanionOpen(true);
+
+    setSelectedContext({
+      type: "topic",
+      topic_name: brief.topic,
+      weight: brief.weight,
+      technical_depth: brief.technical_depth as any,
+      why_they_care: brief.why_they_care,
     });
   };
 
@@ -1266,6 +1337,28 @@ export default function AletheiaHome() {
   const topicBriefs = React.useMemo(() => {
     return buildTopicBriefs(feedCards, unifiedTopicNode, rankingSeenSnapshot);
   }, [feedCards, unifiedTopicNode, rankingSeenSnapshot]);
+
+  // Auto-refresh stale/dormant topic briefs in the background so monitored topics always reflect live wire developments
+  const autoRefreshedTopicsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (activeViewMode !== "briefs" || topicBriefs.length === 0) return;
+    // Find dormant topics (> 7 days without news) that haven't been refreshed in this session
+    const staleBrief = topicBriefs.find(
+      (b) =>
+        b.velocity_status === "dormant" &&
+        !autoRefreshedTopicsRef.current.has(b.topic) &&
+        !synthesizingBriefTopics.has(b.topic)
+    );
+    if (staleBrief) {
+      autoRefreshedTopicsRef.current.add(staleBrief.topic);
+      handleSynthesizeBriefWithAI(
+        staleBrief.topic,
+        staleBrief.stories,
+        staleBrief.all_sources,
+        llmBriefDesigns[staleBrief.topic] || staleBrief.llm_design
+      );
+    }
+  }, [topicBriefs, activeViewMode, synthesizingBriefTopics, llmBriefDesigns]);
 
   if (authStatus === "loading") {
     return (
@@ -1697,9 +1790,24 @@ export default function AletheiaHome() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pb-20 lg:pb-0">
         {/* LEFT COLUMN: THE PERSONALIZED EPISTEMIC FEED (7 of 12 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          {/* Primary View Switcher: Story Feed vs Topic Briefs */}
+          {/* Primary View Switcher: Topic Briefs vs Story Feed */}
           <div className="flex items-center justify-between gap-3 bg-slate-900/60 p-1.5 rounded-2xl border border-white/10">
             <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setActiveViewMode("briefs")}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  activeViewMode === "briefs"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Topic Briefs</span>
+                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
+                  {topicBriefs.length}
+                </span>
+              </button>
+
               <button
                 onClick={() => setActiveViewMode("stories")}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
@@ -1714,25 +1822,10 @@ export default function AletheiaHome() {
                   {filteredFeedCards.length}
                 </span>
               </button>
-
-              <button
-                onClick={() => setActiveViewMode("briefs")}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-                  activeViewMode === "briefs"
-                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Topic Briefs</span>
-                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                  {topicBriefs.length}
-                </span>
-              </button>
             </div>
 
-            <span className="text-[11px] font-mono text-slate-400 hidden sm:inline-block pr-2">
-              {activeViewMode === "stories" ? "Granular Wire Stream" : "Aggregated Topic Intelligence"}
+            <span className="text-[11px] text-slate-400 hidden sm:inline-block pr-2">
+              {activeViewMode === "briefs" ? "Catch-ups & highlights by topic" : "Latest chronological feed"}
             </span>
           </div>
 
@@ -1884,126 +1977,186 @@ export default function AletheiaHome() {
                   </div>
                 </div>
               ) : (
-                topicBriefs.map((brief, bIdx) => {
+                topicBriefs
+                  .filter((brief) => {
+                    if (!selectedTopicFilter || selectedTopicFilter === "all") return true;
+                    return (
+                      brief.topic.toLowerCase() === selectedTopicFilter.toLowerCase() ||
+                      brief.parent_interest?.toLowerCase() === selectedTopicFilter.toLowerCase()
+                    );
+                  })
+                  .map((brief, bIdx) => {
                   const isHighVelocity = brief.velocity_status === "breaking" || brief.velocity_status === "active";
+                  const isEscalating = brief.lifecycle_phase === "escalating" || brief.lifecycle_phase === "spawning";
+                  const activeDesign = llmBriefDesigns[brief.topic] || brief.llm_design;
+                  const sectionsToRender = activeDesign?.sections || brief.dynamic_sections || [];
+                  const executiveTake = activeDesign?.executive_take || brief.executive_take || brief.current_focus;
+                  const isSynthesizingThis = synthesizingBriefTopics.has(brief.topic);
 
                   return (
                     <div
                       key={bIdx}
                       className={`glass-panel rounded-2xl p-5 border transition duration-200 space-y-4 ${
-                        isHighVelocity
+                        isEscalating || isHighVelocity
                           ? "border-cyan-500/40 shadow-lg shadow-cyan-950/30"
                           : "border-white/10 hover:border-white/20"
                       }`}
                     >
-                      {/* Topic Header & Velocity Badge */}
+                      {/* Topic Header & Dynamic Badges */}
                       <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-2 max-w-xl">
+                        <div className="space-y-1.5 max-w-2xl">
+                          {/* Breadcrumb Domain › Monitored Topic */}
+                          {brief.parent_interest && brief.parent_interest !== brief.title ? (
+                            <div className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-400/90 font-medium">
+                              <span
+                                className="hover:underline cursor-pointer text-slate-400 hover:text-cyan-300"
+                                onClick={() => setSelectedTopicFilter(brief.parent_interest)}
+                              >
+                                {brief.parent_interest}
+                              </span>
+                              <span className="text-slate-600">›</span>
+                              <span className="text-cyan-300 font-bold">{brief.title}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-400/90 font-medium">
+                              <span className="text-slate-500">Topic Tracker</span>
+                              <span className="text-slate-600">›</span>
+                              <span className="text-cyan-300 font-bold">{brief.title || brief.topic}</span>
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-2.5 flex-wrap">
-                            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                              <span>{brief.topic}</span>
+                            <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                              <span>{brief.title || brief.topic}</span>
                             </h3>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-semibold">
-                              {Math.round(brief.weight * 100)}% Priority
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono capitalize bg-slate-800 text-slate-300 border border-white/5">
-                              {brief.technical_depth}
-                            </span>
-                          </div>
 
-                          {/* Living Narrative */}
-                          <p className="text-xs text-slate-300 font-sans leading-relaxed">
-                            {brief.living_narrative || brief.why_they_care}
-                          </p>
+                            {/* Friendly Status Badge */}
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 border ${
+                                brief.velocity_status === "breaking"
+                                  ? "bg-rose-950/70 border-rose-500/50 text-rose-300"
+                                  : brief.velocity_status === "active"
+                                  ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-300"
+                                  : brief.velocity_status === "recent"
+                                  ? "bg-amber-950/70 border-amber-500/50 text-amber-300"
+                                  : brief.velocity_status === "dormant"
+                                  ? "bg-slate-900/90 border-slate-700/60 text-slate-400"
+                                  : "bg-slate-900 border-white/10 text-slate-400"
+                              }`}
+                            >
+                              {brief.velocity_status === "breaking"
+                                ? "⚡ Breaking"
+                                : brief.velocity_status === "active"
+                                ? "🔥 Trending"
+                                : brief.velocity_status === "recent"
+                                ? "📈 Developing"
+                                : brief.velocity_status === "dormant"
+                                ? "💤 Dormant"
+                                : "☕ Quiet lately"}
+                            </span>
 
-                          {/* Likes & Angles / Critiques & Anti-Preferences */}
-                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            {brief.likes_and_angles && brief.likes_and_angles.map((like, lIdx) => (
-                              <span
-                                key={lIdx}
-                                className="px-2 py-0.5 rounded-md bg-emerald-950/60 border border-emerald-500/30 text-[10px] font-mono text-emerald-300 flex items-center gap-1"
-                              >
-                                <span>✓</span>
-                                <span>{like}</span>
+                            {/* Format Tag */}
+                            {formatArchetypeBadge(activeDesign?.presentation_archetype) && (
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-950/70 text-indigo-300 border border-indigo-500/30">
+                                {formatArchetypeBadge(activeDesign?.presentation_archetype)}
                               </span>
-                            ))}
-                            {brief.dislikes_and_critiques && brief.dislikes_and_critiques.map((dislike, dIdx) => (
-                              <span
-                                key={dIdx}
-                                className="px-2 py-0.5 rounded-md bg-rose-950/60 border border-rose-500/30 text-[10px] font-mono text-rose-300 flex items-center gap-1"
-                              >
-                                <span>✕</span>
-                                <span>{dislike}</span>
+                            )}
+
+                            {/* Source Breadth */}
+                            {brief.cross_source_breadth > 0 && (
+                              <span className="px-2.5 py-0.5 rounded-full text-xs text-slate-300 bg-slate-900 border border-white/10">
+                                {brief.cross_source_breadth} {brief.cross_source_breadth === 1 ? "source" : "sources"}
                               </span>
-                            ))}
+                            )}
+
+                            {/* Time ago */}
+                            {brief.time_ago_label && (
+                              <span className="text-xs text-slate-400">
+                                • {brief.time_ago_label}
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {/* Velocity Status Pill */}
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-3 py-1 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 border ${
-                              brief.velocity_status === "breaking"
-                                ? "bg-rose-950/70 border-rose-500/50 text-rose-300"
-                                : brief.velocity_status === "active"
-                                ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-300"
-                                : brief.velocity_status === "recent"
-                                ? "bg-amber-950/70 border-amber-500/50 text-amber-300"
-                                : "bg-slate-900 border-white/10 text-slate-400"
+                        {/* Top Action Button */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign)}
+                            disabled={isSynthesizingThis}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition disabled:opacity-50 shadow-sm ${
+                              brief.velocity_status === "dormant"
+                                ? "bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/40 text-cyan-200"
+                                : "bg-indigo-500/20 hover:bg-indigo-500/30 border-indigo-500/30 text-indigo-200"
                             }`}
+                            title={brief.velocity_status === "dormant" ? "Scan live news wires for modern updates" : "Get a fresh AI catch-up for this topic"}
                           >
-                            {brief.velocity_label}
-                          </span>
+                            <Sparkles className={`w-3.5 h-3.5 ${brief.velocity_status === "dormant" ? "text-cyan-400" : "text-indigo-400"} ${isSynthesizingThis ? "animate-spin" : ""}`} />
+                            <span>
+                              {isSynthesizingThis
+                                ? "Searching live wires..."
+                                : brief.velocity_status === "dormant"
+                                ? "Check Live Updates"
+                                : "Catch up with AI"}
+                            </span>
+                          </button>
                         </div>
                       </div>
 
-                      {/* Executive Topic Briefing Narrative with Clickable Sentences */}
-                      {brief.narrative_sentences && brief.narrative_sentences.length > 0 && (
-                        <div className="p-4 rounded-xl bg-slate-900/90 border border-cyan-500/30 space-y-2.5 shadow-md">
-                          <div className="flex items-center justify-between text-xs font-mono text-cyan-300 font-bold border-b border-white/5 pb-2">
-                            <span className="flex items-center gap-1.5 uppercase">
-                              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                              Executive Update & Recent Developments
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-normal">
-                              Click any sentence to open original reporting
-                            </span>
+                      {/* Dormant / Quiet Topic Notice */}
+                      {brief.velocity_status === "dormant" && (
+                        <div className="px-3.5 py-2 rounded-xl bg-slate-900/60 border border-amber-500/20 text-amber-300/90 text-xs flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                            <span>This topic has been quiet for over a week. The stories shown below provide historical background.</span>
                           </div>
-                          <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-sans">
-                            {brief.narrative_sentences.map((sentence, sIdx) => {
-                              const matchedStory = brief.stories.find((s) => s.event_id === sentence.story_id) || brief.stories[0];
-                              const firstSource = sentence.sources?.[0] || matchedStory?.sources?.[0] || brief.all_sources[0] || ({
-                                name: "News Wire",
-                                title: sentence.story_headline || brief.topic,
-                                url: "#",
-                                bias: "center",
-                                raw_text: sentence.story_summary,
-                              } as any);
-
-                              return (
-                                <span
-                                  key={sIdx}
-                                  onClick={() => setSelectedReadingSource({ source: firstSource, card: matchedStory || ({} as any) })}
-                                  className="cursor-pointer hover:bg-cyan-500/20 hover:text-white rounded px-1 py-0.5 transition inline group mr-1.5"
-                                  title={`Click to read original reporting from ${firstSource.name || "source"}: "${sentence.story_headline}"`}
-                                >
-                                  <span>{sentence.text}</span>
-                                  <sup className="ml-1 text-[10px] font-mono text-cyan-400 font-bold group-hover:text-cyan-200 underline">
-                                    [{sentence.citation_index}]
-                                  </sup>
-                                </span>
-                              );
-                            })}
-                          </div>
+                          <button
+                            onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign)}
+                            disabled={isSynthesizingThis}
+                            className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 underline flex-shrink-0"
+                          >
+                            {isSynthesizingThis ? "Searching..." : "Scan live wires"}
+                          </button>
                         </div>
                       )}
 
-                      {/* Referenced Primary Development Stories (Deduplicated) */}
+                      {/* Current Status Snapshot / Executive Take */}
+                      {executiveTake && (
+                        <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-indigo-950/40 border border-cyan-500/20 space-y-1.5">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-cyan-300">
+                            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>{brief.velocity_status === "dormant" ? "Latest Recorded Status (Historical)" : "What's Happening Now"}</span>
+                          </div>
+                          <p className="text-sm text-slate-200 leading-relaxed font-sans font-normal">
+                            {executiveTake}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Dynamic Presentation Sections (LLM-Selected Architecture) */}
+                      {sectionsToRender.length > 0 && (
+                        <div className="space-y-3 pt-1">
+                          {sectionsToRender.map((section) => (
+                            <DynamicBriefSectionRenderer
+                              key={section.id}
+                              section={section}
+                              allSources={brief.all_sources}
+                              onOpenSource={(src, card) => setSelectedReadingSource({ source: src, card: card || ({} as any) })}
+                              onAskQuestion={(q) => {
+                                handleDiscussTopicBrief(brief);
+                                setInputPrompt(q);
+                                setIsMobileCompanionOpen(true);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Recent News Stories */}
                       {brief.key_highlights.length > 0 && (
-                        <div className="space-y-2.5 pt-1">
-                          <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <div className="space-y-2.5 pt-2 border-t border-white/5">
+                          <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                             <Flame className="w-3.5 h-3.5 text-amber-400" />
-                            Referenced Unique Developments ({brief.key_highlights.length})
+                            Recent Stories ({brief.key_highlights.length})
                           </span>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -2017,16 +2170,31 @@ export default function AletheiaHome() {
                                 raw_text: highlight.summary,
                               } as any);
 
+                              const hasPrimaryUrl = primarySource.url && primarySource.url !== "#";
+
                               return (
                                 <div
                                   key={hIdx}
-                                  onClick={() => setSelectedReadingSource({ source: primarySource, card: matchedCard || ({} as any) })}
-                                  className="p-3.5 rounded-xl bg-slate-900/70 border border-white/5 space-y-2 hover:border-cyan-500/30 hover:bg-slate-900/90 transition cursor-pointer group flex flex-col justify-between"
+                                  className="p-3.5 rounded-xl bg-slate-900/70 border border-white/5 space-y-2 hover:border-cyan-500/30 hover:bg-slate-900/90 transition group flex flex-col justify-between"
                                 >
                                   <div className="space-y-1.5">
                                     <div className="flex items-start justify-between gap-2">
                                       <h4 className="text-xs sm:text-sm font-bold text-slate-100 group-hover:text-cyan-300 transition line-clamp-2">
-                                        {sanitizeDisplay(highlight.headline)}
+                                        {hasPrimaryUrl ? (
+                                          <a
+                                            href={primarySource.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="hover:underline inline-flex items-center gap-1"
+                                            title={highlight.headline}
+                                          >
+                                            <span>{sanitizeDisplay(highlight.headline)}</span>
+                                            <ExternalLink className="w-3 h-3 text-slate-500 inline opacity-70 group-hover:opacity-100 flex-shrink-0" />
+                                          </a>
+                                        ) : (
+                                          <span>{sanitizeDisplay(highlight.headline)}</span>
+                                        )}
                                       </h4>
                                       <span className="text-[10px] font-mono text-slate-400 flex-shrink-0">
                                         {highlight.recency_label}
@@ -2038,17 +2206,35 @@ export default function AletheiaHome() {
                                     </p>
                                   </div>
 
-                                  {/* Sources on this specific card */}
-                                  <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-white/5">
-                                    <span className="text-[9px] font-mono text-slate-500 uppercase">Coverage:</span>
-                                    {highlight.sources.slice(0, 3).map((src, srcIdx) => (
-                                      <span
-                                        key={srcIdx}
-                                        className="text-[9px] font-mono text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40"
-                                      >
-                                        {src.name}
-                                      </span>
-                                    ))}
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-white/5">
+                                    <span className="text-[10px] text-slate-500">Source:</span>
+                                    {highlight.sources.map((src, srcIdx) => {
+                                      const isExternal = src.url && src.url !== "#";
+                                      if (isExternal) {
+                                        return (
+                                          <a
+                                            key={srcIdx}
+                                            href={src.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-[10px] font-mono text-cyan-300 hover:text-cyan-100 bg-cyan-950/60 hover:bg-cyan-900/80 px-1.5 py-0.5 rounded border border-cyan-800/40 inline-flex items-center gap-1 transition"
+                                            title={src.title || src.name}
+                                          >
+                                            <span>{src.name}</span>
+                                            <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                                          </a>
+                                        );
+                                      }
+                                      return (
+                                        <span
+                                          key={srcIdx}
+                                          className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40"
+                                        >
+                                          {src.name}
+                                        </span>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               );
@@ -2059,26 +2245,47 @@ export default function AletheiaHome() {
 
                       {/* Sources & Action Controls Footer */}
                       <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
-                        {/* Corroborating Primary Sources */}
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[10px] font-mono text-slate-500">Sources:</span>
-                          {brief.all_sources.slice(0, 4).map((src, sIdx) => (
-                            <button
-                              key={sIdx}
-                              onClick={() => setSelectedReadingSource({ source: src, card: brief.stories[0] || ({} as any) })}
-                              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-300 border border-white/5 text-[11px] text-slate-300 font-mono transition"
-                            >
-                              {src.name}
-                            </button>
-                          ))}
-                          {brief.all_sources.length > 4 && (
-                            <span className="text-[10px] font-mono text-slate-500">
-                              +{brief.all_sources.length - 4} more
-                            </span>
+                          {brief.all_sources.length > 0 && (
+                            <>
+                              <span className="text-[11px] text-slate-500">Sources:</span>
+                              {brief.all_sources.slice(0, 6).map((src, sIdx) => {
+                                const isExternal = src.url && src.url !== "#";
+                                if (isExternal) {
+                                  return (
+                                    <a
+                                      key={sIdx}
+                                      href={src.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-cyan-950/60 text-slate-300 hover:text-cyan-300 border border-white/5 hover:border-cyan-500/30 text-[11px] transition inline-flex items-center gap-1 font-sans"
+                                      title={src.title || src.name}
+                                    >
+                                      <span>{src.name}</span>
+                                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                    </a>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    key={sIdx}
+                                    onClick={() => setSelectedReadingSource({ source: src, card: brief.stories[0] || ({} as any) })}
+                                    className="px-2 py-0.5 rounded bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-300 border border-white/5 text-[11px] text-slate-300 transition"
+                                  >
+                                    {src.name}
+                                  </button>
+                                );
+                              })}
+                              {brief.all_sources.length > 6 && (
+                                <span className="text-[11px] text-slate-500">
+                                  +{brief.all_sources.length - 6} more
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
 
-                        {/* Action Buttons */}
                         <div className="flex items-center gap-2">
                           {brief.story_count > 0 && (
                             <button
@@ -2087,23 +2294,19 @@ export default function AletheiaHome() {
                                 setSelectedCategoryFilter("all");
                                 setActiveViewMode("stories");
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition"
+                              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 text-xs font-medium flex items-center gap-1.5 transition"
                             >
                               <Newspaper className="w-3.5 h-3.5 text-slate-400" />
-                              <span>View Stories ({brief.story_count})</span>
+                              <span>View stories ({brief.story_count})</span>
                             </button>
                           )}
                           <button
-                            onClick={() => {
-                              const synthStory = brief.stories[0];
-                              if (synthStory) {
-                                handleDiscussStory(synthStory);
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition"
+                            onClick={() => handleDiscussTopicBrief(brief)}
+                            className="px-3.5 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                            title="Chat about this topic with Aletheia"
                           >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            <span>Discuss Topic</span>
+                            <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Chat about this</span>
                           </button>
                         </div>
                       </div>
@@ -2285,7 +2488,7 @@ export default function AletheiaHome() {
                           <span>{card.recency_label || "Today"}</span>
                           <span>•</span>
                           <span className="text-slate-400">
-                            {card.sources.length} sources corroborating
+                            {card.sources.length} {card.sources.length === 1 ? "source" : "sources"}
                           </span>
                         </div>
                       </div>
@@ -2301,7 +2504,7 @@ export default function AletheiaHome() {
                           }`}
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
-                          <span>{isAttached ? "Active in Chat" : "Discuss with Aletheia"}</span>
+                          <span>{isAttached ? "Active in Chat" : "Chat about this"}</span>
                         </button>
                         {isEffectiveAdmin && (
                           <button
@@ -2363,18 +2566,35 @@ export default function AletheiaHome() {
 
                         {/* Compact Sources Strip */}
                         <div className="pt-2 flex items-center justify-between text-[11px] font-mono text-slate-500 border-t border-white/5">
-                          <span>{card.sources[0]?.name || "Verified Wire"} ({card.sources.length} sources)</span>
+                          <span>
+                            {card.sources[0]?.url && card.sources[0].url !== "#" ? (
+                              <a
+                                href={card.sources[0].url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-slate-400 hover:text-cyan-300 hover:underline inline-flex items-center gap-1 transition"
+                                title={card.sources[0]?.name}
+                              >
+                                <span>{card.sources[0]?.name || "Verified Wire"}</span>
+                                <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                              </a>
+                            ) : (
+                              <span>{card.sources[0]?.name || "Verified Wire"}</span>
+                            )}{" "}
+                            ({card.sources.length} {card.sources.length === 1 ? "source" : "sources"})
+                          </span>
                           <button
                             onClick={() => handleDiscussStory(card)}
                             className="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition"
                           >
                             <MessageSquare className="w-3 h-3" />
-                            Discuss
+                            Chat
                           </button>
                         </div>
                       </div>
                     ) : cognitiveLoad === "deep_dive" ? (
-                      /* Cognitive Load Mode: DEEP DIVE (Comprehensive Intelligence Memo) */
+                      /* Cognitive Load Mode: DEEP DIVE */
                       <div className="space-y-4 pt-1">
                         {/* Cinematic Image Banner */}
                         {card.image_url && (
@@ -2393,7 +2613,7 @@ export default function AletheiaHome() {
                             <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between text-[11px] font-mono text-white/90">
                               <span className="px-2.5 py-1 rounded-md bg-indigo-950/90 border border-indigo-500/40 text-indigo-200 font-bold flex items-center gap-1.5">
                                 <Sparkles className="w-3 h-3 text-indigo-400" />
-                                Deep Epistemic Memo
+                                Deep Dive
                               </span>
                               <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
                                 {card.sources[0]?.name || "Verified Wire"}
@@ -2464,9 +2684,9 @@ export default function AletheiaHome() {
                         {/* Disputed Claims / Divergence Analysis (if present) */}
                         {card.disputed_claims && card.disputed_claims.length > 0 && (
                           <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 space-y-2">
-                            <span className="text-[11px] font-mono text-amber-300 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                            <span className="text-xs text-amber-300 font-semibold uppercase tracking-wider flex items-center gap-1.5">
                               <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-                              Contested Assertions & Partisan Divergence
+                              The Debate & Key Disagreements
                             </span>
                             <div className="space-y-1.5 text-xs text-amber-100 font-sans">
                               {card.disputed_claims.map((claim, cIdx) => (
@@ -2481,23 +2701,45 @@ export default function AletheiaHome() {
 
                         {/* Comprehensive Sources Grid */}
                         <div className="pt-3 border-t border-white/10 space-y-2">
-                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          <span className="text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1">
                             <BookOpen className="w-3 h-3 text-slate-400" />
-                            Corroborating Primary Sources ({card.sources.length}):
+                            Sources ({card.sources.length}):
                           </span>
                           <div className="flex flex-wrap gap-1.5">
-                            {card.sources.map((src, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setSelectedReadingSource({ source: src, card })}
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 font-mono group"
-                              >
-                                <span className="group-hover:underline font-semibold">{src.name}</span>
-                                <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:text-cyan-400">
-                                  {src.bias.replace("_", " ")}
-                                </span>
-                              </button>
-                            ))}
+                            {card.sources.map((src, i) => {
+                              const isExternal = src.url && src.url !== "#";
+                              if (isExternal) {
+                                return (
+                                  <a
+                                    key={i}
+                                    href={src.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 font-mono group"
+                                    title={src.title || src.name}
+                                  >
+                                    <span className="group-hover:underline font-semibold">{src.name}</span>
+                                    <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:text-cyan-400">
+                                      {src.bias.replace("_", " ")}
+                                    </span>
+                                    <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+                                  </a>
+                                );
+                              }
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={() => setSelectedReadingSource({ source: src, card })}
+                                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 font-mono group"
+                                >
+                                  <span className="group-hover:underline font-semibold">{src.name}</span>
+                                  <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:text-cyan-400">
+                                    {src.bias.replace("_", " ")}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
@@ -2534,9 +2776,23 @@ export default function AletheiaHome() {
                               >
                                 {formatTopicBadge(card.topic)}
                               </button>
-                              <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
-                                {card.sources[0]?.name || "Verified Wire"}
-                              </span>
+                              {card.sources[0]?.url && card.sources[0].url !== "#" ? (
+                                <a
+                                  href={card.sources[0].url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="px-2 py-0.5 rounded-md bg-slate-950/80 hover:bg-slate-900 backdrop-blur-md border border-white/10 text-slate-300 hover:text-cyan-300 inline-flex items-center gap-1 transition"
+                                  title={card.sources[0]?.name}
+                                >
+                                  <span>{card.sources[0]?.name || "Verified Wire"}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                </a>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-white/10 text-slate-300">
+                                  {card.sources[0]?.name || "Verified Wire"}
+                                </span>
+                              )}
                             </div>
                           </div>
                         )}
@@ -2584,16 +2840,16 @@ export default function AletheiaHome() {
                         <div className="pt-2 flex items-center justify-between border-t border-white/5">
                           <button
                             onClick={() => toggleCardExpansion(card.event_id)}
-                            className="text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition py-1 group"
+                            className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1.5 transition py-1 group"
                           >
                             {isExpanded ? (
                               <>
-                                <span>Collapse Story</span>
+                                <span>Show less</span>
                                 <ChevronUp className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition" />
                               </>
                             ) : (
                               <>
-                                <span>Read Full Story & Sources ({card.sources.length})</span>
+                                <span>Read story & sources ({card.sources.length})</span>
                                 <ChevronDown className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition" />
                               </>
                             )}
@@ -2650,23 +2906,45 @@ export default function AletheiaHome() {
                                   <BookOpen className="w-3 h-3 text-slate-400" />
                                   Sources:
                                 </span>
-                                {card.sources.map((src, i) => (
-                                  <button
-                                    key={i}
-                                    onClick={() => setSelectedReadingSource({ source: src, card })}
-                                    className="px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 group font-mono"
-                                    title="Click to read original article and see highlighted passages"
-                                  >
-                                    <span className="group-hover:underline">{src.name}</span>
-                                    <span className="text-[9px] uppercase text-slate-500 group-hover:text-cyan-400">
-                                      [{src.bias.replace("_", " ")}]
-                                    </span>
-                                  </button>
-                                ))}
+                                {card.sources.map((src, i) => {
+                                  const isExternal = src.url && src.url !== "#";
+                                  if (isExternal) {
+                                    return (
+                                      <a
+                                        key={i}
+                                        href={src.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 group font-mono"
+                                        title={src.title || "Click to visit original source article"}
+                                      >
+                                        <span className="group-hover:underline">{src.name}</span>
+                                        <span className="text-[9px] uppercase text-slate-500 group-hover:text-cyan-400">
+                                          [{src.bias.replace("_", " ")}]
+                                        </span>
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+                                      </a>
+                                    );
+                                  }
+                                  return (
+                                    <button
+                                      key={i}
+                                      onClick={() => setSelectedReadingSource({ source: src, card })}
+                                      className="px-2.5 py-1 rounded-lg bg-slate-900/90 hover:bg-cyan-950/60 hover:text-cyan-200 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5 transition hover:border-cyan-500/40 group font-mono"
+                                      title="Click to read original article and see highlighted passages"
+                                    >
+                                      <span className="group-hover:underline">{src.name}</span>
+                                      <span className="text-[9px] uppercase text-slate-500 group-hover:text-cyan-400">
+                                        [{src.bias.replace("_", " ")}]
+                                      </span>
+                                    </button>
+                                  );
+                                })}
                               </div>
 
-                              <span className="text-[10px] font-mono text-slate-500 italic">
-                                Click any sentence above to inspect source passage
+                              <span className="text-[11px] text-slate-400 italic">
+                                Click any sentence above to see original source reporting
                               </span>
                             </div>
                           </div>
@@ -3369,6 +3647,8 @@ export default function AletheiaHome() {
         chatScrollContainerRef={chatScrollContainerRef}
         attachedStory={attachedStory}
         setAttachedStory={setAttachedStory}
+        attachedTopicBrief={attachedTopicBrief}
+        setAttachedTopicBrief={setAttachedTopicBrief}
         unifiedTopicNode={unifiedTopicNode}
         userGraph={userGraph}
         extractedTopics={extractedTopics}

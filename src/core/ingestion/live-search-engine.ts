@@ -1,6 +1,12 @@
 import { RawArticle } from "../types/contracts";
 import { FreeNewsFetcher } from "./rss-search";
 
+export interface LiveSearchOptions {
+  timeWindow?: "week" | "month" | "year" | "all";
+  maxResults?: number;
+  maxAgeDays?: number;
+}
+
 export class LiveSearchEngine {
   private static searchCache: Map<string, { timestamp: number; articles: RawArticle[] }> = new Map();
   private static readonly CACHE_TTL_MS = 7 * 60 * 1000; // 7 minutes
@@ -17,16 +23,78 @@ export class LiveSearchEngine {
   }
 
   /**
-   * Executes live search for a given query, returning structured results with rich snippets.
-   * Uses an in-memory TTL cache, multi-provider mesh (Bing RSS + DDG), and query relaxation.
+   * Extracts publication date and relative age from snippet text (e.g. "Aug 17, 2024 - ...", "3 days ago ...")
    */
-  public static async search(query: string, maxResults: number = 6): Promise<RawArticle[]> {
+  public static extractDateFromSnippet(snippet: string): { cleanSnippet: string; publishedAt?: string; ageDays?: number } {
+    if (!snippet) return { cleanSnippet: "" };
+
+    const clean = snippet.trim();
+
+    // Check relative patterns: "X days/weeks/months/years ago"
+    const relMatch = clean.match(/^(\d+)\s+(day|week|month|year|hour|minute)s?\s+ago\s*[-–—:]?\s*/i);
+    if (relMatch) {
+      const count = parseInt(relMatch[1], 10);
+      const unit = relMatch[2].toLowerCase();
+      let ageDays = 0;
+      if (unit.startsWith("day")) ageDays = count;
+      else if (unit.startsWith("week")) ageDays = count * 7;
+      else if (unit.startsWith("month")) ageDays = count * 30;
+      else if (unit.startsWith("year")) ageDays = count * 365;
+
+      const pubDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000).toISOString();
+      const rest = clean.slice(relMatch[0].length).trim();
+      return { cleanSnippet: rest || clean, publishedAt: pubDate, ageDays };
+    }
+
+    // Check absolute date pattern: "Month DD, YYYY" or "DD Month YYYY"
+    const absMatch = clean.match(/^([A-Za-z]{3,9}\.?\s+\d{1,2}(?:,\s*|\s+)\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4}|\d{4}-\d{2}-\d{2})\s*[-–—:]?\s*/i);
+    if (absMatch) {
+      const parsed = Date.parse(absMatch[1]);
+      if (!isNaN(parsed)) {
+        const ageDays = Math.max(0, Math.round((Date.now() - parsed) / (1000 * 60 * 60 * 24)));
+        const rest = clean.slice(absMatch[0].length).trim();
+        return { cleanSnippet: rest || clean, publishedAt: new Date(parsed).toISOString(), ageDays };
+      }
+    }
+
+    // Check for inline years indicating past historical content (e.g. 2018-2024 when in current year 2026)
+    const yearMatch = clean.match(/\b(201[0-9]|202[0-4])\b/);
+    if (yearMatch) {
+      const year = parseInt(yearMatch[1], 10);
+      const currentYear = new Date().getFullYear();
+      if (currentYear - year >= 2) {
+        const approximateAgeDays = (currentYear - year) * 365;
+        return { cleanSnippet: clean, ageDays: approximateAgeDays };
+      }
+    }
+
+    return { cleanSnippet: clean };
+  }
+
+  /**
+   * Executes live search for a given query, returning structured results with rich snippets.
+   * Uses an in-memory TTL cache, multi-provider mesh (Bing RSS + DDG), query relaxation,
+   * and optional recency window filtering.
+   */
+  public static async search(
+    query: string,
+    maxResultsOrOptions: number | LiveSearchOptions = 6
+  ): Promise<RawArticle[]> {
     if (!query || query.trim().length === 0) {
       return [];
     }
 
+    const options: LiveSearchOptions =
+      typeof maxResultsOrOptions === "number"
+        ? { maxResults: maxResultsOrOptions }
+        : maxResultsOrOptions;
+
+    const maxResults = options.maxResults ?? 6;
+    const maxAgeDays = options.maxAgeDays;
+    const timeWindow = options.timeWindow;
+
     const cleanQuery = query.trim();
-    const cacheKey = cleanQuery.toLowerCase().replace(/\s+/g, " ");
+    const cacheKey = `${cleanQuery.toLowerCase().replace(/\s+/g, " ")}__tw_${timeWindow || "all"}__age_${maxAgeDays || 0}`;
 
     // 1. Check in-memory TTL cache
     const cached = this.searchCache.get(cacheKey);
@@ -34,21 +102,30 @@ export class LiveSearchEngine {
       return cached.articles.slice(0, maxResults);
     }
 
-    // 2. Execute search across multi-provider mesh
-    let articles = await this.executeSearch(cleanQuery, maxResults);
+    // 2. Execute search across multi-provider mesh with recency parameters
+    let articles = await this.executeSearch(cleanQuery, maxResults, options);
 
     // 3. Automatic Query Relaxation: if results < 2 and query contains over-constraining month/date tokens
     if (articles.length < 2) {
       const relaxedQuery = this.relaxQuery(cleanQuery);
       if (relaxedQuery !== cleanQuery) {
-        const relaxedArticles = await this.executeSearch(relaxedQuery, maxResults);
+        const relaxedArticles = await this.executeSearch(relaxedQuery, maxResults, options);
         if (relaxedArticles.length > articles.length) {
           articles = relaxedArticles;
         }
       }
     }
 
-    // 4. Save to cache
+    // 4. Filter by maxAgeDays if specified
+    if (maxAgeDays && maxAgeDays > 0) {
+      const cutoffTime = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      articles = articles.filter((a) => {
+        const pub = new Date(a.published_at || 0).getTime();
+        return isNaN(pub) || pub >= cutoffTime;
+      });
+    }
+
+    // 5. Save to cache
     if (articles.length > 0) {
       this.searchCache.set(cacheKey, {
         timestamp: Date.now(),
@@ -79,14 +156,18 @@ export class LiveSearchEngine {
   /**
    * Internal search orchestrator: tries DDG first, then Bing RSS, then Google News RSS
    */
-  private static async executeSearch(query: string, maxResults: number): Promise<RawArticle[]> {
+  private static async executeSearch(
+    query: string,
+    maxResults: number,
+    options?: LiveSearchOptions
+  ): Promise<RawArticle[]> {
     const combined: RawArticle[] = [];
     const seenUrls = new Set<string>();
 
     // 1. DuckDuckGo HTML search (organic web index with trackers, blogs, wikis)
     if (Date.now() > this.ddgCircuitBreakerUntil) {
       try {
-        const ddgResults = await this.queryDuckDuckGoHtml(query, maxResults);
+        const ddgResults = await this.queryDuckDuckGoHtml(query, maxResults, options);
         for (const a of ddgResults) {
           if (!seenUrls.has(a.source_url)) {
             seenUrls.add(a.source_url);
@@ -104,7 +185,7 @@ export class LiveSearchEngine {
 
     // 2. Bing RSS Web Search (structured RSS XML fallback with relevance checking)
     try {
-      const bingArticles = await this.queryBingRss(query, maxResults);
+      const bingArticles = await this.queryBingRss(query, maxResults, options);
       for (const a of bingArticles) {
         if (!seenUrls.has(a.source_url)) {
           seenUrls.add(a.source_url);
@@ -138,7 +219,11 @@ export class LiveSearchEngine {
   /**
    * Queries Bing Web Search RSS feed for general web documentation, release trackers, and forums
    */
-  public static async queryBingRss(query: string, maxResults: number): Promise<RawArticle[]> {
+  public static async queryBingRss(
+    query: string,
+    maxResults: number,
+    options?: LiveSearchOptions
+  ): Promise<RawArticle[]> {
     const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -216,16 +301,29 @@ export class LiveSearchEngine {
           } catch {}
 
           let publishedAt = new Date().toISOString();
+          let ageDays: number | undefined;
           if (pubDateMatch) {
             const d = new Date(pubDateMatch[1].trim());
-            if (!isNaN(d.getTime())) publishedAt = d.toISOString();
+            if (!isNaN(d.getTime())) {
+              publishedAt = d.toISOString();
+              ageDays = Math.max(0, Math.round((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
+            }
+          }
+
+          if (options?.maxAgeDays && ageDays !== undefined && ageDays > options.maxAgeDays) {
+            continue;
+          }
+
+          const { cleanSnippet, ageDays: snippetAgeDays } = this.extractDateFromSnippet(snippet);
+          if (options?.maxAgeDays && snippetAgeDays !== undefined && snippetAgeDays > options.maxAgeDays) {
+            continue;
           }
 
           articles.push({
             source_url: url,
             source_name: sourceName,
             title: rawTitle,
-            raw_text: snippet ? `${rawTitle}. ${snippet}` : rawTitle,
+            raw_text: cleanSnippet ? `${rawTitle}. ${cleanSnippet}` : rawTitle,
             author_bias_rating: "center",
             published_at: publishedAt,
             topic_category: LiveSearchEngine.cleanTopicCategory(query),
@@ -243,8 +341,19 @@ export class LiveSearchEngine {
   /**
    * Scrapes DuckDuckGo HTML search results for rich empirical snippets
    */
-  private static async queryDuckDuckGoHtml(query: string, maxResults: number): Promise<RawArticle[]> {
-    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  private static async queryDuckDuckGoHtml(
+    query: string,
+    maxResults: number,
+    options?: LiveSearchOptions
+  ): Promise<RawArticle[]> {
+    let searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    if (options?.timeWindow === "week") {
+      searchUrl += "&df=w";
+    } else if (options?.timeWindow === "month") {
+      searchUrl += "&df=m";
+    } else if (options?.timeWindow === "year") {
+      searchUrl += "&df=y";
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -274,7 +383,7 @@ export class LiveSearchEngine {
         return [];
       }
 
-      return this.parseDdgHtml(html, query, maxResults);
+      return this.parseDdgHtml(html, query, maxResults, options);
     } catch {
       clearTimeout(timeoutId);
       return [];
@@ -284,7 +393,12 @@ export class LiveSearchEngine {
   /**
    * Parses DuckDuckGo HTML results extracting real publisher URLs, titles, and substantive snippets
    */
-  private static parseDdgHtml(html: string, query: string, maxResults: number): RawArticle[] {
+  private static parseDdgHtml(
+    html: string,
+    query: string,
+    maxResults: number,
+    options?: LiveSearchOptions
+  ): RawArticle[] {
     const articles: RawArticle[] = [];
 
     const resultBlockRegex = /<div[^>]*class="[^"]*result\s+results_links[^"]*"[\s\S]*?(?=<div[^>]*class="[^"]*result\s+results_links|$)/gi;
@@ -323,13 +437,18 @@ export class LiveSearchEngine {
             sourceName = new URL(rawUrl).hostname.replace(/^www\./, "");
           } catch {}
 
+          const { cleanSnippet, publishedAt, ageDays } = this.extractDateFromSnippet(snippet);
+          if (options?.maxAgeDays && ageDays !== undefined && ageDays > options.maxAgeDays) {
+            continue; // Skip stale article older than maxAgeDays
+          }
+
           articles.push({
             source_url: rawUrl,
             source_name: sourceName,
             title,
-            raw_text: snippet ? `${title}. ${snippet}` : title,
+            raw_text: cleanSnippet ? `${title}. ${cleanSnippet}` : title,
             author_bias_rating: "center",
-            published_at: new Date().toISOString(),
+            published_at: publishedAt || new Date().toISOString(),
             topic_category: LiveSearchEngine.cleanTopicCategory(query),
           });
         }

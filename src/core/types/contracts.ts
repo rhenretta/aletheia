@@ -629,6 +629,178 @@ export const AttachedStoryContextSchema = z.object({
 });
 
 /**
+ * Event Topic Lifecycle Phase for event-driven living topic state machines
+ */
+export type EventTopicLifecyclePhase = "spawning" | "escalating" | "maturing" | "cooling";
+
+export const EventTopicLifecyclePhaseSchema = z.enum(["spawning", "escalating", "maturing", "cooling"]);
+
+export interface EventTopicSentimentQuote {
+  quote: string;
+  speaker_or_community: string;
+  platform?: string;
+  url?: string;
+}
+
+export const EventTopicSentimentQuoteSchema = z.object({
+  quote: z.string(),
+  speaker_or_community: z.string(),
+  platform: z.string().optional(),
+  url: z.string().optional(),
+});
+
+export interface EventTopicSentiment {
+  tone: "positive" | "critical" | "mixed" | "cautious" | "neutral";
+  summary: string;
+  representative_quotes: EventTopicSentimentQuote[];
+}
+
+export const EventTopicSentimentSchema = z.object({
+  tone: z.enum(["positive", "critical", "mixed", "cautious", "neutral"]),
+  summary: z.string(),
+  representative_quotes: z.array(EventTopicSentimentQuoteSchema),
+});
+
+export interface EventTopicHistoricalMilestone {
+  time_label: string;
+  milestone: string;
+  source_name?: string;
+  source_url?: string;
+}
+
+export const EventTopicHistoricalMilestoneSchema = z.object({
+  time_label: z.string(),
+  milestone: z.string(),
+  source_name: z.string().optional(),
+  source_url: z.string().optional(),
+});
+
+/**
+ * Attached Topic Brief Context for deep companion dialogue priming
+ */
+export interface AttachedTopicBriefContext {
+  brief_id: string;
+  topic_title: string;
+  parent_interest: string;
+  lifecycle_phase: EventTopicLifecyclePhase;
+  lifecycle_label: string;
+  gravity_score: number;
+  current_focus: string;
+  executive_summary: string;
+  public_sentiment?: EventTopicSentiment;
+  historical_arc?: EventTopicHistoricalMilestone[];
+  key_facts?: string[];
+  sources?: Array<{ name: string; url: string; bias?: string }>;
+}
+
+export const AttachedTopicBriefContextSchema = z.object({
+  brief_id: z.string(),
+  topic_title: z.string(),
+  parent_interest: z.string(),
+  lifecycle_phase: EventTopicLifecyclePhaseSchema,
+  lifecycle_label: z.string(),
+  gravity_score: z.number(),
+  current_focus: z.string(),
+  executive_summary: z.string(),
+  public_sentiment: EventTopicSentimentSchema.optional(),
+  historical_arc: z.array(EventTopicHistoricalMilestoneSchema).optional(),
+  key_facts: z.array(z.string()).optional(),
+  sources: z
+    .array(
+      z.object({
+        name: z.string(),
+        url: z.string(),
+        bias: z.string().optional(),
+      })
+    )
+    .optional(),
+  dynamic_sections: z.array(z.any()).optional(),
+});
+
+/**
+ * Dynamic Presentation Block Types for LLM-Designed Briefings
+ */
+export type DynamicBriefSectionType =
+  | "executive_summary"
+  | "key_developments"
+  | "critical_tensions"
+  | "telemetry_metrics"
+  | "real_world_chronology"
+  | "community_pulse"
+  | "catalysts_outlook"
+  | "deep_dive_inquiries";
+
+export interface DynamicSectionContent {
+  summary?: string;
+  bullets?: Array<{ title?: string; text: string; source?: string; source_url?: string }>;
+  metrics?: Array<{ label: string; value: string; context?: string; trend?: "up" | "down" | "neutral" }>;
+  milestones?: Array<{ time_label: string; milestone: string; source_name?: string; source_url?: string }>;
+  quotes?: Array<{
+    quote: string;
+    speaker_or_community: string;
+    platform?: string;
+    sentiment?: "positive" | "critical" | "mixed" | "neutral";
+    url?: string;
+  }>;
+  tensions?: Array<{ topic_tension: string; thesis: string; antithesis: string; verified_evidence?: string; source?: string; source_url?: string }>;
+  catalysts?: Array<{ timeframe: string; event: string; significance: string; source?: string; source_url?: string }>;
+  inquiries?: Array<{ question: string; angle: string }>;
+}
+
+export interface DynamicBriefSection {
+  id: string;
+  section_type: DynamicBriefSectionType;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  layout_style?: "callout" | "grid" | "timeline" | "metrics" | "quote_cards" | "bullets" | "key_value";
+  content: DynamicSectionContent;
+}
+
+export interface LLMTopicBriefDesign {
+  presentation_archetype:
+    | "regulatory_controversy"
+    | "technical_deep_dive"
+    | "breaking_chronology"
+    | "field_synthesis"
+    | "empirical_investigation";
+  design_rationale: string;
+  executive_take: string;
+  sections: DynamicBriefSection[];
+}
+
+export interface CardEvolutionDecision {
+  decision: "update_in_place" | "redesign";
+  rationale: string;
+  significant_developments?: string[];
+}
+
+export interface LayoutInformationGap {
+  gap_type: "timeline" | "community_quotes" | "metrics" | "opposing_claims" | "general_context";
+  query: string;
+  rationale: string;
+  target_section?: DynamicBriefSectionType;
+}
+
+export interface LayoutArchitectPlan {
+  archetype: LLMTopicBriefDesign["presentation_archetype"];
+  design_rationale: string;
+  planned_section_types: DynamicBriefSectionType[];
+  information_gaps: LayoutInformationGap[];
+}
+
+export interface EvolvedTopicCardResult {
+  topic: string;
+  decision: "update_in_place" | "redesign";
+  decision_rationale: string;
+  design: LLMTopicBriefDesign;
+  new_cards: SynthesizedEventCard[];
+  all_sources: EventSourceArticle[];
+  targeted_queries_executed?: string[];
+}
+
+
+/**
  * Step in the Agentic Flow for Generating Context
  */
 export interface AgenticContextFlowStep {

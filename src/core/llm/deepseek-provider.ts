@@ -19,8 +19,21 @@ export class DeepSeekProvider {
     this.defaultModel = process.env.DEEPSEEK_MODEL || "deepseek-chat";
   }
 
+  public getApiKey(): string {
+    return process.env.DEEPSEEK_API_KEY || this.apiKey || "";
+  }
+
+  public getBaseUrl(): string {
+    return process.env.DEEPSEEK_BASE_URL || this.baseUrl || "https://api.deepseek.com/v1";
+  }
+
+  public getModel(): string {
+    return process.env.DEEPSEEK_MODEL || this.defaultModel || "deepseek-chat";
+  }
+
   public isConfigured(): boolean {
-    return Boolean(this.apiKey && this.apiKey.trim().length > 0);
+    const key = this.getApiKey();
+    return Boolean(key && key.trim().length > 0);
   }
 
   /**
@@ -36,7 +49,9 @@ export class DeepSeekProvider {
       );
     }
 
-    const model = options.model || this.defaultModel;
+    const apiKey = this.getApiKey();
+    const baseUrl = this.getBaseUrl();
+    const model = options.model || this.getModel();
     const messages = [];
 
     if (options.systemPrompt) {
@@ -52,11 +67,11 @@ export class DeepSeekProvider {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 45000);
 
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        const response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${this.apiKey}`,
+            "Authorization": `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model,

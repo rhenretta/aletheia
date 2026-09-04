@@ -22,7 +22,7 @@ describe("Social Media & Influencer Discovery Pipeline", () => {
                 score: 342,
                 num_comments: 89,
                 permalink: "/r/teslamotors/comments/12345/fsd_v14_impressions/",
-                created_utc: 1725300000,
+                created_utc: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
                 subreddit: "teslamotors",
                 stickied: false,
               },
@@ -35,9 +35,22 @@ describe("Social Media & Influencer Discovery Pipeline", () => {
                 score: 10,
                 num_comments: 200,
                 permalink: "/r/teslamotors/comments/sticky/",
-                created_utc: 1725300000,
+                created_utc: Math.floor(Date.now() / 1000) - 3600,
                 subreddit: "teslamotors",
                 stickied: true, // Should be ignored
+              },
+            },
+            {
+              data: {
+                title: "Old discussion from 2 years ago",
+                selftext: "Old impressions.",
+                author: "vintage_driver",
+                score: 50,
+                num_comments: 12,
+                permalink: "/r/teslamotors/comments/ancient/",
+                created_utc: Math.floor(Date.now() / 1000) - 120 * 24 * 3600, // 120 days ago (stale)
+                subreddit: "teslamotors",
+                stickied: false,
               },
             },
           ],
@@ -91,7 +104,7 @@ describe("Social Media & Influencer Discovery Pipeline", () => {
               },
               record: {
                 text: "We just published our benchmark results comparing neural end-to-end planners across weather conditions. Full paper linked below.",
-                createdAt: "2026-09-01T12:00:00Z",
+                createdAt: new Date(Date.now() - 3600 * 1000).toISOString(),
               },
             },
           },

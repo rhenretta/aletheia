@@ -110,6 +110,23 @@ export class DiscoveryAgent {
         continue;
       }
 
+      // Filter out stale content: reject news older than 90 days and social threads older than 60 days
+      if (article.published_at) {
+        const pubTime = new Date(article.published_at).getTime();
+        if (!isNaN(pubTime)) {
+          const ageDays = (Date.now() - pubTime) / (1000 * 60 * 60 * 24);
+          const maxAllowedAgeDays = (article.platform === "reddit" || article.platform === "bluesky") ? 60 : 90;
+          if (ageDays > maxAllowedAgeDays) {
+            rejectionReasons.push({
+              title: article.title,
+              source: article.source_name,
+              reason: `Outdated content: published ${Math.round(ageDays)} days ago (exceeds ${maxAllowedAgeDays}-day freshness threshold)`,
+            });
+            continue;
+          }
+        }
+      }
+
       acceptedArticles.push(article);
     }
 
