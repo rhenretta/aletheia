@@ -3,6 +3,7 @@ import { buildTopicBriefs } from "../core/matching/topic-brief-builder";
 import {
   enrichSectionSourceUrls,
   cleanArticleSnippet,
+  cleanDevelopmentTitle,
   synthesizeCleanDevelopments,
   synthesizeCleanExecutiveTake,
 } from "../core/matching/topic-brief-synthesizer";
@@ -417,5 +418,13 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     expect(executiveTake).toContain("European Regulatory Approval Vote Scheduled");
     expect(executiveTake).toContain("Safety Investigation Progress Report");
     expect(executiveTake).not.toContain("Additionally, what the");
+  });
+
+  it("preserves hyphenated compound words in cleanDevelopmentTitle and strips publisher suffixes", () => {
+    // Should never cut off hyphenated terms like Self-Driving or AI-Powered
+    expect(cleanDevelopmentTitle("Tesla's 'Full Self-Driving' [Reddit (r/TeslaFSD)]")).toBe("Tesla's 'Full Self-Driving'");
+    expect(cleanDevelopmentTitle("AI-Powered Robotaxi Testing Approved - Reuters")).toBe("AI-Powered Robotaxi Testing Approved");
+    expect(cleanDevelopmentTitle("Next-Gen Hardware Emerges | Electrek")).toBe("Next-Gen Hardware Emerges");
+    expect(cleanDevelopmentTitle("Real-Time Telemetry Updates — The Verge")).toBe("Real-Time Telemetry Updates");
   });
 });

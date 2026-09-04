@@ -530,15 +530,41 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
 
 /**
  * Cleans a development title from raw headlines (strips clickbait suffixes, publisher tags, and trailing punctuation)
+ * Safely preserves hyphenated words like "Self-Driving", "AI-Powered", "Next-Gen", and "Real-Time".
  */
 export function cleanDevelopmentTitle(headline: string): string {
   if (!headline) return "Recent Development";
   let title = headline.trim();
-  // Strip trailing publisher tags: " | Electrek", " - Reuters", " [basenor.com]", " — Verge"
-  title = title.replace(/\s*[-|–—·\[]\s*[^|–—·\]]+[\]]?$/g, "").trim();
-  // Strip trailing colon or dash
-  title = title.replace(/[:—–-]\s*$/, "").trim();
-  return title.length > 5 ? title : headline.trim();
+
+  // 1. Strip trailing bracketed sources or domains (e.g. " [basenor.com]", " [Reddit (r/TeslaFSD)]")
+  title = title.replace(/\s*\[[^\]]+\]\s*$/g, "").trim();
+  title = title.replace(/\s*\([a-zA-Z0-9\s.,-]+\)\s*$/g, "").trim();
+
+  // 2. Strip trailing pipe tags (e.g. " | Electrek")
+  title = title.replace(/\s*\|\s*[^|]+$/g, "").trim();
+
+  // 3. Strip trailing em-dash or en-dash tags (e.g. " — The Verge", " – Reuters")
+  title = title.replace(/\s+[—–]\s+[^\s—–]+(?:\s+[^\s—–]+){0,4}$/g, "").trim();
+
+  // 4. Strip trailing hyphen publisher tags ONLY when preceded by whitespace (e.g. " - Reuters", " - TechCrunch")
+  // MUST NOT match hyphenated words like "Self-Driving", "AI-Powered", "Next-Gen" (which have no leading space before '-')
+  title = title.replace(/\s+-\s+[^\s-]+(?:\s+[^\s-]+){0,4}$/g, "").trim();
+
+  // 5. Strip trailing colons, semicolons, or dashes
+  title = title.replace(/[:;—–-]\s*$/g, "").trim();
+
+  // 6. Clean up unbalanced surrounding quotes (without stripping legitimate internal apostrophes like "Tesla's")
+  if (title.startsWith('"') && !title.endsWith('"')) {
+    title = title.slice(1).trim();
+  } else if (!title.startsWith('"') && title.endsWith('"') && !title.includes('"')) {
+    title = title.slice(0, -1).trim();
+  }
+
+  if (title.startsWith("'") && !title.endsWith("'")) {
+    title = title.slice(1).trim();
+  }
+
+  return title.length >= 5 ? title : headline.trim();
 }
 
 /**
