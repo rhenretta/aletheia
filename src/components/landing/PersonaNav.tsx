@@ -174,13 +174,6 @@ export default function PersonaNav({ currentPersona, accentColor = "cyan" }: Per
 
       {/* CTAs */}
       <div className="flex items-center gap-2.5">
-        <Link
-          href="/?explore=true"
-          onClick={() => trackAuthAction("guest_explore_start", `persona_${currentPersona}`)}
-          className="hidden sm:inline-flex px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 border border-white/10 transition"
-        >
-          Explore Live Preview
-        </Link>
         <button
           onClick={() => {
             trackAuthAction("sign_in_initiated", `persona_${currentPersona}`);
@@ -246,13 +239,16 @@ export default function PersonaNav({ currentPersona, accentColor = "cyan" }: Per
             })}
           </div>
           <div className="pt-2 border-t border-white/10 flex flex-col gap-2">
-            <Link
-              href="/?explore=true"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="w-full py-2 text-center rounded-xl bg-slate-900 border border-white/10 text-xs font-medium text-slate-200"
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                trackAuthAction("sign_in_initiated", `persona_${currentPersona}`);
+                signIn("google", { callbackUrl: "/" });
+              }}
+              className="w-full py-2.5 text-center rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-xs font-semibold text-white shadow-lg shadow-blue-500/25"
             >
-              Explore Live Preview
-            </Link>
+              Sign In with Google
+            </button>
           </div>
         </div>
       )}

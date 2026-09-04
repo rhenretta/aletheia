@@ -97,18 +97,6 @@ export default function TechLandingClient() {
               <span>Sign In with Google</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-
-            <Link
-              href="/?explore=true"
-              onClick={() => {
-                trackLandingCta("Explore Live Tech", "hero");
-                trackAuthAction("guest_explore_start", "tech_hero");
-              }}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white font-mono text-sm flex items-center justify-center gap-2 transition"
-            >
-              <Eye className="w-4 h-4 text-cyan-400" />
-              <span>Explore Live Preview</span>
-            </Link>
           </div>
 
           {/* Metric Badges */}

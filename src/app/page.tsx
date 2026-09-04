@@ -99,7 +99,6 @@ export default function AletheiaHome() {
     }
   });
   const [isUserManagerOpen, setIsUserManagerOpen] = useState(false);
-  const [guestExplore, setGuestExplore] = useState(false);
 
   const actualUserId =
     (session?.user as any)?.id ||
@@ -1281,16 +1280,12 @@ export default function AletheiaHome() {
     );
   }
 
-  if (!session?.user && !guestExplore) {
+  if (!session?.user) {
     return (
       <LandingPage
         onSignIn={() => {
           trackAuthAction("sign_in_initiated", "landing");
           signIn("google", { callbackUrl: "/" });
-        }}
-        onExploreGuest={() => {
-          trackAuthAction("guest_explore_start", "landing");
-          setGuestExplore(true);
         }}
       />
     );
@@ -1298,37 +1293,6 @@ export default function AletheiaHome() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      {/* Live Preview Mode Banner when browsing as guest */}
-      {!session?.user && guestExplore && (
-        <div className="bg-gradient-to-r from-cyan-950/90 via-slate-900/90 to-indigo-950/90 border-b border-cyan-500/30 px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-3 sticky top-0 z-40 backdrop-blur-md">
-          <div className="flex items-center gap-2 text-slate-200">
-            <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-ping" />
-            <span>
-              <strong className="text-cyan-300">Live Preview Mode:</strong> You are browsing as a guest. Sign in with Google to save your personalized topics and companion chat history.
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                trackAuthAction("guest_preview_exit", "preview_banner");
-                setGuestExplore(false);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 text-xs transition"
-            >
-              Back to Overview
-            </button>
-            <button
-              onClick={() => {
-                trackAuthAction("sign_in_initiated", "preview_banner");
-                signIn("google", { callbackUrl: "/" });
-              }}
-              className="px-3 py-1 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-blue-500/20 transition flex items-center gap-1.5"
-            >
-              <span>Sign In with Google</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Sticky Read-Only Impersonation Banner */}
       {viewingAsUser && (

@@ -99,18 +99,6 @@ export default function WellnessLandingClient() {
               <span>Begin Your Calm News Routine</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-
-            <Link
-              href="/?explore=true"
-              onClick={() => {
-                trackLandingCta("Explore Live Wellness", "hero");
-                trackAuthAction("guest_explore_start", "wellness_hero");
-              }}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white text-sm font-medium flex items-center justify-center gap-2 transition"
-            >
-              <Eye className="w-4 h-4 text-teal-400" />
-              <span>Explore Live Preview</span>
-            </Link>
           </div>
 
           {/* Metric Badges */}

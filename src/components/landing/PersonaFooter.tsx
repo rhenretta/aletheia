@@ -79,9 +79,6 @@ export default function PersonaFooter() {
           <Link href="/#faq" className="hover:text-white transition">
             FAQ
           </Link>
-          <Link href="/?explore=true" className="hover:text-white transition">
-            Live Preview
-          </Link>
         </div>
 
         <div className="text-[11px] text-slate-500">

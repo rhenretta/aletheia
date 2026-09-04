@@ -35,10 +35,10 @@ import {
 
 interface LandingPageProps {
   onSignIn: () => void;
-  onExploreGuest: () => void;
+  onExploreGuest?: () => void;
 }
 
-export default function LandingPage({ onSignIn, onExploreGuest }: LandingPageProps) {
+export default function LandingPage({ onSignIn }: LandingPageProps) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [interactiveTab, setInteractiveTab] = useState<"after" | "before">("after");
 
@@ -68,8 +68,8 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
       a: "No. Your interests and conversations are kept private to your account so the system knows what news to find for you. We never sell your personal data to brokers or third parties.",
     },
     {
-      q: "Can I try it before signing in?",
-      a: "Absolutely! You can click 'Explore Live Preview' right now to browse current news stories as a guest without creating an account.",
+      q: "How do I get started?",
+      a: "Simply sign in with Google in one click to access your clean, personalized, ad-free news stream.",
     },
   ];
 
@@ -144,15 +144,6 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
         </nav>
 
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => {
-              trackAuthAction("guest_explore_start", "header_nav");
-              onExploreGuest();
-            }}
-            className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 border border-white/10 transition"
-          >
-            Explore Live Preview
-          </button>
           <button
             onClick={() => {
               trackAuthAction("sign_in_initiated", "header_nav");
@@ -236,18 +227,6 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
               </svg>
               <span>Get Started with Google</span>
               <ArrowRight className="w-4 h-4 ml-0.5" />
-            </button>
-
-            <button
-              onClick={() => {
-                trackLandingCta("Explore Live Preview", "hero");
-                trackAuthAction("guest_explore_start", "hero");
-                onExploreGuest();
-              }}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800/80 border border-white/10 hover:border-white/20 text-slate-200 hover:text-white font-medium text-sm flex items-center justify-center gap-2 transition"
-            >
-              <Eye className="w-4 h-4 text-cyan-400" />
-              <span>Explore Live Preview</span>
             </button>
           </div>
 
@@ -817,13 +796,13 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
 
               <button
                 onClick={() => {
-                  trackLandingCta("Explore Live Preview Free", "pricing_free_tier");
-                  trackAuthAction("guest_explore_start", "pricing");
-                  onExploreGuest();
+                  trackLandingCta("Sign In Free", "pricing_free_tier");
+                  trackAuthAction("sign_in_initiated", "pricing");
+                  onSignIn();
                 }}
                 className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono font-semibold border border-white/10 transition"
               >
-                Explore Live Preview Free
+                Sign In Free with Google
               </button>
             </div>
 
@@ -971,17 +950,6 @@ export default function LandingPage({ onSignIn, onExploreGuest }: LandingPagePro
                   </svg>
                   <span>Sign In with Google</span>
                   <ArrowRight className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => {
-                    trackLandingCta("Explore Live Preview First", "bottom_banner");
-                    trackAuthAction("guest_explore_start", "bottom_banner");
-                    onExploreGuest();
-                  }}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/15 text-slate-300 hover:text-white text-sm font-medium transition"
-                >
-                  Explore Live Preview First
                 </button>
               </div>
             </div>
