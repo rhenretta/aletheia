@@ -16,6 +16,7 @@ import {
   TopicBriefSynthesizer,
   cleanArticleSnippet,
   synthesizeCleanExecutiveTake,
+  synthesizeCleanDevelopments,
   isForwardLookingCatalyst,
   enrichSectionSourceUrls,
 } from "../../matching/topic-brief-synthesizer";
@@ -672,37 +673,76 @@ Respond STRICTLY with valid JSON:
     previousDesign: LLMTopicBriefDesign,
     technicalDepth: string
   ): Promise<LLMTopicBriefDesign> {
-    // Generate fresh 2-sentence executive take using LLM if available, otherwise clean deterministic synthesis
     let freshExecutiveTake = "";
+    let synthesizedKeyDevelopments: Array<{ title: string; text: string; source: string; source_url?: string }> | null = null;
+
     if (deepseekProvider.isConfigured() && cards.length > 0) {
       try {
-        const prompt = `You are a clear, engaging editor at Aletheia writing a "What's Happening Now" update for the topic "${topic}".
-Write a warm, clear, 2-sentence executive summary of the current situation based on these recent reports:
-${cards.slice(0, 4).map((c, i) => `${i + 1}. ${c.headline}: ${c.summary}`).join("\n")}
+        const prompt = `You are an editorial director at Aletheia writing an executive briefing for the topic "${topic}".
+Based on these ${cards.slice(0, 5).length} recent reports:
+${cards.slice(0, 5).map((c, i) => `Story ${i + 1}:
+Headline: ${c.headline}
+Summary: ${c.summary}
+Source: ${c.sources?.[0]?.name || "Wire"} (${c.sources?.[0]?.url || ""})`).join("\n\n")}
 
-Editorial Requirements:
-- Explain what is happening right now in natural, engaging language for everyday readers.
-- Do NOT repeat headlines verbatim.
-- Do NOT use mechanical em-dash patterns like "Headline — Headline" or "Meanwhile,".
-- Must be 1 to 2 complete, well-formed sentences ending in punctuation.
+Your task is to write:
+1. "executive_take" ("What's Happening Now"):
+   - A cohesive 2-to-3 sentence executive summary that synthesizes ALL the recent developments across this topic into a clear overview.
+   - Summarize the overarching situation: what major updates have occurred, what new evidence or milestones emerged, and what the current status is.
+   - Written in natural, smart, accessible prose for everyday readers.
+   - Do NOT simply copy or repeat headlines or bullet text verbatim.
 
-Respond ONLY with the 1-2 sentences:`;
+2. "key_developments":
+   - An array of up to 3 distinct key developments from these reports.
+   - "title": A clean, concise journalistic headline for the development (e.g. "Release of Comparative Fleet Safety Dataset").
+   - "text": A substantive, clear 1-to-2 sentence explanation of what happened, what the data or milestone demonstrates, and why it matters. Must be complete, fluent sentences without broken abbreviations or truncated scraps.
+   - "source": Publisher name.
+   - "source_url": Original source URL.
+
+Respond STRICTLY with valid JSON:
+{
+  "executive_take": "Cohesive 2-3 sentence overarching summary of all recent developments...",
+  "key_developments": [
+    {
+      "title": "Clean, descriptive title",
+      "text": "Substantive 1-2 sentence explanation of the development.",
+      "source": "Source Name",
+      "source_url": "URL"
+    }
+  ]
+}`;
 
         const res = await deepseekProvider.generateCompletion(prompt, {
-          temperature: 0.3,
-          maxTokens: 160,
+          temperature: 0.2,
+          maxTokens: 500,
         });
-        const clean = res.text.trim().replace(/^["']|["']$/g, "").trim();
-        if (clean.length > 25 && (clean.endsWith(".") || clean.endsWith("!"))) {
-          freshExecutiveTake = clean;
+
+        const jsonMatch = res.text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.executive_take && typeof parsed.executive_take === "string" && parsed.executive_take.trim().length > 25) {
+            freshExecutiveTake = parsed.executive_take.trim();
+          }
+          if (Array.isArray(parsed.key_developments) && parsed.key_developments.length > 0) {
+            synthesizedKeyDevelopments = parsed.key_developments.map((kd: any) => ({
+              title: String(kd.title || "").trim(),
+              text: String(kd.text || "").trim(),
+              source: String(kd.source || "Reporting").trim(),
+              source_url: kd.source_url ? String(kd.source_url).trim() : undefined,
+            })).filter((kd: any) => kd.title.length > 0 && kd.text.length > 0);
+          }
         }
       } catch (err) {
-        console.warn("[TopicCardEvolutionOrchestrator] LLM executive take generation failed, using clean fallback:", err);
+        console.warn("[TopicCardEvolutionOrchestrator] LLM update-in-place synthesis failed, using clean fallback:", err);
       }
     }
 
     if (!freshExecutiveTake) {
       freshExecutiveTake = synthesizeCleanExecutiveTake(topic, cards);
+    }
+
+    if (!synthesizedKeyDevelopments || synthesizedKeyDevelopments.length === 0) {
+      synthesizedKeyDevelopments = synthesizeCleanDevelopments(cards.slice(0, 3));
     }
 
     // Refresh contents of each existing section without changing the structural types
@@ -711,12 +751,7 @@ Respond ONLY with the 1-2 sentences:`;
         return {
           ...sec,
           content: {
-            bullets: cards.slice(0, 3).map((c) => ({
-              title: c.headline,
-              text: c.summary,
-              source: c.sources?.[0]?.name || "Reporting",
-              source_url: c.sources?.[0]?.url,
-            })),
+            bullets: synthesizedKeyDevelopments,
           },
         };
       }

@@ -111,7 +111,10 @@ KEY EDITORIAL PRINCIPLES:
    - Choose a natural presentation archetype: "regulatory_controversy" | "technical_deep_dive" | "breaking_chronology" | "field_synthesis" | "empirical_investigation".
    - Select 2 to 4 sections that best structure THIS topic's story:
       * "critical_tensions": When there are opposing sides, disputed claims, or controversies (The Claim vs The Pushback).
-      * "key_developments": The biggest recent news updates
+      * "key_developments": The biggest recent news updates. Each bullet MUST be an articulate, substantive breakdown of a distinct recent development:
+         - "title": A clean, concise journalistic title for the development (NOT a sensationalist headline).
+         - "text": A substantive 1-to-2 sentence explanation of what happened, what the data or milestone reveals, and why it matters. Write in clear, complete sentences with correct numbers and grammar.
+         - "source": Publisher name.
       * "real_world_chronology": ONLY use if the research documents a genuine multi-stage progression across distinct separated dates (e.g. across weeks/months/stages). NEVER show a timeline for concurrent breaking stories from the same news cycle, where events happened within 48h, or where items would all be labeled "Just now" or "Today". If there is no genuine multi-date progression, do NOT include this section.
       * "community_pulse": Real quotes and chatter from testers, forums, or observers strictly from the current active news window (within the last 30-60 days). NEVER include obsolete quotes from years-old discussions.
       * "telemetry_metrics": Key numbers, stats, or specs.
@@ -119,8 +122,9 @@ KEY EDITORIAL PRINCIPLES:
       * "deep_dive_inquiries": Interesting questions to explore further.
 
 4. "WHAT'S HAPPENING NOW" (executive_take):
-   - Write a 1-to-2 sentence warm, clear summary of what is happening right now with the topic.
-   - Summarize the core situation directly in natural, engaging human language.
+   - Write a cohesive 2-to-3 sentence executive summary that synthesizes ALL recent developments in the topic into a clear, high-level overview.
+   - Explain the big picture: what major developments have taken place across these stories, what new evidence or milestones emerged, and what the current status is.
+   - Written in natural, smart, accessible prose for everyday readers.
    - NEVER repeat headlines verbatim, never concatenate snippets with em-dashes ("Headline — Headline"), and never use formulaic connectors like "Meanwhile,".
    - Ensure the summary flows naturally and ends with complete punctuation.
 
@@ -128,7 +132,7 @@ OUTPUT STRICT JSON MATCHING THIS SCHEMA:
 {
   "presentation_archetype": "regulatory_controversy" | "technical_deep_dive" | "breaking_chronology" | "field_synthesis" | "empirical_investigation",
   "design_rationale": "Short friendly note on what this card focuses on",
-  "executive_take": "1-2 sentence warm, clear, natural language summary of what is happening right now (never repeating headlines verbatim)",
+  "executive_take": "Cohesive 2-to-3 sentence overarching summary of all recent developments across the topic (never repeating headlines verbatim)",
   "sections": [
     {
       "id": "sec_1",
@@ -139,7 +143,7 @@ OUTPUT STRICT JSON MATCHING THIS SCHEMA:
       "layout_style": "callout" | "grid" | "timeline" | "metrics" | "quote_cards" | "bullets" | "key_value",
       "content": {
         "summary": "Optional narrative",
-        "bullets": [{ "title": "Headline", "text": "Details", "source": "Source Name" }],
+        "bullets": [{ "title": "Clean Descriptive Development Title", "text": "Substantive 1-2 sentence explanation of what happened, key data/milestones, and significance.", "source": "Source Name" }],
         "metrics": [{ "label": "Metric Name", "value": "12.4x", "context": "Context description", "trend": "up" | "down" | "neutral" }],
         "milestones": [{ "time_label": "Recent / Date", "milestone": "Event description", "source_name": "Source" }],
         "quotes": [{ "quote": "Quote text", "speaker_or_community": "Attribution", "platform": "reddit / open_web", "sentiment": "positive" | "critical" | "mixed" | "neutral" }],
@@ -252,12 +256,7 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
 
     // 1. Primary: Key Developments (The core news stories)
     if (cards.length > 0) {
-      const bullets = cards.slice(0, 3).map((c) => ({
-        title: c.headline,
-        text: c.summary,
-        source: c.sources?.[0]?.name || "Reporting",
-        source_url: c.sources?.[0]?.url,
-      }));
+      const bullets = synthesizeCleanDevelopments(cards.slice(0, 3));
 
       sections.push({
         id: `sec_developments_${Date.now()}`,
@@ -480,8 +479,8 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
 /**
  * Cleans a raw article snippet from web wires:
  * - Strips leading duplicate title / headline if repeated at start
- * - Extracts complete, grammatical sentences ending in punctuation (. ! ?)
- * - Discards trailing dangling sentence fragments (e.g. "delivering on a commitment to bring")
+ * - Extracts complete, grammatical sentences ending in punctuation (. ! ?) without breaking decimal numbers
+ * - Discards trailing dangling sentence fragments
  */
 export function cleanArticleSnippet(title: string, rawText?: string): string {
   if (!rawText || rawText.trim().length === 0) return title.trim();
@@ -494,8 +493,19 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
 
   if (text.length === 0) return title.trim();
 
-  // Split into sentences ending with punctuation
-  const sentenceMatches = text.match(/[^.!?]+[.!?]+/g);
+  // Strip wire prefixes, timestamps, and datelines
+  text = text
+    .replace(/^\s*\b\d{1,2}\s+(hours?|days?|mins?|minutes?|weeks?|months?)\s+ago\s*[-—–·]?\s*/gi, "")
+    .replace(/^[A-Z\s]{2,15}\s*\([^)]*\)\s*[-—–·]\s*/, "") // e.g. "WASHINGTON (AP) — "
+    .replace(/^[A-Z\s]{2,15}\s*[-—–·]\s*/, "")
+    .replace(/\b\d+\s*Members\s*Online\b/gi, "")
+    .replace(/\bADMIN\s*MOD\b/gi, "")
+    .replace(/\bPost\s*Karma\b/gi, "")
+    .replace(/\br\/[a-zA-Z0-9_]+\b/gi, "")
+    .trim();
+
+  // Split into sentences ending with punctuation, safely preserving decimal numbers (e.g. 4.1x, 2.88 million)
+  const sentenceMatches = text.match(/(?:[^.!?]|\d+\.\d+)+[.!?]+(?=\s+|$)/g);
   if (sentenceMatches && sentenceMatches.length > 0) {
     let combined = "";
     for (const s of sentenceMatches) {
@@ -510,7 +520,7 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
     if (combined.length > 20) return combined;
   }
 
-  // If no clean punctuation matched, truncate at last word boundary and end with period
+  // If no clean punctuation matched, truncate cleanly at last word boundary and end with period
   if (text.length > 240) {
     const lastSpace = text.lastIndexOf(" ", 240);
     text = (lastSpace > 50 ? text.slice(0, lastSpace) : text.slice(0, 240)).trim();
@@ -519,77 +529,71 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
 }
 
 /**
- * Synthesizes a clean, natural 1-to-2 sentence executive summary ("What's Happening Now")
- * from the top stories without repeating headlines verbatim or creating fragmented em-dashes.
+ * Cleans a development title from raw headlines (strips clickbait suffixes, publisher tags, and trailing punctuation)
+ */
+export function cleanDevelopmentTitle(headline: string): string {
+  if (!headline) return "Recent Development";
+  let title = headline.trim();
+  // Strip trailing publisher tags: " | Electrek", " - Reuters", " [basenor.com]", " — Verge"
+  title = title.replace(/\s*[-|–—·\[]\s*[^|–—·\]]+[\]]?$/g, "").trim();
+  // Strip trailing colon or dash
+  title = title.replace(/[:—–-]\s*$/, "").trim();
+  return title.length > 5 ? title : headline.trim();
+}
+
+/**
+ * Deterministic fallback for key developments: produces clean, articulate bullets
+ * with preserved decimal numbers and complete sentences.
+ */
+export function synthesizeCleanDevelopments(
+  cards: SynthesizedEventCard[]
+): Array<{ title: string; text: string; source: string; source_url?: string }> {
+  if (!cards || cards.length === 0) return [];
+
+  return cards.slice(0, 3).map((c) => {
+    const title = cleanDevelopmentTitle(c.headline);
+    const text = cleanArticleSnippet(c.headline, c.summary);
+    return {
+      title,
+      text,
+      source: c.sources?.[0]?.name || "Reporting",
+      source_url: c.sources?.[0]?.url,
+    };
+  });
+}
+
+/**
+ * Synthesizes a high-level executive summary ("What's Happening Now")
+ * that summarizes ALL recent developments across the topic into a coherent overview
+ * rather than mechanically concatenating raw snippet fragments.
  */
 export function synthesizeCleanExecutiveTake(topic: string, cards: SynthesizedEventCard[]): string {
   if (!cards || cards.length === 0) {
     return `Things have been quiet for ${topic} lately, with no major breaking updates reported this week. We're actively monitoring live wires for emerging developments.`;
   }
 
-  const extractLeadSentence = (card: SynthesizedEventCard): string => {
-    const headline = (card.headline || "").trim();
-    let summary = (card.summary || "").trim();
+  const cleanHeadlines = cards
+    .map((c) => cleanDevelopmentTitle(c.headline))
+    .filter((h) => h.length > 10);
 
-    // Strip leading headline if repeated inside summary
-    const cleanH = headline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    summary = summary.replace(new RegExp(`^${cleanH}[\\s:—–-]*`, "i"), "").trim();
+  const cleanSummaries = cards
+    .map((c) => cleanArticleSnippet(c.headline, c.summary))
+    .filter((s) => s.length > 20);
 
-    // Strip leading punctuation/symbols (e.g. leading periods or dashes like ". FSD v14")
-    summary = summary.replace(/^[^a-zA-Z0-9"'(]+/, "").trim();
-
-    // Strip forum/boilerplate noise from raw web posts
-    summary = summary
-      .replace(/\b\d+\s*Members\s*Online\b/gi, "")
-      .replace(/\bADMIN\s*MOD\b/gi, "")
-      .replace(/\bPost\s*Karma\b/gi, "")
-      .replace(/\br\/[a-zA-Z0-9_]+\b/gi, "")
-      .trim();
-
-    summary = summary.replace(/^[^a-zA-Z0-9"'(]+/, "").trim();
-
-    // Match first complete sentence
-    const firstSentence = summary.match(/^([A-Z0-9"'(][^.!?]+[.!?])/);
-    if (firstSentence && firstSentence[1].trim().length >= 25) {
-      let s = firstSentence[1].trim();
-      s = s.replace(/\s+(the|a|an|and|to|of|in|with|for|that|on|by|at)\.$/i, ".");
-      return s;
-    }
-
-    if (summary.length >= 25) {
-      let s = summary.endsWith(".") || summary.endsWith("!") || summary.endsWith("?")
-        ? summary
-        : `${summary}.`;
-      s = s.replace(/\s+(the|a|an|and|to|of|in|with|for|that|on|by|at)\.$/i, ".");
-      return s;
-    }
-
-    // Fall back to headline as a complete sentence
-    return headline.endsWith(".") ? headline : `${headline}.`;
-  };
-
-  const top = cards[0];
-  const second = cards[1];
-
-  const leadSentence = extractLeadSentence(top);
-
-  if (!second) {
-    return leadSentence;
+  if (cleanHeadlines.length === 1) {
+    return `Recent coverage in ${topic} centers on ${cleanHeadlines[0]}. ${cleanSummaries[0] || "Live reporting is actively evaluating key developments."}`;
   }
 
-  const secondSentence = extractLeadSentence(second).replace(/^[^a-zA-Z0-9"'(]+/, "").trim();
-
-  // If second sentence is nearly identical or redundant with lead sentence, don't duplicate
-  if (
-    !secondSentence ||
-    leadSentence.toLowerCase().slice(0, 35) === secondSentence.toLowerCase().slice(0, 35) ||
-    secondSentence.length < 20
-  ) {
-    return leadSentence;
+  if (cleanHeadlines.length === 2) {
+    return `Recent developments in ${topic} are driven by ${cleanHeadlines[0]}, alongside ${cleanHeadlines[1]}. Reporting indicates that ${cleanSummaries[0] || "observers are closely tracking the broader implications."}`;
   }
 
-  // Format cleanly into two distinct sentences
-  return `${leadSentence} Additionally, ${secondSentence.charAt(0).toLowerCase() + secondSentence.slice(1)}`;
+  // 3 or more stories: synthesize all developments into an overarching briefing
+  const h1 = cleanHeadlines[0];
+  const h2 = cleanHeadlines[1];
+  const h3 = cleanHeadlines[2];
+
+  return `Recent developments across ${topic} center on ${h1} and ${h2}, alongside reports on ${h3}. Observers, industry analysts, and regulators are actively tracking how these milestones shape ongoing operations and upcoming reviews.`;
 }
 
 /**

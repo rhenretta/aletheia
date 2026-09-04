@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { buildTopicBriefs } from "../core/matching/topic-brief-builder";
-import { enrichSectionSourceUrls } from "../core/matching/topic-brief-synthesizer";
+import {
+  enrichSectionSourceUrls,
+  cleanArticleSnippet,
+  synthesizeCleanDevelopments,
+  synthesizeCleanExecutiveTake,
+} from "../core/matching/topic-brief-synthesizer";
 import { SynthesizedEventCard, UnifiedTopicNode, DynamicBriefSection } from "../core/types/contracts";
 
 describe("TopicBriefBuilder & Dual-View Aggregator", () => {
@@ -325,5 +330,92 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
 
     // Verify catalysts_outlook
     expect(enriched[4].content.catalysts?.[0].source_url).toBe("https://reuters.com/article/naval-1");
+  });
+
+  it("safely cleans article snippets without breaking decimal numbers or abbreviations", () => {
+    const raw = "That is not just media criticism. NHTSA opened investigation PE25012 covering approximately 2.88 million vehicles equipped with FSD. What the 4.1x crash reduction claim actually measures is same-fleet data.";
+    const cleaned = cleanArticleSnippet("Investigation Update", raw);
+    expect(cleaned).toContain("2.88 million");
+    expect(cleaned).toContain("4.1x");
+    expect(cleaned).not.toContain("2. 88");
+    expect(cleaned).not.toContain("4. 1x");
+  });
+
+  it("synthesizes clean key developments with clean titles and substantive text", () => {
+    const cards: SynthesizedEventCard[] = [
+      {
+        event_id: "evt_1",
+        topic: "Autonomous Driving",
+        headline: "Manufacturer Drops Massive Fleet Safety Dataset Ahead of Vote | Source",
+        personalized_framing: "Fleet safety telemetry.",
+        summary: "The new evidence dashboard compares fleet crash rates across identical road segments.",
+        fact_bullets: [],
+        disputed_claims: [],
+        verified_entities: [],
+        sources: [{ name: "Source", title: "Article", url: "https://source.com/article1", bias: "center" }],
+        format: "bulleted_distillation",
+        published_at: new Date().toISOString(),
+        recency_label: "Recent",
+      },
+    ];
+
+    const developments = synthesizeCleanDevelopments(cards);
+    expect(developments).toHaveLength(1);
+    expect(developments[0].title).toBe("Manufacturer Drops Massive Fleet Safety Dataset Ahead of Vote");
+    expect(developments[0].text).toContain("compares fleet crash rates");
+    expect(developments[0].source_url).toBe("https://source.com/article1");
+  });
+
+  it("synthesizes an overarching executive take summarizing all recent developments across the topic", () => {
+    const cards: SynthesizedEventCard[] = [
+      {
+        event_id: "evt_1",
+        topic: "Autonomous Driving",
+        headline: "Fleet Safety Dataset Released | Source",
+        personalized_framing: "Fleet safety data release.",
+        summary: "The new evidence dashboard evaluates crash rates.",
+        fact_bullets: [],
+        disputed_claims: [],
+        verified_entities: [],
+        sources: [{ name: "Source", title: "Article", url: "https://source.com/1", bias: "center" }],
+        format: "bulleted_distillation",
+        published_at: new Date().toISOString(),
+        recency_label: "Recent",
+      },
+      {
+        event_id: "evt_2",
+        topic: "Autonomous Driving",
+        headline: "European Regulatory Approval Vote Scheduled | Source",
+        personalized_framing: "European regulatory vote.",
+        summary: "Regulators prepare to review self-driving telemetry.",
+        fact_bullets: [],
+        disputed_claims: [],
+        verified_entities: [],
+        sources: [{ name: "Source", title: "Article", url: "https://source.com/2", bias: "center" }],
+        format: "bulleted_distillation",
+        published_at: new Date().toISOString(),
+        recency_label: "Recent",
+      },
+      {
+        event_id: "evt_3",
+        topic: "Autonomous Driving",
+        headline: "Safety Investigation Progress Report | Source",
+        personalized_framing: "Safety investigation progress.",
+        summary: "Agency monitors driver assistance performance metrics.",
+        fact_bullets: [],
+        disputed_claims: [],
+        verified_entities: [],
+        sources: [{ name: "Source", title: "Article", url: "https://source.com/3", bias: "center" }],
+        format: "bulleted_distillation",
+        published_at: new Date().toISOString(),
+        recency_label: "Recent",
+      },
+    ];
+
+    const executiveTake = synthesizeCleanExecutiveTake("Autonomous Driving", cards);
+    expect(executiveTake).toContain("Fleet Safety Dataset Released");
+    expect(executiveTake).toContain("European Regulatory Approval Vote Scheduled");
+    expect(executiveTake).toContain("Safety Investigation Progress Report");
+    expect(executiveTake).not.toContain("Additionally, what the");
   });
 });
