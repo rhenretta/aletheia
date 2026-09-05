@@ -14,6 +14,28 @@ export class StoryDiscoveryEngine {
   private static readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
   /**
+   * Identifies whether a web resource is a social media / microblogging platform
+   * (e.g. X, Twitter, Reddit, Bluesky, Threads) rather than a formal news publication.
+   */
+  public static isSocialMediaResource(url: string): boolean {
+    if (!url) return false;
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      return (
+        host.includes("x.com") ||
+        host.includes("twitter.com") ||
+        host.includes("reddit.com") ||
+        host.includes("threads.net") ||
+        host.includes("bsky.app") ||
+        host.includes("instagram.com") ||
+        host.includes("facebook.com")
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Domain-agnostic classifier to determine whether a web resource is a generic
    * source/portal/index hub vs. a concrete reporting article (story).
    */

@@ -667,13 +667,35 @@ export function buildTopicBriefs(
       timeAgoLabel = "No recent stories";
     }
 
-    // Step C: Build deduplicated development highlights
-    // Prioritize genuine reporting stories over generic portal or source hubs
-    const genuineStoryCards = sortedCards.filter((card) => {
+    // Step C: Build deduplicated development highlights ("Recent Stories")
+    // Prioritize genuine journalistic reporting stories over generic portal or source hubs,
+    // and exclude raw microblogging / social media posts (X, Reddit, Bluesky, Threads)
+    // from the primary "Recent Stories" feed unless no journalistic coverage exists.
+    const journalisticCards = sortedCards.filter((card) => {
       const primaryUrl = card.sources?.[0]?.url || "";
-      return StoryDiscoveryEngine.classifyWebResource(primaryUrl, card.headline) === "story";
+      const isStory = StoryDiscoveryEngine.classifyWebResource(primaryUrl, card.headline) === "story";
+      const isSocial = StoryDiscoveryEngine.isSocialMediaResource(primaryUrl);
+      return isStory && !isSocial;
     });
-    const cardsForHighlights = genuineStoryCards.length > 0 ? genuineStoryCards : sortedCards;
+
+    // Filter for actual recency (< 45 days old) relative to current time or latest topic update
+    const recentJournalisticCards = journalisticCards.filter((card) => {
+      const pubTime = new Date(card.published_at || "").getTime();
+      if (isNaN(pubTime) || pubTime === 0) return true;
+      const ageDays = (now - pubTime) / (1000 * 60 * 60 * 24);
+      return ageDays <= 45;
+    });
+
+    const cardsForHighlights =
+      recentJournalisticCards.length > 0
+        ? recentJournalisticCards
+        : journalisticCards.length > 0
+        ? journalisticCards
+        : sortedCards.filter((c) => {
+            const pub = new Date(c.published_at || "").getTime();
+            if (isNaN(pub) || pub === 0) return true;
+            return (now - pub) / (1000 * 60 * 60 * 24) <= 45;
+          });
 
     const keyHighlights = cardsForHighlights.slice(0, 4).map((card) => ({
       event_id: card.event_id,

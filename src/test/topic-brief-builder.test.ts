@@ -427,4 +427,52 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     expect(cleanDevelopmentTitle("Next-Gen Hardware Emerges | Electrek")).toBe("Next-Gen Hardware Emerges");
     expect(cleanDevelopmentTitle("Real-Time Telemetry Updates — The Verge")).toBe("Real-Time Telemetry Updates");
   });
+
+  it("prioritizes recent journalistic stories in key_highlights and excludes stale social media posts", () => {
+    const mixedCards: SynthesizedEventCard[] = [
+      // 1. Stale X post from 5 months ago
+      {
+        event_id: "evt_social_old",
+        topic: "Autonomous Driving",
+        headline: "Tesla Rolls Out FSD v14.3: 20% Faster Reaction Time",
+        personalized_framing: "Historical software update tweet.",
+        summary: "Elon Musk posted on X about early reaction time improvements.",
+        fact_bullets: ["20% faster reaction time claimed"],
+        disputed_claims: [],
+        verified_entities: ["Tesla"],
+        sources: [{ name: "x.com", title: "Post on X", url: "https://x.com/elonmusk/status/12345", bias: "center" }],
+        format: "bulleted_distillation",
+        published_at: new Date(Date.now() - 150 * 24 * 60 * 60 * 1000).toISOString(), // 150 days ago (April)
+        recency_label: "5mo ago",
+      },
+      // 2. Recent journalistic news article
+      {
+        event_id: "evt_news_recent",
+        topic: "Autonomous Driving",
+        headline: "Safety Investigation Opens Into Driver Assistance Telemetry",
+        personalized_framing: "Regulatory oversight.",
+        summary: "Federal regulators launch investigation into intersection performance.",
+        fact_bullets: ["Regulators launch probe"],
+        disputed_claims: [],
+        verified_entities: ["Tesla", "NHTSA"],
+        sources: [{ name: "Reuters", title: "Article", url: "https://reuters.com/business/autos/investigation-fsd-2026", bias: "center" }],
+        format: "bulleted_distillation",
+        published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h ago
+        recency_label: "2h ago",
+      },
+    ];
+
+    const briefs = buildTopicBriefs(mixedCards, mockNode);
+    const brief = briefs.find((b) => b.topic === "Autonomous Driving");
+
+    expect(brief).toBeDefined();
+    // Key highlights (Recent Stories) should only feature the recent news article
+    expect(brief!.key_highlights.length).toBe(1);
+    expect(brief!.key_highlights[0].event_id).toBe("evt_news_recent");
+    expect(brief!.key_highlights[0].headline).toBe("Safety Investigation Opens Into Driver Assistance Telemetry");
+
+    // But all stories (including the historical X post) are retained for agent and timeline context
+    expect(brief!.stories.length).toBe(2);
+    expect(brief!.all_sources.some((s) => s.name === "x.com")).toBe(true);
+  });
 });

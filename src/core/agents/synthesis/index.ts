@@ -206,23 +206,43 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
 
         // Calculate recency string & latest publish timestamp
         const newestPublished = effectiveArticles.reduce((latest, art) => {
-          const t = new Date(art.published_at || "").getTime();
+          let t = new Date(art.published_at || "").getTime();
+          if (isNaN(t) || t === 0) {
+            // Try extracting date from article raw text or title (e.g. "April 2026", "2026-04-15", etc.)
+            const textMatch = (art.raw_text + " " + art.title).match(
+              /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+(202\d)\b/i
+            );
+            if (textMatch) {
+              const parsed = new Date(textMatch[0]).getTime();
+              if (!isNaN(parsed)) t = parsed;
+            }
+          }
           return t > latest ? t : latest;
         }, 0);
 
-        const pubIso = newestPublished > 0 ? new Date(newestPublished).toISOString() : new Date().toISOString();
-        let recencyLabel = "⚡ Just In";
-        const diffHours = Math.max(0, (Date.now() - new Date(pubIso).getTime()) / (1000 * 60 * 60));
-        if (diffHours < 1) {
-          recencyLabel = "⚡ Breaking";
-        } else if (diffHours < 6) {
-          recencyLabel = `${Math.round(diffHours)}h ago`;
-        } else if (diffHours < 24) {
-          recencyLabel = `${Math.round(diffHours)}h ago`;
-        } else if (diffHours < 48) {
-          recencyLabel = "Yesterday";
+        const hasExplicitDate = newestPublished > 0;
+        const pubIso = hasExplicitDate ? new Date(newestPublished).toISOString() : new Date().toISOString();
+        let recencyLabel = "Recent";
+
+        if (hasExplicitDate) {
+          const diffHours = Math.max(0, (Date.now() - newestPublished) / (1000 * 60 * 60));
+          if (diffHours < 1) {
+            recencyLabel = "⚡ Breaking";
+          } else if (diffHours < 24) {
+            recencyLabel = `${Math.max(1, Math.round(diffHours))}h ago`;
+          } else if (diffHours < 48) {
+            recencyLabel = "Yesterday";
+          } else if (diffHours < 24 * 7) {
+            recencyLabel = `${Math.round(diffHours / 24)}d ago`;
+          } else if (diffHours < 24 * 30) {
+            recencyLabel = `${Math.round(diffHours / 24)}d ago`;
+          } else if (diffHours < 24 * 365) {
+            recencyLabel = `${Math.max(1, Math.round(diffHours / (24 * 30)))}mo ago`;
+          } else {
+            recencyLabel = `${Math.max(1, Math.round(diffHours / (24 * 365)))}y ago`;
+          }
         } else {
-          recencyLabel = "This Week";
+          recencyLabel = "Recent";
         }
 
         // If headline was generic placeholder, use the primary breaking article headline
