@@ -50,10 +50,12 @@ export class DocWorker {
         InterestHarmonizer --> UnifiedTopicNode: Harmonized Topic Nodes
     }
 
-    state "Node A: Epistemology Agent" as NodeA {
-        DiscoveryAgent --> BiasStripper: Multi-source Articles
+    state "Node A: Epistemology Agent & Deep Research" as NodeA {
+        DiscoveryAgent --> EpistemicEvaluator: Evaluate Candidate Coverage Sufficiency
+        EpistemicEvaluator --> AutonomousDeepResearch: Gap Queries & Follow-up Wire Search
+        AutonomousDeepResearch --> BiasStripper: Multi-source Articles
         BiasStripper --> DeltaExtractor: Strip Emotive Rhetoric
-        DeltaExtractor --> PureFactObject: Verified Entities + Agreed Facts + Disputed Claims
+        DeltaExtractor --> PureFactObject: Verified Entities + Agreed Facts + Disputed Claims + topic_id
     }
 
     state "Node B: Telemetry & Graph Agent" as NodeB {
@@ -67,15 +69,24 @@ export class DocWorker {
         Exploration --> AnchorResolution: Concept Anchoring Bridge
     }
 
-    state "Node D: Synthesis Agent" as NodeD {
-        FormatDecider --> BulletedList: Low Cognitive Load
-        FormatDecider --> GenerativeUIWidget: Data Heavy Facts
-        FormatDecider --> StructuredNarrative: Deep Dive
-        GenerativeUIWidget --> NextJSRenderer: Deliver to Presentation Layer
+    state "Node D: Synthesis & Generative Brief Architecture" as NodeD {
+        NodeC --> TopicCardEvolutionOrchestrator: 5-Phase Multi-Agent Evolution
+        state "Topic Card Evolution (5 Phases)" as Orchestrator {
+            LiveDiscovery --> EvolutionDecision: Redesign vs. Update vs. Maintain
+            EvolutionDecision --> LayoutArchitect: Select 1 of 7 Presentation Archetypes
+            LayoutArchitect --> TargetedResearch: Fill Specific Information Gaps
+            TargetedResearch --> CardSynthesis: Dynamic Sections + Executive Take
+        }
+        Orchestrator --> TopicBriefBuilder: O(1) Topic Bucket Matching by topic_id
+        TopicBriefBuilder --> NextJSRenderer: Finished-Only Reveal (Zero Interim Flash)
+    }
+
+    state "Observability & Telemetry" as Observability {
+        TraceLogger --> ObservabilityStudio: /observability Live Flow Inspector
+        TraceLogger --> DiskWarmup: Persistent Storage (traces/trace_latest.jsonl)
     }
 
     NodeA --> NodeC: Evaluate Candidate Facts
-    NodeC --> NodeD: Route Payload with Anchors
     NodeD --> [*]: Live UI / Generative Stream
 `;
   }
@@ -107,7 +118,9 @@ export class DocWorker {
 2. **Psychological Awareness**: Injects emotional trajectory, sensitivities, and boundaries into prompts to ensure respectful, nuanced interaction without formulaic conversational repetition.
 3. **Intentional Discovery**: Translates deep user preferences into multi-tiered search queries and rigorous quality/anti-preference filters, rejecting low-signal clickbait before ingestion.
 4. **Epistemic Deliberation**: Enforces a strict prefix-rationale architecture where agent cognition and fact-checking precede generation, grounded in real-time temporal and spatial realities.
-5. **Observability-Driven Adaptation**: Continuously evolves living topic dossiers in the background via the Observer Agent with transparent trace logging.
+5. **Observability-Driven Adaptation**: Continuously evolves living topic dossiers in the background via the Observer Agent with transparent trace logging in the Execution Studio.
+6. **Persistent GUID Topic Intelligence**: Binds every wire story, fact cluster, and brief section to an immutable \`topic_id\` entity, preventing card duplication, DOM thrashing, and layout collisions.
+7. **Finished-Only Card Reveal**: Never renders half-baked or interim wire cards while multi-agent synthesis is active; reveals completed dossiers with zero layout jumps or flashing.
 
 ---
 
@@ -149,16 +162,15 @@ The conversational intake pipeline in \`DialogueAgent\` operates under an **inve
 \`\`\`text
 1. Semantic Topic Resolver & Feed Filter FIRST
    └── Traverses user knowledge graph, identifies active discussion subject,
-       and immediately filters candidate feed stories by semantic affinity.
+       resolves persistent topic_id, and immediately filters candidate feed stories.
 
 2. Context Agent (The Empath) Grounding SECOND
    └── Constructs context envelope with calibrated technical depth,
        active sensitivities/boundaries, and scores candidate feed stories.
 
 3. Epistemic Sufficiency & Temporal Evaluation THIRD
-   └── DeepSeek evaluates whether local feed context contains verified facts
-       for the current calendar year. If insufficient or outdated,
-       autonomously executes "search_internet" via FreeNewsFetcher.
+   └── Evaluates whether local feed context contains verified facts for the current year.
+       If insufficient or outdated, autonomously executes live search tools across wires.
 
 4. Prefix-Rationale Dual-Intent Synthesis LAST
    └── Deliberates first: outputs agent_internal_rationale before message text.
@@ -173,7 +185,51 @@ The conversational intake pipeline in \`DialogueAgent\` operates under an **inve
 
 ---
 
-## 5. Discrete Topic Mutation & Graph Harmonization
+## 5. Persistent GUID (\`topic_id\`) Architecture & Finished-Only Reveal Policy
+
+### Immutable Entity Grounding
+- **Intake Boundary Grounding**: Generated deterministically via \`generateTopicId(canonicalTopic)\` (e.g. \`"top_tesla_full_self_driving"\`) at the semantic resolver boundary.
+- **Full Pipeline Propagation**: Attached to \`RawArticle\`, \`PureFactObject\`, \`SynthesizedEventCard\`, \`DynamicBriefSection\`, \`LLMTopicBriefDesign\`, and \`TopicBrief\`.
+- **$O(1)$ Deterministic Bucketing**: \`TopicBriefBuilder\` maps user topics and incoming cards by GUID in $O(1)$ time, eliminating fuzzy string collisions and duplicate cards.
+- **DOM Key Stability**: Emits deterministic \`brief.id = topicId\`, eliminating \`Date.now()\` key thrashing and React state wipes.
+
+### Finished-Only Card Reveal Policy
+- When targeted curation or brief synthesis is initiated, the system displays a continuous high-fidelity synthesis loading card.
+- Interim, raw, or incomplete wire cards are suppressed in \`filteredTopicBriefs\` until the 5-phase evolution orchestrator finishes.
+- The card is revealed on screen for the first and only time **100% finished** with its presentation archetype, custom sections, and executive take.
+
+---
+
+## 6. Topic Card Evolution Orchestrator (5 Phases & 7 Presentation Archetypes)
+
+\`TopicCardEvolutionOrchestrator\` dynamically re-architects the layout and dynamic sections of topic dossiers based on live incoming intelligence:
+
+### The 5 Evolutionary Phases
+1. **Phase 1: Live Data Discovery**: Ingests fresh wire stories and social commentary from Google News, Reddit, and Bluesky.
+2. **Phase 2: Evolutionary Decision**: LLM evaluates existing design against fresh delta to decide: \`redesign\`, \`update\`, or \`maintain\`.
+3. **Phase 3: Layout Architect Agent**: Selects the optimal presentation archetype and plans dynamic section structures, identifying specific research gaps.
+4. **Phase 4: Targeted Research Agent**: Autonomously executes focused search queries to fill identified knowledge gaps.
+5. **Phase 5: Card Synthesis Agent**: Synthesizes structured dynamic section payloads, assigns verified source URLs, and generates an overarching executive take.
+
+### The 7 Dynamic Presentation Archetypes
+- \`field_synthesis\`: Comprehensive overview for developing domains with broad coverage.
+- \`deep_dive_narrative\`: In-depth analytical journalism for complex multi-faceted stories.
+- \`comparative_dossier\`: Direct side-by-side comparison across competing architectures, products, or factions.
+- \`breaking_pulse\`: Real-time fast-cadence updates for rapidly unfolding breaking events.
+- \`regulatory_controversy\`: Critical tension analysis balancing institutional scrutiny against industry claims.
+- \`technical_architecture\`: High-density engineering teardowns with specifications, benchmarks, and diagrams.
+- \`timeline_evolution\`: Chronologically anchored historical development arcs.
+
+---
+
+## 7. Epistemic Evaluator & Autonomous Deep Research Loop
+
+- **\`EpistemicEvaluator\`**: Evaluates candidate news collections for epistemic coverage sufficiency, fact verification across independent sources, and ideological divergences.
+- **Autonomous Deep Research Loop**: When coverage is flagged as insufficient, automatically generates follow-up queries, queries live news engines, and enriches candidate collections before epistemology stripping.
+
+---
+
+## 8. Discrete Topic Mutation & Graph Harmonization
 
 ### Topic Mutation Engine (\`TopicMutationEngine\`)
 The Observer Agent mutates topics exclusively through atomic, discrete tool calls:
@@ -188,7 +244,7 @@ When the topic graph approaches saturation ($\ge 25$ topics) or when triggered v
 
 ---
 
-## 6. Feed Personalization, Deduplication & Narrative Citations
+## 9. Feed Personalization, Deduplication & Narrative Citations
 
 - **Semantic Matcher**: Computes concept sphere intersections, accounting for knowledge graph weights, curiosity vectors, and domain ontologies.
 - **Topic Briefs Builder**: Aggregates stories into intelligence dossiers with velocity indicators (*breaking, active, recent, steady, dormant*).
@@ -198,16 +254,26 @@ When the topic graph approaches saturation ($\ge 25$ topics) or when triggered v
 
 ---
 
-## 7. PostgreSQL Persistence & Seed Architecture
+## 10. PostgreSQL Persistence, Tiered User Management & Seed Architecture
 
-- **PostgreSQL 16 + pgvector**: Secure persistence with tables for \`unified_topic_nodes\`, \`user_knowledge_graphs\`, \`pure_fact_objects\`, \`behavioral_telemetry\`, \`agent_trace_logs\`, and \`chat_sessions\`.
+- **PostgreSQL 16 + pgvector**: Secure persistence with tables for \`unified_topic_nodes\`, \`user_knowledge_graphs\`, \`pure_fact_objects\`, \`behavioral_telemetry\`, \`agent_trace_logs\`, \`chat_sessions\`, and user accounts.
+- **User Management & Monetization**: \`UserManager\` handles tiered accounts (\`free\`, \`pro\`, \`enterprise\`), usage meters, rate limits, and Stripe subscription sync (\`/api/stripe/*\`).
 - **JSONB DDL Support**: Schema includes \`recent_topic_diffs\` and \`harmonization_runs\` on \`unified_topic_nodes\`.
 - **Canonical Seed State (\`SEED_DATA_STATE\`)**: Embedded baseline data ensures consistent, resilient bootstrapping across local Docker and production AWS environments.
 - **Idempotent Migrations (\`npm run db:migrate\`)**: Safely applies schema updates with \`ALTER TABLE ... ADD COLUMN IF NOT EXISTS\`.
 
 ---
 
-## 8. Reverse Proxy & Production Infrastructure
+## 11. Agentic Observability & Execution Studio (\`/observability\`)
+
+- **Dedicated Observability Studio**: Standalone dashboard at \`/observability\` providing real-time multi-agent execution tracing, token metering, latency profiling, and full prompt inspection.
+- **Trace Logger with Disk Warm-Up**: \`TraceLogger\` persists traces to \`traces/trace_latest.jsonl\` and automatically warms memory on server boot, preventing trace loss on module hot-reloads.
+- **Hierarchical Flow Tracing**: Correlates multi-agent flows across dialogue turns, pipeline ingestion, and card evolution with parent-child trace relationships.
+- **Deep Prompt Inspection**: Exposes exact system prompts, injected user prompts, reasoning rationales, and raw LLM completions.
+
+---
+
+## 12. Reverse Proxy & Production Infrastructure
 
 - **AWS ECS Fargate**: Containerized Next.js standalone server deployed in \`us-east-1\`.
 - **AWS RDS PostgreSQL**: Dedicated \`db.t4g.micro\` PostgreSQL instance with SSL enforcement.
@@ -217,19 +283,22 @@ When the topic graph approaches saturation ($\ge 25$ topics) or when triggered v
 
 ---
 
-## 9. Micro-Agent Node Contracts & Execution Registry
+## 13. Micro-Agent Node Contracts & Execution Registry
 
 - **Context Agent (\`node_context\`)**: Injects empath framing, active sensitivities, boundaries, and calibrated technical depth into conversational prompts.
 - **Discovery Agent (\`node_discovery\`)**: Curates wire queries, applies anti-preference filters, and rejects sensationalist clickbait.
 - **Observer Agent (\`node_observer\`)**: Actively evaluates user dialogue and telemetry to emit atomic topic mutation tool calls.
 - **Epistemology Agent (\`node_a_epistemology\`)**: Strips emotive rhetoric and produces verifiable \`PureFactObject\` records with agreed facts and disputed claims.
 - **Telemetry Agent (\`node_b_telemetry\`)**: Tracks passive user dwell and scroll depth to adjust interest weights.
-- **Serendipity Agent (\`node_c_serendipity\`)**: Balances exploitation (80%) and exploration (20%) via an $\\\\epsilon$-greedy multi-armed bandit.
+- **Serendipity Agent (\`node_c_serendipity\`)**: Balances exploitation (80%) and exploration (20%) via an $\\epsilon$-greedy multi-armed bandit.
 - **Synthesis Agent (\`node_d_synthesis\`)**: Formats pure facts into digestible event cards, briefings, and generative UI widgets.
+- **Epistemic Evaluator (\`epistemic_evaluator\`)**: Analyzes candidate article collections and drives autonomous recursive research loops.
+- **Card Evolution Orchestrator (\`agent_card_evolution\`)**: Directs the 5-phase multi-agent briefing evolution lifecycle.
+- **Layout Architect Agent (\`node_layout_architect\`)**: Selects presentation archetypes and dynamically structures card briefing layouts.
 
 ---
 
-## 10. Active Observability Audit Trail (Latest Node Traces)
+## 14. Active Observability Audit Trail (Latest Node Traces)
 
 ${traceSummary}
 `;

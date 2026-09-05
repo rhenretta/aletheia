@@ -12,10 +12,12 @@ stateDiagram-v2
         InterestHarmonizer --> UnifiedTopicNode: Harmonized Topic Nodes
     }
 
-    state "Node A: Epistemology Agent" as NodeA {
-        DiscoveryAgent --> BiasStripper: Multi-source Articles
+    state "Node A: Epistemology Agent & Deep Research" as NodeA {
+        DiscoveryAgent --> EpistemicEvaluator: Evaluate Candidate Coverage Sufficiency
+        EpistemicEvaluator --> AutonomousDeepResearch: Gap Queries & Follow-up Wire Search
+        AutonomousDeepResearch --> BiasStripper: Multi-source Articles
         BiasStripper --> DeltaExtractor: Strip Emotive Rhetoric
-        DeltaExtractor --> PureFactObject: Verified Entities + Agreed Facts + Disputed Claims
+        DeltaExtractor --> PureFactObject: Verified Entities + Agreed Facts + Disputed Claims + topic_id
     }
 
     state "Node B: Telemetry & Graph Agent" as NodeB {
@@ -29,13 +31,22 @@ stateDiagram-v2
         Exploration --> AnchorResolution: Concept Anchoring Bridge
     }
 
-    state "Node D: Synthesis Agent" as NodeD {
-        FormatDecider --> BulletedList: Low Cognitive Load
-        FormatDecider --> GenerativeUIWidget: Data Heavy Facts
-        FormatDecider --> StructuredNarrative: Deep Dive
-        GenerativeUIWidget --> NextJSRenderer: Deliver to Presentation Layer
+    state "Node D: Synthesis & Generative Brief Architecture" as NodeD {
+        NodeC --> TopicCardEvolutionOrchestrator: 5-Phase Multi-Agent Evolution
+        state "Topic Card Evolution (5 Phases)" as Orchestrator {
+            LiveDiscovery --> EvolutionDecision: Redesign vs. Update vs. Maintain
+            EvolutionDecision --> LayoutArchitect: Select 1 of 7 Presentation Archetypes
+            LayoutArchitect --> TargetedResearch: Fill Specific Information Gaps
+            TargetedResearch --> CardSynthesis: Dynamic Sections + Executive Take
+        }
+        Orchestrator --> TopicBriefBuilder: O(1) Topic Bucket Matching by topic_id
+        TopicBriefBuilder --> NextJSRenderer: Finished-Only Reveal (Zero Interim Flash)
+    }
+
+    state "Observability & Telemetry" as Observability {
+        TraceLogger --> ObservabilityStudio: /observability Live Flow Inspector
+        TraceLogger --> DiskWarmup: Persistent Storage (traces/trace_latest.jsonl)
     }
 
     NodeA --> NodeC: Evaluate Candidate Facts
-    NodeC --> NodeD: Route Payload with Anchors
     NodeD --> [*]: Live UI / Generative Stream
