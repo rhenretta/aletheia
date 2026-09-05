@@ -1226,6 +1226,13 @@ export default function AletheiaHome() {
       technical_depth: brief.technical_depth as any,
       why_they_care: brief.why_they_care,
     });
+
+    setAiFeedFilter({
+      is_active: true,
+      topic: brief.topic,
+      matched_event_ids: brief.stories.map((s) => s.event_id),
+      filter_reason: `Focused on "${brief.title || brief.topic}" topic brief.`,
+    });
   };
 
   // Inspect chat message in contextual DevTools (Context Envelope & Agentic Flow)
@@ -1338,6 +1345,59 @@ export default function AletheiaHome() {
   const topicBriefs = React.useMemo(() => {
     return buildTopicBriefs(feedCards, unifiedTopicNode, rankingSeenSnapshot);
   }, [feedCards, unifiedTopicNode, rankingSeenSnapshot]);
+
+  const filteredTopicBriefs = React.useMemo(() => {
+    // 1. Manual topic selection
+    if (selectedTopicFilter && selectedTopicFilter !== "all") {
+      const sel = selectedTopicFilter.toLowerCase().trim();
+      const manualMatches = topicBriefs.filter((brief) => {
+        const bTopic = brief.topic.toLowerCase().trim();
+        const bTitle = (brief.title || "").toLowerCase().trim();
+        const bParent = (brief.parent_interest || "").toLowerCase().trim();
+        return (
+          bTopic === sel ||
+          bTitle === sel ||
+          bParent === sel ||
+          bTopic.includes(sel) ||
+          sel.includes(bTopic) ||
+          (bTitle && (bTitle.includes(sel) || sel.includes(bTitle)))
+        );
+      });
+      if (manualMatches.length > 0) return manualMatches;
+    }
+
+    // 2. AI conversational focus filter (when manual filter is 'all')
+    if (aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic) {
+      const aiTopic = aiFeedFilter.topic.toLowerCase().trim();
+      const aiMatches = topicBriefs.filter((brief) => {
+        const bTopic = brief.topic.toLowerCase().trim();
+        const bTitle = (brief.title || "").toLowerCase().trim();
+        const bParent = (brief.parent_interest || "").toLowerCase().trim();
+
+        const textMatch =
+          bTopic === aiTopic ||
+          bTitle === aiTopic ||
+          bParent === aiTopic ||
+          bTopic.includes(aiTopic) ||
+          aiTopic.includes(bTopic) ||
+          (bTitle && (bTitle.includes(aiTopic) || aiTopic.includes(bTitle)));
+
+        if (textMatch) return true;
+
+        if (aiFeedFilter.matched_event_ids && aiFeedFilter.matched_event_ids.length > 0) {
+          return brief.stories.some((s) => aiFeedFilter.matched_event_ids!.includes(s.event_id));
+        }
+        return false;
+      });
+
+      if (aiMatches.length > 0) {
+        return aiMatches;
+      }
+    }
+
+    // 3. Fallback: all topic briefs
+    return topicBriefs;
+  }, [topicBriefs, selectedTopicFilter, aiFeedFilter]);
 
   // Auto-refresh stale/dormant topic briefs in the background so monitored topics always reflect live wire developments
   const autoRefreshedTopicsRef = useRef<Set<string>>(new Set());
@@ -1805,7 +1865,9 @@ export default function AletheiaHome() {
                 <BookOpen className="w-3.5 h-3.5" />
                 <span>Topic Briefs</span>
                 <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
-                  {topicBriefs.length}
+                  {filteredTopicBriefs.length !== topicBriefs.length
+                    ? `${filteredTopicBriefs.length} of ${topicBriefs.length}`
+                    : topicBriefs.length}
                 </span>
               </button>
 
@@ -1970,23 +2032,90 @@ export default function AletheiaHome() {
           {/* TOPIC BRIEFS DASHBOARD (when activeViewMode === 'briefs') */}
           {activeViewMode === "briefs" ? (
             <div className="space-y-4 animate-in fade-in duration-200">
-              {topicBriefs.length === 0 ? (
-                <div className="glass-panel rounded-2xl p-12 text-center border border-white/10 space-y-4">
-                  <BookOpen className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
-                  <div className="text-sm font-semibold text-slate-200">
-                    No topic dossiers available yet. Refresh or converse with Aletheia to generate briefs.
+              {/* AI Focus Filter Banner (if active) */}
+              {aiFeedFilter && aiFeedFilter.is_active !== false && (
+                <div className="p-3.5 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-2.5 text-xs text-cyan-200">
+                    <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0 animate-pulse" />
+                    <span>
+                      <strong className="text-cyan-300 font-mono font-semibold">Active Discussion Focus:</strong>{" "}
+                      <span className="text-white font-bold">&quot;{aiFeedFilter.topic}&quot;</span>
+                      <span className="text-slate-300 text-[11px] ml-1.5">
+                        — {aiFeedFilter.filter_reason || `Filtered by ongoing dialogue`}
+                      </span>
+                    </span>
                   </div>
+                  <button
+                    onClick={() => setAiFeedFilter(null)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white text-xs border border-white/20 flex items-center gap-1.5 transition font-mono font-medium flex-shrink-0 shadow-sm"
+                    title="Remove active topic filter and show all briefs"
+                  >
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Show All Briefs ({topicBriefs.length})</span>
+                  </button>
                 </div>
+              )}
+
+              {/* Active Manual Topic Filter Banner */}
+              {selectedTopicFilter !== "all" && (
+                <div className="p-3.5 rounded-2xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-between shadow-xl shadow-cyan-950/50 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-2.5 text-xs text-cyan-200">
+                    <Filter className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                    <span>
+                      <span className="text-slate-400">Filtering by Topic:</span>{" "}
+                      <strong className="text-cyan-300 font-bold text-sm font-mono">&quot;{formatTopicBadge(selectedTopicFilter)}&quot;</strong>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedTopicFilter("all")}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white text-xs border border-white/15 flex items-center gap-1.5 transition font-mono font-medium flex-shrink-0"
+                    title="Clear topic filter"
+                  >
+                    <X className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Show All Briefs ({topicBriefs.length})</span>
+                  </button>
+                </div>
+              )}
+
+              {filteredTopicBriefs.length === 0 ? (
+                aiFeedFilter && aiFeedFilter.is_active !== false && isCollectingNews ? (
+                  <div className="glass-panel rounded-2xl p-6 border border-cyan-500/50 shadow-xl shadow-cyan-950/40 space-y-4 relative overflow-hidden animate-pulse">
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-indigo-500 animate-pulse z-10" />
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-cyan-400 animate-spin flex-shrink-0" />
+                      <div>
+                        <h3 className="text-lg font-bold text-white tracking-tight">
+                          {aiFeedFilter.topic}
+                        </h3>
+                        <p className="text-xs text-cyan-300">
+                          Synthesizing fresh topic dossier and wire coverage for your discussion...
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="glass-panel rounded-2xl p-12 text-center border border-white/10 space-y-4">
+                    <BookOpen className="w-8 h-8 text-cyan-400 mx-auto opacity-80" />
+                    <div className="text-sm font-semibold text-slate-200">
+                      {selectedTopicFilter !== "all" || (aiFeedFilter && aiFeedFilter.is_active !== false)
+                        ? `No topic dossier found for "${aiFeedFilter?.topic || selectedTopicFilter}".`
+                        : "No topic dossiers available yet. Refresh or converse with Aletheia to generate briefs."}
+                    </div>
+                    {(selectedTopicFilter !== "all" || (aiFeedFilter && aiFeedFilter.is_active !== false)) && (
+                      <button
+                        onClick={() => {
+                          setSelectedTopicFilter("all");
+                          setAiFeedFilter(null);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold transition"
+                      >
+                        Show All Briefs ({topicBriefs.length})
+                      </button>
+                    )}
+                  </div>
+                )
               ) : (
-                topicBriefs
-                  .filter((brief) => {
-                    if (!selectedTopicFilter || selectedTopicFilter === "all") return true;
-                    return (
-                      brief.topic.toLowerCase() === selectedTopicFilter.toLowerCase() ||
-                      brief.parent_interest?.toLowerCase() === selectedTopicFilter.toLowerCase()
-                    );
-                  })
-                  .map((brief, bIdx) => {
+                filteredTopicBriefs.map((brief, bIdx) => {
                   const isHighVelocity = brief.velocity_status === "breaking" || brief.velocity_status === "active";
                   const isEscalating = brief.lifecycle_phase === "escalating" || brief.lifecycle_phase === "spawning";
                   const activeDesign = llmBriefDesigns[brief.topic] || brief.llm_design;
