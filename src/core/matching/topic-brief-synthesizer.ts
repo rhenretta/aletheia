@@ -590,36 +590,72 @@ export function synthesizeCleanDevelopments(
 
 /**
  * Synthesizes a high-level executive summary ("What's Happening Now")
- * that summarizes ALL recent developments across the topic into a coherent overview
- * rather than mechanically concatenating raw snippet fragments.
+ * that summarizes the SUBSTANTIVE content and developments across the articles
+ * rather than mechanically concatenating raw headline titles.
  */
 export function synthesizeCleanExecutiveTake(topic: string, cards: SynthesizedEventCard[]): string {
   if (!cards || cards.length === 0) {
     return `Things have been quiet for ${topic} lately, with no major breaking updates reported this week. We're actively monitoring live wires for emerging developments.`;
   }
 
-  const cleanHeadlines = cards
-    .map((c) => cleanDevelopmentTitle(c.headline))
-    .filter((h) => h.length > 10);
-
-  const cleanSummaries = cards
-    .map((c) => cleanArticleSnippet(c.headline, c.summary))
+  // Extract substantive article summaries and clean facts (NOT headline titles)
+  const substantiveSnippets = cards
+    .map((c) => {
+      // 1. Prefer substantive summary if available and not just a repetition of the headline
+      const cleanSum = cleanArticleSnippet(c.headline, c.summary);
+      if (cleanSum && cleanSum.length >= 30 && !cleanSum.toLowerCase().startsWith(c.headline.toLowerCase().slice(0, 20))) {
+        return cleanSum;
+      }
+      // 2. Fall back to top fact bullet if summary was sparse or redundant
+      if (c.fact_bullets && c.fact_bullets.length > 0) {
+        const topFact = c.fact_bullets[0].trim();
+        if (topFact.length >= 25) {
+          return topFact.endsWith(".") ? topFact : `${topFact}.`;
+        }
+      }
+      return cleanSum || "";
+    })
     .filter((s) => s.length > 20);
 
-  if (cleanHeadlines.length === 1) {
-    return `Recent coverage in ${topic} centers on ${cleanHeadlines[0]}. ${cleanSummaries[0] || "Live reporting is actively evaluating key developments."}`;
+  if (substantiveSnippets.length === 0) {
+    const entities = Array.from(new Set(cards.flatMap((c) => c.verified_entities || []))).slice(0, 4);
+    if (entities.length > 0) {
+      return `Recent reporting in ${topic} tracks ongoing developments involving ${entities.join(", ")}. Coverage is actively following emerging updates across primary sources.`;
+    }
+    return `Recent coverage in ${topic} is tracking multiple emerging developments across primary sources.`;
   }
 
-  if (cleanHeadlines.length === 2) {
-    return `Recent developments in ${topic} are driven by ${cleanHeadlines[0]}, alongside ${cleanHeadlines[1]}. Reporting indicates that ${cleanSummaries[0] || "observers are closely tracking the broader implications."}`;
+  if (substantiveSnippets.length === 1) {
+    return substantiveSnippets[0];
   }
 
-  // 3 or more stories: synthesize all developments into an overarching briefing
-  const h1 = cleanHeadlines[0];
-  const h2 = cleanHeadlines[1];
-  const h3 = cleanHeadlines[2];
+  // When 2 or more stories exist, combine the substantive insights into a cohesive multi-sentence summary
+  const first = substantiveSnippets[0].trim();
+  const second = substantiveSnippets[1].trim();
 
-  return `Recent developments across ${topic} center on ${h1} and ${h2}, alongside reports on ${h3}. Observers, industry analysts, and regulators are actively tracking how these milestones shape ongoing operations and upcoming reviews.`;
+  const cleanFirst = first.endsWith(".") || first.endsWith("!") || first.endsWith("?") ? first : `${first}.`;
+  const cleanSecond = second.endsWith(".") || second.endsWith("!") || second.endsWith("?") ? second : `${second}.`;
+
+  if (substantiveSnippets.length === 2) {
+    if (!cleanFirst.toLowerCase().includes(cleanSecond.toLowerCase().slice(0, 25))) {
+      return `${cleanFirst} Additionally, ${cleanSecond.charAt(0).toLowerCase() + cleanSecond.slice(1)}`;
+    }
+    return cleanFirst;
+  }
+
+  // 3 or more stories: weave top substantive insights into an overarching summary
+  const third = substantiveSnippets[2].trim();
+  const cleanThird = third.endsWith(".") || third.endsWith("!") || third.endsWith("?") ? third : `${third}.`;
+
+  if ((cleanFirst.length + cleanSecond.length) <= 320) {
+    const combinedTwo = `${cleanFirst} Concurrently, ${cleanSecond.charAt(0).toLowerCase() + cleanSecond.slice(1)}`;
+    if (combinedTwo.length + cleanThird.length <= 440 && !combinedTwo.toLowerCase().includes(cleanThird.toLowerCase().slice(0, 25))) {
+      return `${combinedTwo} Meanwhile, ${cleanThird.charAt(0).toLowerCase() + cleanThird.slice(1)}`;
+    }
+    return combinedTwo;
+  }
+
+  return `${cleanFirst} In parallel, ${cleanSecond.charAt(0).toLowerCase() + cleanSecond.slice(1)}`;
 }
 
 /**

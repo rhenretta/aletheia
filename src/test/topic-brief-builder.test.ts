@@ -414,10 +414,10 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     ];
 
     const executiveTake = synthesizeCleanExecutiveTake("Autonomous Driving", cards);
-    expect(executiveTake).toContain("Fleet Safety Dataset Released");
-    expect(executiveTake).toContain("European Regulatory Approval Vote Scheduled");
-    expect(executiveTake).toContain("Safety Investigation Progress Report");
-    expect(executiveTake).not.toContain("Additionally, what the");
+    expect(executiveTake).toContain("The new evidence dashboard evaluates crash rates.");
+    expect(executiveTake).toContain("regulators prepare to review self-driving telemetry.");
+    expect(executiveTake).toContain("agency monitors driver assistance performance metrics.");
+    expect(executiveTake).not.toContain("Fleet Safety Dataset Released | Source");
   });
 
   it("preserves hyphenated compound words in cleanDevelopmentTitle and strips publisher suffixes", () => {
