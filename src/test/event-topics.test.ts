@@ -282,10 +282,11 @@ describe("Event-Driven Topic Briefs Architecture & State Machine", () => {
   });
 
   describe("6. LLM-Designed Dynamic Presentation & Zero User Meta-Commentary", () => {
-    it("synthesizes bespoke dynamic sections without formulaic cookie-cutter constraints", async () => {
+    it("synthesizes bespoke dynamic sections and strictly omits timeline without milestone articles", async () => {
       const { TopicBriefSynthesizer } = await import("../core/matching/topic-brief-synthesizer");
 
-      const design = TopicBriefSynthesizer.synthesizeLocalDeterministic(
+      // Without milestone articles, concurrent breaking stories must NOT produce a fake timeline
+      const designWithoutMilestones = TopicBriefSynthesizer.synthesizeLocalDeterministic(
         "Autonomous Robotics & Automation",
         mockCards,
         mockSources,
@@ -293,28 +294,56 @@ describe("Event-Driven Topic Briefs Architecture & State Machine", () => {
         ["actuator physics", "gearbox tolerance"]
       );
 
-      expect(design).toBeDefined();
-      expect(design.presentation_archetype).toBe("regulatory_controversy"); // has disputed claims
-      expect(design.executive_take).toBeDefined();
-      expect(design.sections.length).toBeGreaterThanOrEqual(2);
+      expect(designWithoutMilestones).toBeDefined();
+      expect(designWithoutMilestones.presentation_archetype).toBe("regulatory_controversy"); // has disputed claims
+      expect(designWithoutMilestones.executive_take).toBeDefined();
+      expect(designWithoutMilestones.sections.length).toBeGreaterThanOrEqual(2);
 
       // Should have critical_tensions section because mockCards[1] has a disputed claim
-      const tensionSec = design.sections.find((s) => s.section_type === "critical_tensions");
+      const tensionSec = designWithoutMilestones.sections.find((s) => s.section_type === "critical_tensions");
       expect(tensionSec).toBeDefined();
       expect(tensionSec!.content.tensions?.length).toBeGreaterThan(0);
 
       // Should have key_developments section
-      const devSec = design.sections.find((s) => s.section_type === "key_developments");
+      const devSec = designWithoutMilestones.sections.find((s) => s.section_type === "key_developments");
       expect(devSec).toBeDefined();
       expect(devSec!.content.bullets?.length).toBe(2);
 
-      // Should have real_world_chronology section
-      const chronoSec = design.sections.find((s) => s.section_type === "real_world_chronology");
-      expect(chronoSec).toBeDefined();
-      expect(chronoSec!.content.milestones?.length).toBe(2);
+      // Should NOT have real_world_chronology section because no milestone articles were provided
+      const chronoSecOmitted = designWithoutMilestones.sections.find((s) => s.section_type === "real_world_chronology");
+      expect(chronoSecOmitted).toBeUndefined();
+
+      // With explicit milestone sources spanning distinct calendar dates, real_world_chronology IS produced
+      const milestoneSources: EventSourceArticle[] = [
+        ...mockSources,
+        {
+          name: "Engineering Archive",
+          title: "Actuator Development Milestones and History",
+          url: "https://archive.example/actuators-timeline",
+          bias: "center",
+          raw_text: "Historical progression of kinematic actuators across qualification stages.",
+          highlighted_passages: [
+            "Oct 2025: Initial prototype qualification passed under continuous duty.",
+            "Jan 2026: Phase two endurance trials completed across regional plants.",
+          ],
+          published_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
+        },
+      ];
+
+      const designWithMilestones = TopicBriefSynthesizer.synthesizeLocalDeterministic(
+        "Autonomous Robotics & Automation",
+        mockCards,
+        milestoneSources,
+        "practitioner",
+        ["actuator physics", "gearbox tolerance"]
+      );
+
+      const chronoSecPresent = designWithMilestones.sections.find((s) => s.section_type === "real_world_chronology");
+      expect(chronoSecPresent).toBeDefined();
+      expect(chronoSecPresent!.content.milestones?.length).toBe(2);
 
       // Confirm absolute absence of user meta-commentary
-      const serialized = JSON.stringify(design);
+      const serialized = JSON.stringify(designWithMilestones);
       expect(serialized).not.toMatch(/\bthe user\b/i);
       expect(serialized).not.toMatch(/\bobserver_agent\b/i);
       expect(serialized).not.toMatch(/user's interest/i);

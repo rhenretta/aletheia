@@ -271,7 +271,7 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
         layout_style: "quote_cards",
         content: {
           quotes: [
-            { quote: "Major deterrence upgrade", speaker_or_community: "Reuters", platform: "news" },
+            { quote: "Major deterrence upgrade", speaker_or_community: "Reddit r/geopolitics", platform: "reddit" },
           ],
         },
       },
@@ -312,6 +312,7 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     const sources = [
       { name: "Reuters", url: "https://reuters.com/article/naval-1", bias: "center" as const },
       { name: "CBS News", url: "https://cbsnews.com/article/redsea-2", bias: "center" as const },
+      { name: "Reddit r/geopolitics", url: "https://reddit.com/r/geopolitics/comments/naval-1", bias: "center" as const },
     ];
 
     const enriched = enrichSectionSourceUrls(rawSections, mockCards, sources);
@@ -324,7 +325,7 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     expect(enriched[1].content.milestones?.[0].source_url).toBe("https://reuters.com/article/naval-1");
 
     // Verify community_pulse
-    expect(enriched[2].content.quotes?.[0].url).toBe("https://reuters.com/article/naval-1");
+    expect(enriched[2].content.quotes?.[0].url).toBe("https://reddit.com/r/geopolitics/comments/naval-1");
 
     // Verify critical_tensions
     expect(enriched[3].content.tensions?.[0].source_url).toBe("https://cbsnews.com/article/redsea-2");

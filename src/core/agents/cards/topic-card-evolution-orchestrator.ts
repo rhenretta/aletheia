@@ -19,6 +19,10 @@ import {
   synthesizeCleanDevelopments,
   isForwardLookingCatalyst,
   enrichSectionSourceUrls,
+  isStrictSocialMediaSource,
+  detectSocialPlatform,
+  isAuthenticUserComment,
+  isValidTimelineMilestone,
 } from "../../matching/topic-brief-synthesizer";
 
 export interface EvolveTopicCardOptions {
@@ -407,19 +411,20 @@ ARCHITECTURAL CHOICES:
 - planned_section_types: 2 to 4 of ("critical_tensions" | "telemetry_metrics" | "real_world_chronology" | "community_pulse" | "key_developments" | "catalysts_outlook" | "deep_dive_inquiries")
 
 CRITICAL TIMELINE RULES (MANDATORY):
-- "real_world_chronology": ONLY plan this section if the available research documents a genuine multi-stage progression spanning distinct dates or historical phases across weeks or months.
-- NEVER plan a timeline for breaking news items or stories that occurred within the same 48-72 hour window or where items would all be labeled "Just now" or "Today".
-- If all events or articles occurred on the same day or within the same news cycle, DO NOT plan a timeline.
+- "real_world_chronology": ONLY plan this section if the available research documents a genuine multi-stage progression spanning distinct calendar dates or historical phases across weeks or months (e.g. Month Year, distinct past dates).
+- NEVER plan a timeline for breaking news items or stories that occurred within the same news cycle (e.g. hours ago, today, yesterday).
+- If planning "real_world_chronology", you MUST formulate an information gap with query seeking milestone progression (e.g. "[Entity] milestones timeline history roadmap").
+- If no milestone articles or historical progression exist, DO NOT plan a timeline.
 
-CRITICAL RECENCY & RELEVANCE RULES (MANDATORY):
-- The user requires RECENT, high-signal data.
-- When formulating information gaps and search queries, formulate queries that explicitly seek recent data within the active news window (e.g. current year or recent practitioner discussions).
-- NEVER plan generic queries that might return multi-year-old forum threads or obsolete blog posts.
+CRITICAL SOCIAL MEDIA RULES (MANDATORY):
+- "community_pulse": ONLY plan this section if seeking authentic social media discussions from Reddit, Bluesky, X/Twitter, Threads, or HN.
+- When formulating queries for community quotes, formulate targeted queries like "[Entity] discussion site:reddit.com OR site:bsky.app OR site:x.com".
+- Corporate websites and PR landing pages are strictly forbidden.
 
 INFORMATION GAPS & RESEARCH PLAN:
 Formulate 1 to 3 targeted search queries to retrieve recent data needed for your layout.
 For example:
-- If planning community pulse: formulate a query for recent user or practitioner discussions within the active news cycle.
+- If planning community pulse: formulate a query for recent user or practitioner discussions on social platforms.
 - If planning critical tensions: formulate a query for latest regulatory or technical pushback.
 - If planning telemetry metrics: formulate a query for latest benchmark specs or testing data.
 If available data is already completely sufficient, information_gaps can be empty [].
@@ -463,31 +468,21 @@ Respond STRICTLY with valid JSON:
     if (hasDisputes) {
       plannedSections.push("critical_tensions");
     }
-    const pubTimes = cards.map((c) => new Date(c.published_at || 0).getTime()).filter((t) => t > 0);
-    const latestCardTime = pubTimes.length > 0 ? Math.max(...pubTimes) : Date.now();
-    const earliestCardTime = pubTimes.length > 0 ? Math.min(...pubTimes) : latestCardTime;
-    const timeSpanHours = (latestCardTime - earliestCardTime) / (1000 * 60 * 60);
 
-    const recentProgression = cards.filter((c) => {
-      const pub = new Date(c.published_at || 0).getTime();
-      return latestCardTime - pub < 60 * 24 * 60 * 60 * 1000;
+    const hasMilestoneSources = sources.some((s) => {
+      const t = (s.title || "").toLowerCase();
+      return t.includes("timeline") || t.includes("milestones") || t.includes("history") || t.includes("roadmap");
     });
 
-    const distinctDates = new Set(
-      recentProgression.map((c) => (c.published_at ? new Date(c.published_at).toISOString().slice(0, 10) : ""))
-    );
-    distinctDates.delete("");
-
-    // A real timeline requires at least 3 distinct calendar dates spanning at least 5 days (120 hours)
-    if (recentProgression.length >= 3 && timeSpanHours >= 120 && distinctDates.size >= 3) {
+    if (hasMilestoneSources) {
       plannedSections.push("real_world_chronology");
     }
 
     const gaps: LayoutArchitectPlan["information_gaps"] = [];
-    if (!sources.some((s) => s.name.toLowerCase().includes("reddit") || s.name.toLowerCase().includes("bluesky"))) {
+    if (!sources.some(isStrictSocialMediaSource)) {
       gaps.push({
         gap_type: "community_quotes",
-        query: `${topic} latest discussion reaction`,
+        query: `${topic} discussion site:reddit.com OR site:bsky.app OR site:x.com`,
         rationale: "Gather recent practitioner and community reactions within the active news cycle.",
         target_section: "community_pulse",
       });
@@ -599,8 +594,9 @@ Respond STRICTLY with valid JSON:
               });
             }
           } else {
+            // Concrete reporting story
             const cleanSummary = cleanArticleSnippet(art.title, art.raw_text);
-            const card: SynthesizedEventCard = {
+            gapCards.push({
               event_id: `evt_gap_${Date.now()}_${gapCards.length}`,
               topic,
               headline: art.title,
@@ -614,12 +610,11 @@ Respond STRICTLY with valid JSON:
               published_at: art.published_at || new Date().toISOString(),
               recency_label: "Targeted Research",
               image_url: art.image_url,
-            };
-            gapCards.push(card);
+            });
           }
         }
       } catch (err) {
-        console.warn(`[TopicCardEvolutionOrchestrator] Targeted research query "${gap.query}" failed:`, err);
+        console.warn(`[TopicCardEvolutionOrchestrator] Targeted research failed for query "${gap.query}":`, err);
       }
     }
 
@@ -633,120 +628,30 @@ Respond STRICTLY with valid JSON:
     topic: string,
     cards: SynthesizedEventCard[],
     sources: EventSourceArticle[],
-    mode: "update_in_place" | "redesign",
+    decision: CardEvolutionDecision["decision"],
     previousDesign?: LLMTopicBriefDesign | null,
     layoutPlan?: LayoutArchitectPlan | null,
     technicalDepth: string = "practitioner",
     curiosityVectors: string[] = []
   ): Promise<LLMTopicBriefDesign> {
-    // If update_in_place and previousDesign exists, refresh the content while preserving sections
-    if (mode === "update_in_place" && previousDesign && previousDesign.sections.length > 0) {
-      return await this.synthesizeUpdateInPlace(
+    // 1. If redesign or initial card, synthesize fresh design
+    if (decision === "redesign" || !previousDesign) {
+      return TopicBriefSynthesizer.synthesizeBrief(
         topic,
         cards,
         sources,
-        previousDesign,
-        technicalDepth
+        {
+          technical_depth: technicalDepth,
+          curiosity_vectors: curiosityVectors,
+        }
       );
     }
 
-    // Otherwise, perform full synthesis based on the architect plan and all enriched data
-    return TopicBriefSynthesizer.synthesizeBrief(
-      topic,
-      cards,
-      sources,
-      {
-        technical_depth: technicalDepth,
-        curiosity_vectors: curiosityVectors,
-      }
-    );
-  }
+    // 2. If update in place, update executive summary and key developments while preserving overall structure
+    const freshExecutiveTake = synthesizeCleanExecutiveTake(topic, cards);
+    const synthesizedKeyDevelopments = synthesizeCleanDevelopments(cards);
 
-  /**
-   * In-place synthesis: updates existing sections and "The Big Picture" take
-   * while keeping the layout structure stable.
-   */
-  private static async synthesizeUpdateInPlace(
-    topic: string,
-    cards: SynthesizedEventCard[],
-    sources: EventSourceArticle[],
-    previousDesign: LLMTopicBriefDesign,
-    technicalDepth: string
-  ): Promise<LLMTopicBriefDesign> {
-    let freshExecutiveTake = "";
-    let synthesizedKeyDevelopments: Array<{ title: string; text: string; source: string; source_url?: string }> | null = null;
-
-    if (deepseekProvider.isConfigured() && cards.length > 0) {
-      try {
-        const prompt = `You are an editorial director at Aletheia writing an executive briefing for the topic "${topic}".
-Based on these ${cards.slice(0, 5).length} recent reports:
-${cards.slice(0, 5).map((c, i) => `Story ${i + 1}:
-Headline: ${c.headline}
-Summary: ${c.summary}
-Source: ${c.sources?.[0]?.name || "Wire"} (${c.sources?.[0]?.url || ""})`).join("\n\n")}
-
-Your task is to write:
-1. "executive_take" ("What's Happening Now"):
-   - A cohesive 2-to-3 sentence executive summary that synthesizes ALL the recent developments across this topic into a clear overview.
-   - Summarize the overarching situation: what major updates have occurred, what new evidence or milestones emerged, and what the current status is.
-   - Written in natural, smart, accessible prose for everyday readers.
-   - Do NOT simply copy or repeat headlines or bullet text verbatim.
-
-2. "key_developments":
-   - An array of up to 3 distinct key developments from these reports.
-   - "title": A clean, concise journalistic headline for the development (e.g. "Release of Comparative Fleet Safety Dataset").
-   - "text": A substantive, clear 1-to-2 sentence explanation of what happened, what the data or milestone demonstrates, and why it matters. Must be complete, fluent sentences without broken abbreviations or truncated scraps.
-   - "source": Publisher name.
-   - "source_url": Original source URL.
-
-Respond STRICTLY with valid JSON:
-{
-  "executive_take": "Cohesive 2-3 sentence overarching summary of all recent developments...",
-  "key_developments": [
-    {
-      "title": "Clean, descriptive title",
-      "text": "Substantive 1-2 sentence explanation of the development.",
-      "source": "Source Name",
-      "source_url": "URL"
-    }
-  ]
-}`;
-
-        const res = await deepseekProvider.generateCompletion(prompt, {
-          temperature: 0.2,
-          maxTokens: 500,
-        });
-
-        const jsonMatch = res.text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (parsed.executive_take && typeof parsed.executive_take === "string" && parsed.executive_take.trim().length > 25) {
-            freshExecutiveTake = parsed.executive_take.trim();
-          }
-          if (Array.isArray(parsed.key_developments) && parsed.key_developments.length > 0) {
-            synthesizedKeyDevelopments = parsed.key_developments.map((kd: any) => ({
-              title: String(kd.title || "").trim(),
-              text: String(kd.text || "").trim(),
-              source: String(kd.source || "Reporting").trim(),
-              source_url: kd.source_url ? String(kd.source_url).trim() : undefined,
-            })).filter((kd: any) => kd.title.length > 0 && kd.text.length > 0);
-          }
-        }
-      } catch (err) {
-        console.warn("[TopicCardEvolutionOrchestrator] LLM update-in-place synthesis failed, using clean fallback:", err);
-      }
-    }
-
-    if (!freshExecutiveTake) {
-      freshExecutiveTake = synthesizeCleanExecutiveTake(topic, cards);
-    }
-
-    if (!synthesizedKeyDevelopments || synthesizedKeyDevelopments.length === 0) {
-      synthesizedKeyDevelopments = synthesizeCleanDevelopments(cards.slice(0, 3));
-    }
-
-    // Refresh contents of each existing section without changing the structural types
-    const updatedSections = previousDesign.sections.map((sec) => {
+    const updatedSections = (previousDesign.sections || []).map((sec) => {
       if (sec.section_type === "key_developments" && cards.length > 0) {
         return {
           ...sec,
@@ -757,76 +662,57 @@ Respond STRICTLY with valid JSON:
       }
 
       if (sec.section_type === "real_world_chronology") {
-        // 1. Preserve LLM/agent-researched milestones if valid and free of ancient historical trivia
-        if (sec.content.milestones && sec.content.milestones.length >= 2) {
-          const freshResearched = sec.content.milestones.filter(
-            (m) => !m.time_label?.includes("2024") && !m.time_label?.includes("2023")
-          );
-          if (freshResearched.length >= 2) {
-            return {
-              ...sec,
-              content: { ...sec.content, milestones: freshResearched },
-            };
-          }
-        }
-
-        // 2. Otherwise, only generate progression if there is genuine multi-day progression (>= 48h span)
-        const pubTimes = cards.map((c) => new Date(c.published_at || 0).getTime()).filter((t) => t > 0);
-        const latestTime = pubTimes.length > 0 ? Math.max(...pubTimes) : Date.now();
-        const earliestTime = pubTimes.length > 0 ? Math.min(...pubTimes) : latestTime;
-        const spanHours = (latestTime - earliestTime) / (1000 * 60 * 60);
-
-        if (spanHours < 48) {
-          return null; // Same-day articles are not a timeline
-        }
-
-        const recentCards = cards.filter((c) => {
-          const pub = new Date(c.published_at || 0).getTime();
-          return latestTime - pub < 60 * 24 * 60 * 60 * 1000;
-        });
-
-        // If there are fewer than 2 recent cards, drop the timeline section completely
-        if (recentCards.length < 2) {
+        if (!sec.content.milestones || sec.content.milestones.length < 2) {
           return null;
         }
-
-        const sorted = [...recentCards].sort(
-          (a, b) => new Date(a.published_at || 0).getTime() - new Date(b.published_at || 0).getTime()
-        );
-
-        // Take the recent progression leading up to now (at most 4)
-        const timelineCards = sorted.slice(-4);
-        const milestones = timelineCards.map((c) => {
-          const pubTime = new Date(c.published_at || 0).getTime();
-          const diffH = Math.round((Date.now() - pubTime) / (1000 * 60 * 60));
-          const timeLabel =
-            diffH <= 2
-              ? "Just now"
-              : diffH < 24
-              ? `${diffH}h ago`
-              : diffH < 48
-              ? "Yesterday"
-              : diffH < 24 * 30
-              ? `${Math.round(diffH / 24)}d ago`
-              : new Date(pubTime).toLocaleDateString("en-US", { month: "short", year: "numeric" });
-          return {
-            time_label: timeLabel,
-            milestone: c.headline,
-            source_name: c.sources?.[0]?.name,
-            source_url: c.sources?.[0]?.url,
-          };
-        });
-
-        // Genuine timeline check: if all items are labeled "Just now" or labels collapsed into same day, drop section
-        const distinctLabels = new Set(milestones.map((m) => m.time_label));
-        const justNowCount = milestones.filter((m) => m.time_label === "Just now").length;
-        if (milestones.length < 2 || distinctLabels.size < 2 || justNowCount >= 2) {
-          return null;
+        const validMilestones = sec.content.milestones.filter(isValidTimelineMilestone);
+        const distinct = new Set(validMilestones.map((m) => m.time_label));
+        if (validMilestones.length < 2 || distinct.size < 2) {
+          return null; // Omit timeline if milestones lack distinct calendar progression
         }
-
         return {
           ...sec,
-          content: { milestones },
+          content: {
+            ...sec.content,
+            milestones: validMilestones,
+          },
+        };
+      }
+
+      if (sec.section_type === "community_pulse") {
+        if (!sec.content.quotes || sec.content.quotes.length === 0) {
+          return null;
+        }
+        const validQuotes = sec.content.quotes.filter((q) => {
+          const matchingSource = q.url ? sources.find((s) => s.url === q.url) : undefined;
+          const isSocial = isStrictSocialMediaSource(matchingSource || { url: q.url, name: q.speaker_or_community });
+          if (!isSocial) return false;
+          if (!isAuthenticUserComment(q.quote)) return false;
+
+          // Reject quotes referencing obsolete years (2020-2024)
+          const text = `${q.quote} ${q.speaker_or_community}`;
+          if (/\b(201[0-9]|202[0-4])\b/.test(text)) return false;
+
+          // Reject quotes from sources older than 60 days
+          if (matchingSource?.published_at) {
+            const pubTime = new Date(matchingSource.published_at).getTime();
+            if (!isNaN(pubTime) && Date.now() - pubTime > 60 * 24 * 60 * 60 * 1000) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        if (validQuotes.length === 0) return null;
+        return {
+          ...sec,
+          content: {
+            ...sec.content,
+            quotes: validQuotes.map((q) => ({
+              ...q,
+              platform: detectSocialPlatform(q.url || q.platform || q.speaker_or_community || ""),
+            })),
+          },
         };
       }
 
@@ -852,34 +738,7 @@ Respond STRICTLY with valid JSON:
         return Boolean(sec.content.catalysts && sec.content.catalysts.length > 0);
       }
       if (sec.section_type === "community_pulse") {
-        const validQuotes = (sec.content.quotes || []).filter((q) => {
-          const plat = (q.platform || "").toLowerCase();
-          const speaker = (q.speaker_or_community || "").toLowerCase();
-          const isSocial =
-            plat === "reddit" ||
-            plat === "bluesky" ||
-            speaker.includes("reddit") ||
-            speaker.includes("forum") ||
-            speaker.includes("community");
-          if (!isSocial) return false;
-
-          // Reject quotes containing obsolete years (2020-2024)
-          const text = `${q.quote} ${q.speaker_or_community}`;
-          if (/\b(201[0-9]|202[0-4])\b/.test(text)) return false;
-
-          // Reject quotes from sources older than 60 days
-          if (q.url) {
-            const matchingSource = sources.find((s) => s.url === q.url);
-            if (matchingSource?.published_at) {
-              const pubTime = new Date(matchingSource.published_at).getTime();
-              if (!isNaN(pubTime) && Date.now() - pubTime > 60 * 24 * 60 * 60 * 1000) {
-                return false;
-              }
-            }
-          }
-          return true;
-        });
-        return validQuotes.length > 0;
+        return Boolean(sec.content.quotes && sec.content.quotes.length > 0);
       }
       if (sec.section_type === "real_world_chronology") {
         return Boolean(sec.content.milestones && sec.content.milestones.length >= 2);

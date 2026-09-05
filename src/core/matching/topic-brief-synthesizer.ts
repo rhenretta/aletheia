@@ -115,8 +115,8 @@ KEY EDITORIAL PRINCIPLES:
          - "title": A clean, concise journalistic title for the development (NOT a sensationalist headline).
          - "text": A substantive 1-to-2 sentence explanation of what happened, what the data or milestone reveals, and why it matters. Write in clear, complete sentences with correct numbers and grammar.
          - "source": Publisher name.
-      * "real_world_chronology": ONLY use if the research documents a genuine multi-stage progression across distinct separated dates (e.g. across weeks/months/stages). NEVER show a timeline for concurrent breaking stories from the same news cycle, where events happened within 48h, or where items would all be labeled "Just now" or "Today". If there is no genuine multi-date progression, do NOT include this section.
-      * "community_pulse": Real quotes and chatter from testers, forums, or observers strictly from the current active news window (within the last 30-60 days). NEVER include obsolete quotes from years-old discussions.
+      * "real_world_chronology": ONLY use if the research documents a genuine multi-stage progression across distinct separated calendar dates (e.g. across months/years/phases like "Jan 2026", "Nov 2025", "2024"). NEVER generate a timeline from concurrent breaking news stories from the same news cycle, and NEVER use relative time labels like "Just now", "4h ago", "Today", or "Yesterday". If there are no milestone articles or historical milestones spanning distinct calendar dates, DO NOT INCLUDE THIS SECTION.
+      * "community_pulse": ONLY use if the sources contain authentic social media posts and comments from platforms like Reddit, Bluesky, X/Twitter, or Threads. Quotes MUST be recent (within the last 60 days) and reflect authentic user/practitioner discussions (never corporate PR, landing page copy, or subreddit sidebar boilerplate). If no authentic social media posts exist, DO NOT INCLUDE THIS SECTION.
       * "telemetry_metrics": Key numbers, stats, or specs.
       * "catalysts_outlook": What to watch for next (strictly forward-looking).
       * "deep_dive_inquiries": Interesting questions to explore further.
@@ -145,8 +145,8 @@ OUTPUT STRICT JSON MATCHING THIS SCHEMA:
         "summary": "Optional narrative",
         "bullets": [{ "title": "Clean Descriptive Development Title", "text": "Substantive 1-2 sentence explanation of what happened, key data/milestones, and significance.", "source": "Source Name" }],
         "metrics": [{ "label": "Metric Name", "value": "12.4x", "context": "Context description", "trend": "up" | "down" | "neutral" }],
-        "milestones": [{ "time_label": "Recent / Date", "milestone": "Event description", "source_name": "Source" }],
-        "quotes": [{ "quote": "Quote text", "speaker_or_community": "Attribution", "platform": "reddit / open_web", "sentiment": "positive" | "critical" | "mixed" | "neutral" }],
+        "milestones": [{ "time_label": "Month Year / Date", "milestone": "Event description", "source_name": "Source" }],
+        "quotes": [{ "quote": "Quote text", "speaker_or_community": "Attribution", "platform": "reddit" | "x" | "bluesky" | "threads" | "social", "sentiment": "positive" | "critical" | "mixed" | "neutral" }],
         "tensions": [{ "topic_tension": "What's in dispute", "thesis": "The claim", "antithesis": "The pushback", "verified_evidence": "What we know" }],
         "catalysts": [{ "timeframe": "When to expect it", "event": "What's coming", "significance": "Why it matters" }],
         "inquiries": [{ "question": "Question to ask", "angle": "Context angle" }]
@@ -205,7 +205,7 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
           if (!parsed.executive_take || parsed.executive_take.trim().length === 0) {
             parsed.executive_take = synthesizeCleanExecutiveTake(topic, cards);
           }
-          // Sanitize catalysts for strict chronological forward-looking integrity
+          // Sanitize sections for strict chronological forward-looking, timeline milestone, and social media integrity
           parsed.sections = parsed.sections
             .map((sec) => {
               if (sec.section_type === "catalysts_outlook" && sec.content.catalysts) {
@@ -220,11 +220,61 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
                   },
                 };
               }
+              if (sec.section_type === "real_world_chronology" && sec.content.milestones) {
+                const validMilestones = sec.content.milestones.filter(isValidTimelineMilestone);
+                const distinct = new Set(validMilestones.map((m) => m.time_label));
+                if (validMilestones.length < 2 || distinct.size < 2) {
+                  return null;
+                }
+                return {
+                  ...sec,
+                  content: {
+                    ...sec.content,
+                    milestones: validMilestones,
+                  },
+                };
+              }
+              if (sec.section_type === "community_pulse" && sec.content.quotes) {
+                const validQuotes = sec.content.quotes.filter((q) => {
+                  const plat = (q.platform || "").toLowerCase();
+                  const speaker = (q.speaker_or_community || "").toLowerCase();
+                  const isSocial =
+                    plat === "reddit" ||
+                    plat === "bluesky" ||
+                    plat === "x" ||
+                    plat === "threads" ||
+                    plat === "hacker_news" ||
+                    speaker.startsWith("r/") ||
+                    speaker.includes("reddit") ||
+                    speaker.includes("bluesky");
+                  if (!isSocial) return false;
+                  if (!isAuthenticUserComment(q.quote)) return false;
+                  return true;
+                });
+                if (validQuotes.length === 0) return null;
+                return {
+                  ...sec,
+                  content: {
+                    ...sec.content,
+                    quotes: validQuotes.map((q) => ({
+                      ...q,
+                      platform: detectSocialPlatform(q.platform || q.speaker_or_community || ""),
+                    })),
+                  },
+                };
+              }
               return sec;
             })
-            .filter((sec) => {
+            .filter((sec): sec is DynamicBriefSection => {
+              if (!sec) return false;
               if (sec.section_type === "catalysts_outlook") {
                 return Boolean(sec.content.catalysts && sec.content.catalysts.length > 0);
+              }
+              if (sec.section_type === "real_world_chronology") {
+                return Boolean(sec.content.milestones && sec.content.milestones.length >= 2);
+              }
+              if (sec.section_type === "community_pulse") {
+                return Boolean(sec.content.quotes && sec.content.quotes.length > 0);
               }
               return true;
             });
@@ -269,59 +319,52 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
       });
     }
 
-    // 2. Timeline: Only include if there is genuine multi-day progression across distinct dates (>= 48h span)
-    const pubTimes = cards.map((c) => new Date(c.published_at || 0).getTime()).filter((t) => t > 0);
-    const latestPubTime = pubTimes.length > 0 ? Math.max(...pubTimes) : Date.now();
-    const earliestPubTime = pubTimes.length > 0 ? Math.min(...pubTimes) : latestPubTime;
-    const timeSpanHours = (latestPubTime - earliestPubTime) / (1000 * 60 * 60);
-
-    const recentProgressionCards = cards.filter((c) => {
-      const pub = new Date(c.published_at || 0).getTime();
-      // Must be within 60 days of latest news to reflect current story development, never years-old seed data
-      return latestPubTime - pub < 60 * 24 * 60 * 60 * 1000;
+    // 2. Timeline: ONLY include if there are authentic milestone articles or documented multi-date progression
+    // with distinct calendar dates (e.g. Month Year or formatted historical dates spanning distinct periods).
+    // NEVER convert breaking news feed cards into a fake timeline with hourly labels ("4h ago", "Just now")!
+    const explicitMilestoneSources = sources.filter((s) => {
+      const title = (s.title || "").toLowerCase();
+      const text = (s.raw_text || "").toLowerCase();
+      return (
+        title.includes("timeline") ||
+        title.includes("milestones") ||
+        title.includes("roadmap") ||
+        title.includes("history") ||
+        text.includes("chronology")
+      );
     });
 
-    // A real timeline requires at least 2 cards spanning at least 48 hours.
-    // If all cards broke in the same afternoon/day (<48h), they are breaking news updates, NOT a timeline!
-    if (recentProgressionCards.length >= 2 && timeSpanHours >= 48) {
-      const sorted = [...recentProgressionCards].sort(
-        (a, b) => new Date(a.published_at || 0).getTime() - new Date(b.published_at || 0).getTime()
-      );
-      const timelineCards = sorted.slice(-4);
-      const milestones = timelineCards.map((c) => {
-        const pubTime = new Date(c.published_at || 0).getTime();
-        const diffH = Math.round((Date.now() - pubTime) / (1000 * 60 * 60));
-        const timeLabel =
-          diffH <= 2
-            ? "Just now"
-            : diffH < 24
-            ? `${diffH}h ago`
-            : diffH < 48
-            ? "Yesterday"
-            : diffH < 24 * 30
-            ? `${Math.round(diffH / 24)}d ago`
-            : new Date(pubTime).toLocaleDateString("en-US", { month: "short", year: "numeric" });
-        return {
-          time_label: timeLabel,
-          milestone: c.headline,
-          source_name: c.sources?.[0]?.name,
-          source_url: c.sources?.[0]?.url,
-        };
+    if (explicitMilestoneSources.length > 0) {
+      const extractedMilestones: NonNullable<DynamicBriefSection["content"]["milestones"]> = [];
+      explicitMilestoneSources.forEach((src) => {
+        (src.highlighted_passages || []).forEach((p) => {
+          const dateMatch = p.match(/\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|\d{4}|Phase\s+\d+|Stage\s+\d+|Q[1-4]\s+\d{4})\b/i);
+          if (dateMatch && extractedMilestones.length < 4) {
+            const timeLabel = dateMatch[1];
+            const cleanDesc = p.replace(dateMatch[0], "").replace(/^[:\s\-—]+/, "").trim();
+            if (cleanDesc.length > 15) {
+              extractedMilestones.push({
+                time_label: timeLabel,
+                milestone: cleanDesc.length > 120 ? cleanDesc.slice(0, 117) + "..." : cleanDesc,
+                source_name: src.name,
+                source_url: src.url,
+              });
+            }
+          }
+        });
       });
 
-      // A genuine timeline must have distinct time labels and NOT multiple items saying "Just now" or "Today".
-      // If milestones collapsed into the same short window, they are concurrent news updates, NOT a timeline!
-      const distinctLabels = new Set(milestones.map((m) => m.time_label));
-      const justNowCount = milestones.filter((m) => m.time_label === "Just now").length;
-      if (milestones.length >= 2 && distinctLabels.size >= 2 && justNowCount < 2) {
+      const validMilestones = extractedMilestones.filter(isValidTimelineMilestone);
+      const distinctLabels = new Set(validMilestones.map((m) => m.time_label));
+      if (validMilestones.length >= 2 && distinctLabels.size >= 2) {
         sections.push({
           id: `sec_chronology_${Date.now()}`,
           section_type: "real_world_chronology",
           title: "Timeline for Context",
-          subtitle: "How this topic has developed recently",
+          subtitle: "How this topic has developed across key milestones",
           badge: "Timeline",
           layout_style: "timeline",
-          content: { milestones },
+          content: { milestones: validMilestones },
         });
       }
     }
@@ -381,44 +424,21 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
     }
 
     // Section D: What People Are Saying (Community Pulse)
-    // ONLY include if the quotes originate from genuine community / social platforms (Reddit, Bluesky, forums)
-    // AND are strictly recent (within 60 days). NEVER repurpose stale multi-year-old threads.
-    const isAuthenticCommunitySource = (src: EventSourceArticle): boolean => {
-      const name = (src.name || "").toLowerCase();
-      const url = (src.url || "").toLowerCase();
-      const isSocial = (
-        name.includes("reddit") ||
-        url.includes("reddit.com") ||
-        url.includes("bsky.app") ||
-        url.includes("forum") ||
-        url.includes("community") ||
-        url.includes("twitter.com") ||
-        url.includes("x.com")
-      );
-      if (!isSocial) return false;
-
-      // Reject sources older than 60 days
-      if (src.published_at) {
-        const pub = new Date(src.published_at).getTime();
-        if (!isNaN(pub) && Date.now() - pub > 60 * 24 * 60 * 60 * 1000) {
-          return false;
-        }
-      }
-      return true;
-    };
-
+    // ONLY include if quotes originate strictly from authentic social media / community platforms (Reddit, Bluesky, X, Threads, HN)
+    // AND are recent (within 60 days) and reflect authentic user discussion (NEVER corporate PR, landing page copy, or subreddit sidebars).
     const extractedQuotes: NonNullable<DynamicBriefSection["content"]["quotes"]> = [];
-    sources.filter(isAuthenticCommunitySource).forEach((src) => {
+    sources.filter(isStrictSocialMediaSource).forEach((src) => {
       (src.highlighted_passages || []).forEach((p) => {
         const clean = p.replace(/^["']|["']$/g, "").trim();
         // Skip quotes referencing obsolete years (2020-2024)
         if (/\b(201[0-9]|202[0-4])\b/.test(clean)) return;
+        if (!isAuthenticUserComment(clean)) return;
 
         if (clean.length > 25 && clean.length < 220 && extractedQuotes.length < 3) {
           extractedQuotes.push({
             quote: clean,
             speaker_or_community: src.name || "Community Discussion",
-            platform: src.name.toLowerCase().includes("reddit") ? "reddit" : "open_web",
+            platform: detectSocialPlatform(src.url || src.name),
             sentiment: "mixed",
             url: src.url,
           });
@@ -474,6 +494,119 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
       sections: enrichSectionSourceUrls(sections, cards, sources),
     };
   }
+}
+
+/**
+ * Checks whether a source originates from an authentic social media / community platform
+ * (e.g. Reddit, X/Twitter, Bluesky, Threads, Hacker News).
+ * Strictly excludes corporate websites, PR pages, news publications, and generic open web domains.
+ */
+export function isStrictSocialMediaSource(src: EventSourceArticle | { url?: string; name?: string; published_at?: string }): boolean {
+  const url = (src.url || "").toLowerCase();
+  const name = (src.name || "").toLowerCase();
+
+  // Reject sources older than 60 days
+  if (src.published_at) {
+    const pub = new Date(src.published_at).getTime();
+    if (!isNaN(pub) && Date.now() - pub > 60 * 24 * 60 * 60 * 1000) {
+      return false;
+    }
+  }
+
+  const isSocialUrl = (
+    url.includes("reddit.com") ||
+    url.includes("twitter.com") ||
+    url.includes("x.com") ||
+    url.includes("bsky.app") ||
+    url.includes("threads.net") ||
+    url.includes("news.ycombinator.com") ||
+    url.includes("mastodon.") ||
+    url.includes("lemmy.")
+  );
+
+  const isSocialName = (
+    name.startsWith("r/") ||
+    name.includes("reddit") ||
+    name.includes("bluesky") ||
+    name.includes("hacker news") ||
+    name.includes("twitter")
+  );
+
+  return isSocialUrl || isSocialName;
+}
+
+/**
+ * Detects the platform identifier for a social media source.
+ */
+export function detectSocialPlatform(urlOrName: string): "reddit" | "x" | "bluesky" | "threads" | "hacker_news" | "social" {
+  const lower = (urlOrName || "").toLowerCase();
+  if (lower.includes("reddit")) return "reddit";
+  if (lower.includes("x.com") || lower.includes("twitter")) return "x";
+  if (lower.includes("bsky.app") || lower.includes("bluesky")) return "bluesky";
+  if (lower.includes("threads.net") || lower.includes("threads")) return "threads";
+  if (lower.includes("ycombinator") || lower.includes("hacker news")) return "hacker_news";
+  return "social";
+}
+
+/**
+ * Filters out subreddit sidebar descriptions, navigation boilerplate, forum rules, and corporate slogans
+ * to ensure that only authentic user discussion and commentary are used in Community Pulse.
+ */
+export function isAuthenticUserComment(passage: string): boolean {
+  if (!passage || passage.trim().length < 20) return false;
+  const lower = passage.toLowerCase().trim();
+
+  // Filter out subreddit sidebar / directory / rules boilerplate
+  const boilerplateIndicators = [
+    "welcome to r/",
+    "get real-time updates on",
+    "rules of this subreddit",
+    "a place to discuss",
+    "post guidelines",
+    "all posts must",
+    "official subreddit",
+    "sidebar",
+    "moderators",
+    "please read the rules",
+    "subscribe to",
+    "terms of service",
+    "privacy policy",
+    "cookie policy",
+    "all rights reserved",
+    "the path to launch is filled with obstacles", // corporate PR slogans
+  ];
+
+  if (boilerplateIndicators.some((ind) => lower.includes(ind))) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Validates whether a timeline milestone represents a genuine historical or developmental
+ * milestone spanning distinct calendar dates, rather than a concurrent breaking news timestamp.
+ */
+export function isValidTimelineMilestone(m: { time_label: string; milestone: string }): boolean {
+  if (!m.milestone || m.milestone.trim().length < 5) return false;
+  const label = (m.time_label || "").trim().toLowerCase();
+
+  // Reject relative intraday or concurrent breaking labels
+  if (
+    /^(just now|today|yesterday|\d+\s*h(ours?)?\s*ago|\d+\s*m(in(utes?)?)?\s*ago|\d+\s*d(ays?)?\s*ago|recent|current)/i.test(label)
+  ) {
+    return false;
+  }
+
+  // A genuine milestone time label must specify a distinct calendar month/year, date, or structured phase
+  // e.g. "Jan 2026", "Nov 2025", "2024", "Oct 14, 2025", "Phase 1: 2024", "Q3 2025"
+  const hasCalendarDateOrPhase = (
+    /\b(20[123][0-9])\b/.test(label) ||
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\b/i.test(label) ||
+    /\b(phase|stage|version|v\d|q[1-4])\b/i.test(label)
+  );
+
+  return hasCalendarDateOrPhase;
 }
 
 /**
@@ -819,15 +952,23 @@ export function enrichSectionSourceUrls(
     }
 
     if (sec.section_type === "community_pulse" && sec.content.quotes) {
+      const socialSources = allKnownSources.filter(isStrictSocialMediaSource);
       const enrichedQuotes = sec.content.quotes.map((q) => {
         if (!q.url) {
-          const found = findSourceUrl(q.speaker_or_community, undefined, q.quote);
+          const match = socialSources.find((s) =>
+            (q.speaker_or_community && s.name?.toLowerCase().includes(q.speaker_or_community.toLowerCase())) ||
+            (q.quote && s.raw_text?.toLowerCase().includes(q.quote.toLowerCase().slice(0, 30)))
+          );
           return {
             ...q,
-            url: found.url,
+            url: match?.url || socialSources[0]?.url,
+            platform: detectSocialPlatform(match?.url || q.platform || q.speaker_or_community || ""),
           };
         }
-        return q;
+        return {
+          ...q,
+          platform: detectSocialPlatform(q.url || q.platform || q.speaker_or_community || ""),
+        };
       });
       return { ...sec, content: { ...sec.content, quotes: enrichedQuotes } };
     }
