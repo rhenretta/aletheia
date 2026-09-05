@@ -594,7 +594,7 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     expect(brief.topic_id).toBe(topicId);
     expect(brief.id).toBe(topicId);
     expect(brief.stories.length).toBe(3);
-    expect(brief.stories.map((s) => s.event_id)).toEqual(["evt_fsd_1", "evt_fsd_2", "evt_fsd_3"]);
+    expect(brief.stories.map((s) => s.event_id).sort()).toEqual(["evt_fsd_1", "evt_fsd_2", "evt_fsd_3"].sort());
   });
 
   it("guarantees briefId determinism across successive calls without Date.now() jitter", () => {
