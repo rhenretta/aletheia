@@ -260,9 +260,17 @@ export class PostgresStore {
     }
   }
 
+  private lastConnectAttemptTime: number = 0;
+  private static readonly CONNECT_RETRY_COOLDOWN_MS = 30000;
+
   private async ensureInitialized(): Promise<boolean> {
     if (!this.pool) return false;
     if (this.isConnected && this.schemaInitialized) return true;
+    const now = Date.now();
+    if (now - this.lastConnectAttemptTime < PostgresStore.CONNECT_RETRY_COOLDOWN_MS) {
+      return false;
+    }
+    this.lastConnectAttemptTime = now;
     return await this.initializeSchema();
   }
 
