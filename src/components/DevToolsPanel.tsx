@@ -294,6 +294,17 @@ export default function DevToolsPanel({
             </button>
           )}
 
+          <a
+            href="/observability"
+            target="_blank"
+            rel="noreferrer"
+            className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-[11px] font-mono font-semibold flex items-center gap-1.5 transition shadow-sm"
+            title="Open Full Observability Studio in New Tab"
+          >
+            <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden md:inline">Observability Studio ↗</span>
+          </a>
+
           <button
             onClick={fetchDevToolsData}
             className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10"
@@ -364,7 +375,19 @@ export default function DevToolsPanel({
                 }`}
               >
                 <Zap className="w-3.5 h-3.5 text-violet-400" />
-                <span>AI Calls & Prompts ({traces.filter((t) => t.metadata?.raw_llm_completion).length})</span>
+                <span>
+                  AI Calls & Prompts (
+                  {
+                    traces.filter(
+                      (t) =>
+                        t.call_type === "llm" ||
+                        Boolean(t.prompt_details?.user_prompt) ||
+                        Boolean((t.metadata as any)?.raw_llm_completion) ||
+                        Boolean(t.response_details?.raw_completion)
+                    ).length
+                  }
+                  )
+                </span>
               </button>
 
               <button
@@ -2081,16 +2104,35 @@ export default function DevToolsPanel({
           {activeTab === "ai_calls" && (
             <div className="space-y-3">
               {traces
-                .filter((t) => (t.metadata as any)?.raw_llm_completion)
+                .filter(
+                  (t) =>
+                    t.call_type === "llm" ||
+                    Boolean(t.prompt_details?.user_prompt) ||
+                    Boolean((t.metadata as any)?.raw_llm_completion) ||
+                    Boolean(t.response_details?.raw_completion)
+                )
                 .map((trace, idx) => {
                   const isExpanded = expandedTraceId === trace.trace_id;
+                  const userPrompt =
+                    trace.prompt_details?.user_prompt ||
+                    String((trace.metadata as any)?.raw_user_prompt || trace.input_summary?.last_user_message || "");
+                  const sysPrompt = trace.prompt_details?.system_prompt;
+                  const rawCompletion =
+                    trace.response_details?.raw_completion ||
+                    String((trace.metadata as any)?.raw_llm_completion || "");
+
                   return (
                     <div key={idx} className="p-4 rounded-xl bg-slate-900/80 border border-white/10 space-y-3 text-xs">
-                      <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedTraceId(isExpanded ? null : trace.trace_id || null)}>
-                        <div className="flex items-center gap-2 font-mono">
+                      <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setExpandedTraceId(isExpanded ? null : trace.trace_id || null)}
+                      >
+                        <div className="flex items-center gap-2 font-mono flex-wrap">
                           <span className="text-cyan-400 font-bold">AI Call #{idx + 1}</span>
                           <span className="text-slate-500">•</span>
-                          <span className="text-slate-300">{trace.node_name}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-950 text-slate-300 border border-white/10">
+                            {trace.node_name}
+                          </span>
                           <span className="text-slate-500">•</span>
                           <span className="text-emerald-400">{trace.llm_tokens_used || 0} tokens</span>
                           <span className="text-slate-500">•</span>
@@ -2100,25 +2142,65 @@ export default function DevToolsPanel({
                       </div>
 
                       {isExpanded && (
-                        <div className="pt-3 border-t border-white/10 space-y-3">
-                          <div>
-                            <span className="font-mono text-slate-400 text-[10px] block mb-1">User Prompt:</span>
-                            <pre className="p-3 rounded-lg bg-slate-950 text-[10px] font-mono text-slate-300 whitespace-pre-wrap max-h-[160px] overflow-y-auto">
-                              {String((trace.metadata as any)?.raw_user_prompt || "")}
-                            </pre>
-                          </div>
+                        <div className="pt-3 border-t border-white/10 space-y-3 font-mono">
+                          {/* Reasoning Rationale */}
+                          {trace.reasoning_rationale && (
+                            <div className="p-2.5 rounded bg-slate-950 border border-cyan-500/20 space-y-1">
+                              <span className="text-cyan-400 text-[10px] font-bold block uppercase">
+                                Agent Reasoning & Rationale:
+                              </span>
+                              <p className="text-slate-300 text-[11px] leading-relaxed">
+                                {trace.reasoning_rationale}
+                              </p>
+                            </div>
+                          )}
 
-                          <div>
-                            <span className="font-mono text-cyan-400 text-[10px] block mb-1">DeepSeek Raw Completion:</span>
-                            <pre className="p-3 rounded-lg bg-slate-950 text-[10px] font-mono text-cyan-300 whitespace-pre-wrap max-h-[160px] overflow-y-auto">
-                              {String((trace.metadata as any)?.raw_llm_completion || "")}
-                            </pre>
-                          </div>
+                          {/* System Prompt if available */}
+                          {sysPrompt && (
+                            <div>
+                              <span className="text-slate-400 text-[10px] block mb-1">System Instructions:</span>
+                              <pre className="p-3 rounded-lg bg-slate-950 text-[10px] text-slate-400 whitespace-pre-wrap max-h-[140px] overflow-y-auto border border-white/5">
+                                {sysPrompt}
+                              </pre>
+                            </div>
+                          )}
+
+                          {/* User Prompt */}
+                          {userPrompt && (
+                            <div>
+                              <span className="text-amber-400 text-[10px] block mb-1">User Prompt & Injected Context:</span>
+                              <pre className="p-3 rounded-lg bg-slate-950 text-[10px] text-slate-300 whitespace-pre-wrap max-h-[160px] overflow-y-auto border border-white/5">
+                                {userPrompt}
+                              </pre>
+                            </div>
+                          )}
+
+                          {/* Raw LLM Completion */}
+                          {rawCompletion && (
+                            <div>
+                              <span className="text-violet-400 text-[10px] block mb-1">DeepSeek Raw Completion:</span>
+                              <pre className="p-3 rounded-lg bg-slate-950 text-[10px] text-violet-300 whitespace-pre-wrap max-h-[180px] overflow-y-auto border border-white/5">
+                                {rawCompletion}
+                              </pre>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
                   );
                 })}
+
+              {traces.filter(
+                (t) =>
+                  t.call_type === "llm" ||
+                  Boolean(t.prompt_details?.user_prompt) ||
+                  Boolean((t.metadata as any)?.raw_llm_completion) ||
+                  Boolean(t.response_details?.raw_completion)
+              ).length === 0 && (
+                <div className="p-8 text-center text-slate-500 text-xs font-mono">
+                  No LLM completions recorded yet. Send a companion message to observe live AI calls.
+                </div>
+              )}
             </div>
           )}
 

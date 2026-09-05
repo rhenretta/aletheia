@@ -55,6 +55,101 @@ export function extractConceptTokens(text: string): string[] {
 }
 
 /**
+ * Domain-agnostic detection of acronym or initialism equivalence between two topic strings.
+ * Evaluates whether one term represents an abbreviation/acronym of the other (e.g., "Tesla FSD" vs "Tesla Full Self-Driving",
+ * "US FDA" vs "US Food and Drug Administration", "WHO" vs "World Health Organization").
+ */
+export function isAcronymEquivalent(a: string, b: string): boolean {
+  if (!a || !b) return false;
+
+  // 1. Check parenthetical expressions, e.g. "Topic Name (ACR)" vs "Topic Name" or "Topic ACR"
+  const extractParen = (str: string) => {
+    const match = str.match(/\(([^)]+)\)/);
+    const without = str.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+    return {
+      inside: match ? match[1].trim() : null,
+      outside: without,
+    };
+  };
+
+  const parenA = extractParen(a);
+  const parenB = extractParen(b);
+
+  if (parenA.inside || parenB.inside) {
+    const cleanOutA = parenA.outside || a;
+    const cleanOutB = parenB.outside || b;
+    if (isAcronymEquivalent(cleanOutA, cleanOutB)) return true;
+
+    if (parenA.inside) {
+      if (isAcronymEquivalent(parenA.inside, b) || isAcronymEquivalent(parenA.inside, cleanOutB)) return true;
+      const firstWordA = cleanOutA.trim().split(/\s+/)[0];
+      if (firstWordA && isAcronymEquivalent(`${firstWordA} ${parenA.inside}`, b)) return true;
+    }
+    if (parenB.inside) {
+      if (isAcronymEquivalent(a, parenB.inside) || isAcronymEquivalent(cleanOutA, parenB.inside)) return true;
+      const firstWordB = cleanOutB.trim().split(/\s+/)[0];
+      if (firstWordB && isAcronymEquivalent(a, `${firstWordB} ${parenB.inside}`)) return true;
+    }
+  }
+
+  const cleanWords = (str: string) =>
+    str
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+  const normA = cleanWords(a);
+  const normB = cleanWords(b);
+  if (normA.length === 0 || normB.length === 0) return false;
+  if (normA.join(" ") === normB.join(" ")) return true;
+
+  const filterStop = (words: string[]) => words.filter((w) => !STOPWORDS.has(w));
+  const getAcronym = (words: string[]) => filterStop(words).map((w) => w[0]).join("");
+
+  const filteredA = filterStop(normA);
+  const filteredB = filterStop(normB);
+
+  // Direct full-term acronym match (e.g. "fsd" vs "full self-driving")
+  if (filteredA.length === 1 && filteredA[0].length >= 2 && filteredA[0] === getAcronym(normB)) return true;
+  if (filteredB.length === 1 && filteredB[0].length >= 2 && filteredB[0] === getAcronym(normA)) return true;
+
+  // Compound acronym with shared common words (e.g. "tesla fsd" vs "tesla full self-driving")
+  const [shorter, longer] = normA.length <= normB.length ? [normA, normB] : [normB, normA];
+  const commonWords = shorter.filter((w) => longer.includes(w));
+  if (commonWords.length > 0) {
+    const remShorter = filterStop(shorter.filter((w) => !commonWords.includes(w)));
+    const remLonger = filterStop(longer.filter((w) => !commonWords.includes(w)));
+
+    if (remShorter.length === 1 && remLonger.length >= 2 && getAcronym(remLonger) === remShorter[0]) {
+      return true;
+    }
+    if (remLonger.length === 1 && remShorter.length >= 2 && getAcronym(remShorter) === remLonger[0]) {
+      return true;
+    }
+    // Sub-phrase acronym matching when remaining longer contains prefix matching remShorter
+    if (remShorter.length === 1 && remLonger.length >= 2) {
+      for (let len = 2; len <= remLonger.length; len++) {
+        if (getAcronym(remLonger.slice(0, len)) === remShorter[0]) return true;
+      }
+    }
+  }
+
+  // Prefix phrase containment (e.g. "Tesla Full Self-Driving" vs "Tesla Full Self-Driving current status and developments")
+  const [shorterF, longerF] = filteredA.length <= filteredB.length ? [filteredA, filteredB] : [filteredB, filteredA];
+  if (shorterF.length >= 2 && longerF.length > shorterF.length) {
+    const isPrefix = shorterF.every((w, idx) => longerF[idx] === w);
+    if (isPrefix) {
+      const ratio = shorterF.length / longerF.length;
+      if (ratio >= 0.4) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Construct the full Semantic Concept Sphere for a given target topic,
  * incorporating user knowledge graph nodes, curiosity vectors, and domain ontologies.
  */
@@ -73,6 +168,19 @@ export function buildTopicSemanticSphere(
   const normalizedTarget = targetTopic.toLowerCase().trim();
   extractConceptTokens(normalizedTarget).forEach((t) => primaryTokens.add(t));
   primaryTokens.add(normalizedTarget);
+
+  // Domain-agnostically extract subphrase initials as acronym tokens into primary_tokens
+  const cleanTargetWords = normalizedTarget
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => !STOPWORDS.has(w));
+  if (cleanTargetWords.length >= 2) {
+    primaryTokens.add(cleanTargetWords.map((w) => w[0]).join(""));
+    if (cleanTargetWords.length >= 3) {
+      primaryTokens.add(cleanTargetWords.slice(1).map((w) => w[0]).join(""));
+    }
+  }
 
   // 1. Check Domain Ontologies
   for (const [key, synonyms] of Object.entries(DOMAIN_ONTOLOGIES)) {
@@ -160,10 +268,10 @@ export function calculateSemanticAffinity(
   const normalizedTarget = targetTopic.toLowerCase().trim();
 
   // 1. Direct Topic Label Alignment (Weight: 0.50)
-  if (cardTopicLower === normalizedTarget) {
+  if (cardTopicLower === normalizedTarget || isAcronymEquivalent(cardTopicLower, normalizedTarget)) {
     score += 0.50;
     matchedConcepts.add(card.topic);
-    rationaleParts.push(`Exact topic match: "${card.topic}"`);
+    rationaleParts.push(`Exact or acronym topic match: "${card.topic}"`);
   } else if (cardTopicLower.includes(normalizedTarget) || normalizedTarget.includes(cardTopicLower)) {
     score += 0.40;
     matchedConcepts.add(card.topic);

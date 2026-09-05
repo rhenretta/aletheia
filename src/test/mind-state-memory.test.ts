@@ -105,8 +105,8 @@ describe("The Mind-State Memory Architecture: Core Engine & Multi-Agent Tests", 
     expect(framing.semantic_resolution?.selected_topics.length).toBeGreaterThan(0);
 
     // Check trace logger recorded node_context
-    const recentTraces = traceLogger.getRecentTraces(5);
-    const contextTrace = recentTraces.find((t) => t.node_name === "node_context");
+    const recentTraces = traceLogger.getRecentTraces(50);
+    const contextTrace = [...recentTraces].reverse().find((t) => t.node_name === "node_context");
     expect(contextTrace).toBeDefined();
     expect(contextTrace?.output_summary?.selected_topics_count).toBeGreaterThan(0);
   });

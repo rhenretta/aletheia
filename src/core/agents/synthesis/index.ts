@@ -7,6 +7,7 @@ import {
   UserKnowledgeGraph,
   RawArticle,
   EventSourceArticle,
+  generateTopicId,
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
@@ -288,6 +289,7 @@ Task: Write a captivating, authentic news story using ONLY the substantiated fac
 
         return {
           event_id: fact.event_id,
+          topic_id: fact.topic_id || generateTopicId(cleanTopic),
           topic: cleanTopic,
           headline,
           personalized_framing: personalizedFraming,

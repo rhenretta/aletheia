@@ -86,6 +86,8 @@ describe("TopicRelevanceFilter: Semantic & Homonym Noise Gate", () => {
 
     // Spy on NewsCollector to return mixed candidate pool
     const { NewsCollector } = await import("../core/agents/collector/news-collector");
+    const { FreeNewsFetcher } = await import("../core/ingestion/rss-search");
+    vi.spyOn(FreeNewsFetcher, "searchNews").mockResolvedValue([]);
     vi.spyOn(NewsCollector, "collectForTopics").mockResolvedValueOnce([
       {
         topic: "FSD 14 3 7 reception",

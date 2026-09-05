@@ -8,8 +8,9 @@ import {
   EventTopicHistoricalMilestone,
   DynamicBriefSection,
   LLMTopicBriefDesign,
+  generateTopicId,
 } from "../types/contracts";
-import { calculateSemanticAffinity, SeenInteractionState } from "./semantic-matcher";
+import { calculateSemanticAffinity, isAcronymEquivalent, SeenInteractionState } from "./semantic-matcher";
 import { TopicBriefSynthesizer } from "./topic-brief-synthesizer";
 import { StoryDiscoveryEngine } from "../ingestion/story-discovery-engine";
 
@@ -35,8 +36,9 @@ export interface BriefNarrativeSentence {
 }
 
 export interface TopicBrief {
-  id: string;
-  topic: string;
+  id: string; // The topic_id GUID
+  topic_id?: string; // The topic_id GUID
+  topic: string; // The canonical display name
   title: string;
   parent_interest: string;
   weight: number;
@@ -478,6 +480,14 @@ export function calculateEventGravity(
   };
 }
 
+interface TopicBucket {
+  topic_id: string;
+  canonical_topic: string;
+  matched_cards: SynthesizedEventCard[];
+  is_user_topic: boolean;
+  topic_meta?: any;
+}
+
 /**
  * Builds aggregated Topic Briefs grouping stories, verified development highlights,
  * update velocity indicators, and source citations by user interest topics.
@@ -488,16 +498,22 @@ export function buildTopicBriefs(
   seenState?: SeenInteractionState
 ): TopicBrief[] {
   const userTopics = userNode?.topics || {};
-  const topicMap = new Map<string, SynthesizedEventCard[]>();
-
-  // 1. Group raw user topics into canonical entities so splinter/synonym topics don't produce duplicate cards
-  const canonicalUserTopicMap = new Map<string, string>(); // alias -> canonical
+  const topicBucketMap = new Map<string, TopicBucket>(); // topic_id -> TopicBucket
+  const aliasToTopicId = new Map<string, string>(); // alias / name -> topic_id
   const canonicalTopics: string[] = [];
 
+  // 1. Group raw user topics into canonical entities so splinter/synonym topics don't produce duplicate cards
   const rawUserTopicKeys = Object.keys(userTopics);
   for (const key of rawUserTopicKeys) {
+    const meta = userTopics[key];
+    const existingTopicId = meta?.topic_id;
     let matchedCanonical: string | null = null;
+
     for (const c of canonicalTopics) {
+      if (isAcronymEquivalent(key, c)) {
+        matchedCanonical = c;
+        break;
+      }
       const t1 = key.toLowerCase().replace(/[^a-z0-9]/g, " ").trim().split(/\s+/).filter((w) => w.length > 2);
       const t2 = c.toLowerCase().replace(/[^a-z0-9]/g, " ").trim().split(/\s+/).filter((w) => w.length > 2);
       const intersection = t1.filter((w) => t2.includes(w)).length;
@@ -507,18 +523,35 @@ export function buildTopicBriefs(
         break;
       }
     }
+
     if (matchedCanonical) {
-      canonicalUserTopicMap.set(key, matchedCanonical);
+      const canonMeta = userTopics[matchedCanonical];
+      const targetTopicId = canonMeta?.topic_id || existingTopicId || generateTopicId(matchedCanonical);
+      aliasToTopicId.set(key.toLowerCase().trim(), targetTopicId);
+      if (meta?.aliases) {
+        for (const a of meta.aliases) {
+          aliasToTopicId.set(a.toLowerCase().trim(), targetTopicId);
+        }
+      }
     } else {
       canonicalTopics.push(key);
-      canonicalUserTopicMap.set(key, key);
+      const topicId = existingTopicId || generateTopicId(key);
+      aliasToTopicId.set(key.toLowerCase().trim(), topicId);
+      if (meta?.aliases) {
+        for (const a of meta.aliases) {
+          aliasToTopicId.set(a.toLowerCase().trim(), topicId);
+        }
+      }
+
+      topicBucketMap.set(topicId, {
+        topic_id: topicId,
+        canonical_topic: key,
+        matched_cards: [],
+        is_user_topic: true,
+        topic_meta: meta,
+      });
     }
   }
-
-  // Initialize buckets for all canonical user topics
-  canonicalTopics.forEach((topic) => {
-    topicMap.set(topic, []);
-  });
 
   // 2. Map feed cards into their most relevant topic buckets
   cards.forEach((card) => {
@@ -534,79 +567,92 @@ export function buildTopicBriefs(
       return;
     }
 
-    let matchedBucket: string | null = null;
+    let targetTopicId: string | null = null;
 
-    // Check alias map first
-    for (const [rawKey, canon] of canonicalUserTopicMap.entries()) {
-      if (cardTopicLower === rawKey.toLowerCase().trim()) {
-        matchedBucket = canon;
-        break;
+    // 1. Direct topic_id match
+    if (card.topic_id) {
+      targetTopicId = card.topic_id;
+      if (!topicBucketMap.has(targetTopicId)) {
+        const mapped = aliasToTopicId.get(cardTopicLower);
+        if (mapped && topicBucketMap.has(mapped)) {
+          targetTopicId = mapped;
+        }
       }
     }
 
-    // Check direct matching against canonical topics
-    if (!matchedBucket) {
-      for (const topic of canonicalTopics) {
-        if (cardTopicLower === topic.toLowerCase()) {
-          matchedBucket = topic;
+    // 2. Alias or exact name match
+    if (!targetTopicId || !topicBucketMap.has(targetTopicId)) {
+      const mapped = aliasToTopicId.get(cardTopicLower);
+      if (mapped && topicBucketMap.has(mapped)) {
+        targetTopicId = mapped;
+      }
+    }
+
+    // 3. Acronym equivalence against existing buckets
+    if (!targetTopicId || !topicBucketMap.has(targetTopicId)) {
+      for (const bucket of topicBucketMap.values()) {
+        if (isAcronymEquivalent(cardTopicLower, bucket.canonical_topic)) {
+          targetTopicId = bucket.topic_id;
           break;
         }
       }
     }
 
-    // If no direct match, run semantic affinity scoring against canonical topics
-    if (!matchedBucket && canonicalTopics.length > 0) {
+    // 4. Semantic affinity against canonical topics
+    if ((!targetTopicId || !topicBucketMap.has(targetTopicId)) && canonicalTopics.length > 0) {
       let highestScore = 0;
-      for (const topic of canonicalTopics) {
-        const match = calculateSemanticAffinity(card, topic, userNode);
+      for (const canonName of canonicalTopics) {
+        const match = calculateSemanticAffinity(card, canonName, userNode);
         if (match.is_match && match.score > highestScore) {
           highestScore = match.score;
-          matchedBucket = topic;
+          const bucketId = aliasToTopicId.get(canonName.toLowerCase().trim());
+          if (bucketId && topicBucketMap.has(bucketId)) {
+            targetTopicId = bucketId;
+          }
         }
       }
     }
 
-    // Check existing dynamic buckets (if any)
-    if (!matchedBucket) {
-      let highestScore = 0;
-      for (const [bucketTopic] of topicMap.entries()) {
-        if (canonicalTopics.includes(bucketTopic)) continue;
-        if (cardTopicLower === bucketTopic.toLowerCase()) {
-          matchedBucket = bucketTopic;
-          break;
-        }
-        const match = calculateSemanticAffinity(card, bucketTopic, userNode);
-        if (match.is_match && match.score > highestScore) {
-          highestScore = match.score;
-          matchedBucket = bucketTopic;
-        }
-      }
+    // 5. Fallback: dynamic bucket
+    if (!targetTopicId) {
+      targetTopicId = card.topic_id || generateTopicId(card.topic);
     }
 
-    // Fallback: If card belongs to a new topic not yet in user topics, create dynamic bucket
-    const targetKey = matchedBucket || card.topic;
-    if (!topicMap.has(targetKey)) {
-      topicMap.set(targetKey, []);
+    if (!topicBucketMap.has(targetTopicId)) {
+      const cleanCardTopic = (card.topic || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || card.topic;
+      topicBucketMap.set(targetTopicId, {
+        topic_id: targetTopicId,
+        canonical_topic: cleanCardTopic,
+        matched_cards: [],
+        is_user_topic: false,
+      });
+      aliasToTopicId.set(cardTopicLower, targetTopicId);
+      aliasToTopicId.set(cleanCardTopic.toLowerCase().trim(), targetTopicId);
     }
-    topicMap.get(targetKey)!.push(card);
+
+    topicBucketMap.get(targetTopicId)!.matched_cards.push(card);
   });
 
   const now = Date.now();
   const briefs: TopicBrief[] = [];
 
-  for (const [topic, matchedCards] of topicMap.entries()) {
+  for (const bucket of topicBucketMap.values()) {
+    const topic = bucket.canonical_topic;
+    const topicId = bucket.topic_id;
+    const matchedCards = bucket.matched_cards;
+
     // Only keep buckets with stories or explicit user topics
-    if (matchedCards.length === 0 && !canonicalTopics.includes(topic)) continue;
+    if (matchedCards.length === 0 && !bucket.is_user_topic) continue;
 
     // Filter out dynamic buckets with low count if user has active topics
-    if (canonicalTopics.length > 0 && !canonicalTopics.includes(topic) && matchedCards.length < 2) {
+    if (canonicalTopics.length > 0 && !bucket.is_user_topic && matchedCards.length < 2) {
       continue;
     }
 
-    const topicMeta = userTopics[topic];
+    const topicMeta = bucket.topic_meta || userTopics[topic];
     let weight = topicMeta?.weight !== undefined ? topicMeta.weight : 0.65;
-    for (const [alias, canon] of canonicalUserTopicMap.entries()) {
-      if (canon === topic && userTopics[alias]?.weight !== undefined) {
+    for (const [alias, canonTopicId] of aliasToTopicId.entries()) {
+      if (canonTopicId === topicId && userTopics[alias]?.weight !== undefined) {
         weight = Math.max(weight, userTopics[alias].weight);
       }
     }
@@ -633,6 +679,7 @@ export function buildTopicBriefs(
 
     const diffHours = (now - latestPubTime) / (1000 * 60 * 60);
 
+    // Step C: Velocity Status Indicator & Label
     let velocityStatus: TopicBrief["velocity_status"] = "steady";
     let velocityLabel = "⏸ Steady · No updates in days";
     let timeAgoLabel = "Quiet";
@@ -756,10 +803,11 @@ export function buildTopicBriefs(
     const monitoredTopicTitle = deriveMonitoredTopicTitle(topic, sortedCards);
     const parentInterest = deriveParentInterest(topic, sortedCards, userNode);
 
-    const briefId = `brief_${topic.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${now}`;
+    const briefId = topicId;
 
     briefs.push({
       id: briefId,
+      topic_id: topicId,
       topic,
       title: monitoredTopicTitle,
       parent_interest: parentInterest,

@@ -7,9 +7,11 @@ import { postgresStore } from "@/core/storage/postgres-store";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { articles, topics, userGraph, userId, sessionId } = body as {
+    const { articles, topics, topicIds, searchQueries, userGraph, userId, sessionId } = body as {
       articles?: RawArticle[];
       topics?: string[];
+      topicIds?: string[];
+      searchQueries?: string[];
       userGraph?: UserKnowledgeGraph;
       userId?: string;
       sessionId?: string;
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     // Multi-Tier Topic Assembly via Discovery Agent (The Curator)
     if (!articlesToProcess || articlesToProcess.length === 0) {
-      const discoveryResult = await DiscoveryAgent.curateAndCollect(unifiedNode, topics);
+      const discoveryResult = await DiscoveryAgent.curateAndCollect(unifiedNode, searchQueries, topics, topicIds);
       articlesToProcess = discoveryResult.accepted_articles;
     }
 

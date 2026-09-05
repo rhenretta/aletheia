@@ -3,6 +3,7 @@ import {
   calculateSemanticAffinity,
   filterFeedBySemanticAffinity,
   buildTopicSemanticSphere,
+  isAcronymEquivalent,
 } from "../core/matching/semantic-matcher";
 import { SynthesizedEventCard, UnifiedTopicNode } from "../core/types/contracts";
 
@@ -158,5 +159,53 @@ describe("Semantic Matcher & Concept Relevance Engine", () => {
     expect(filtered[0].is_fresh).toBe(true);
     expect(filtered[1].event_id).toBe("evt_1");
     expect(filtered[1].is_fresh).toBe(false);
+  });
+
+  describe("Domain-Agnostic Acronym Equivalence", () => {
+    it("recognizes full-term acronyms across diverse domains", () => {
+      expect(isAcronymEquivalent("WHO", "World Health Organization")).toBe(true);
+      expect(isAcronymEquivalent("World Health Organization", "WHO")).toBe(true);
+      expect(isAcronymEquivalent("EV", "Electric Vehicle")).toBe(true);
+      expect(isAcronymEquivalent("SMR", "Small Modular Reactor")).toBe(true);
+    });
+
+    it("recognizes compound acronyms with shared entity prefix", () => {
+      expect(isAcronymEquivalent("US FDA", "US Food and Drug Administration")).toBe(true);
+      expect(isAcronymEquivalent("Brand FSD", "Brand Full Self-Driving")).toBe(true);
+      expect(isAcronymEquivalent("Brand Full Self-Driving", "Brand FSD")).toBe(true);
+      expect(isAcronymEquivalent("Global SMR Fleet", "Global Small Modular Reactor Fleet")).toBe(true);
+    });
+
+    it("recognizes parenthetical acronyms and combinations", () => {
+      expect(isAcronymEquivalent("Brand Full Self-Driving (FSD)", "Brand Full Self-Driving")).toBe(true);
+      expect(isAcronymEquivalent("Brand Full Self-Driving (FSD)", "Brand FSD")).toBe(true);
+      expect(isAcronymEquivalent("World Health Organization (WHO)", "WHO")).toBe(true);
+      expect(isAcronymEquivalent("Brand Full Self-Driving (FSD) current status and developments", "Brand Full Self-Driving")).toBe(true);
+      expect(isAcronymEquivalent("Brand Full Self-Driving (FSD) current status and developments", "Brand FSD")).toBe(true);
+    });
+
+    it("rejects non-acronym or arbitrary strings", () => {
+      expect(isAcronymEquivalent("Solar Energy", "Nuclear Fission")).toBe(false);
+      expect(isAcronymEquivalent("AI", "Biotechnology")).toBe(false);
+      expect(isAcronymEquivalent("ABC", "Unrelated Other Things")).toBe(false);
+      expect(isAcronymEquivalent("Brand Full Self-Driving", "Brand Cybertruck")).toBe(false);
+    });
+
+    it("matches card with acronym topic directly to canonical topic in calculateSemanticAffinity", () => {
+      const card: SynthesizedEventCard = {
+        event_id: "evt_acronym_1",
+        topic: "Mobility FSD",
+        headline: "Autonomous System Reaches New Safety Benchmark in Field Trials",
+        summary: "Field data shows significant collision rate reduction across 10 million miles.",
+        fact_bullets: ["Zero critical disengagements in highway testing"],
+        verified_entities: ["Autonomous Fleet"],
+        published_at: new Date().toISOString(),
+      } as any;
+
+      const match = calculateSemanticAffinity(card, "Mobility Full Self-Driving", null);
+      expect(match.is_match).toBe(true);
+      expect(match.score).toBeGreaterThanOrEqual(0.5);
+      expect(match.match_rationale).toContain("Exact or acronym topic match");
+    });
   });
 });

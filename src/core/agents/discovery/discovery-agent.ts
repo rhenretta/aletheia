@@ -2,10 +2,12 @@ import {
   UnifiedTopicNode,
   RawArticle,
   DiscoveryParameters,
+  generateTopicId,
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { NewsCollector } from "../collector/news-collector";
 import { TopicRelevanceFilter } from "./topic-relevance-filter";
+import { EpistemicEvaluator } from "./epistemic-evaluator";
 
 export interface DiscoveryCuratedBatch {
   selected_queries: string[];
@@ -22,7 +24,9 @@ export class DiscoveryAgent {
    */
   public static async curateAndCollect(
     unifiedNode: UnifiedTopicNode,
-    customQueries?: string[]
+    customQueries?: string[],
+    canonicalTopics?: string[],
+    topicIds?: string[]
   ): Promise<DiscoveryCuratedBatch> {
     const startTime = Date.now();
     const traceId = `trace_disc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -34,11 +38,23 @@ export class DiscoveryAgent {
       depth_requirement: "practitioner",
     };
 
-    // 1. Generate multi-tiered query list from Unified Topic Node
+    // 1. Generate multi-tiered query list and topic descriptors from Unified Topic Node
+    const descriptors: Array<{ topic_id?: string; topic: string; searchQuery?: string }> = [];
     const querySet = new Set<string>();
 
-    if (customQueries && customQueries.length > 0) {
-      customQueries.forEach((q) => querySet.add(q));
+    if (canonicalTopics && canonicalTopics.length > 0) {
+      canonicalTopics.forEach((topic, idx) => {
+        const query = customQueries?.[idx] || customQueries?.[0] || topic;
+        const topicId = topicIds?.[idx] || unifiedNode.topics?.[topic]?.topic_id || generateTopicId(topic);
+        descriptors.push({ topic_id: topicId, topic, searchQuery: query });
+        querySet.add(query);
+      });
+    } else if (customQueries && customQueries.length > 0) {
+      customQueries.forEach((q, idx) => {
+        const topicId = topicIds?.[idx] || generateTopicId(q);
+        descriptors.push({ topic_id: topicId, topic: q, searchQuery: q });
+        querySet.add(q);
+      });
     } else {
       // Add top weighted topics
       const sortedTopics = Object.entries(unifiedNode.topics || {})
@@ -46,27 +62,34 @@ export class DiscoveryAgent {
         .slice(0, 3);
 
       for (const [topicName, meta] of sortedTopics) {
+        const topicId = meta.topic_id || generateTopicId(topicName);
+        descriptors.push({ topic_id: topicId, topic: topicName, searchQuery: topicName });
         querySet.add(topicName);
         if (meta.curiosity_vectors && meta.curiosity_vectors.length > 0) {
+          descriptors.push({ topic_id: topicId, topic: topicName, searchQuery: meta.curiosity_vectors[0] });
           querySet.add(meta.curiosity_vectors[0]);
         }
       }
 
       // Add Intersectional themes
       (unifiedNode.interest_intersections || []).slice(0, 2).forEach((i) => {
+        const topicId = generateTopicId(i.intersection_theme);
+        descriptors.push({ topic_id: topicId, topic: i.intersection_theme, searchQuery: i.intersection_theme });
         querySet.add(i.intersection_theme);
       });
 
       // Add Curiosity frontiers
       (unifiedNode.adjacent_curiosity_frontiers || []).slice(0, 2).forEach((f) => {
+        const topicId = generateTopicId(f.topic);
+        descriptors.push({ topic_id: topicId, topic: f.topic, searchQuery: f.topic });
         querySet.add(f.topic);
       });
     }
 
     const queries = Array.from(querySet).slice(0, 6);
 
-    // 2. Fetch raw wire articles via NewsCollector
-    const rawResults = await NewsCollector.collectForTopics(queries);
+    // 2. Fetch raw wire articles via NewsCollector with canonical topic binding
+    const rawResults = await NewsCollector.collectForTopics(descriptors.slice(0, 6));
     const candidateArticles = rawResults.flatMap((r) => r.articles);
 
     // 3. Rigorous Quality & Anti-Preference Filtering (The Curator Filter)
@@ -140,7 +163,13 @@ export class DiscoveryAgent {
       });
     }
 
-    const finalCuratedArticles = relevanceResult.accepted;
+    const filteredInitialArticles = relevanceResult.accepted;
+
+    // 5. Epistemic Sufficiency & Autonomous Deep Research Loop
+    // Evaluates whether each topic has adequate multi-source breadth (>= 3 independent outlets)
+    // or if newly discovered developments require targeted follow-up research.
+    const { enriched_articles: finalCuratedArticles, evaluations } =
+      await EpistemicEvaluator.evaluateAndEnrich(queries, filteredInitialArticles);
 
     // Log structured trace for Observability
     traceLogger.logTrace({
@@ -158,12 +187,15 @@ export class DiscoveryAgent {
         candidates_scanned: candidateArticles.length,
         articles_accepted: finalCuratedArticles.length,
         articles_rejected: rejectionReasons.length,
+        epistemic_evaluations: evaluations.length,
+        deep_research_queries_triggered: evaluations.flatMap((e) => e.follow_up_queries).length,
         top_rejections: rejectionReasons.slice(0, 3),
       },
-      reasoning_rationale: `Curated ${finalCuratedArticles.length} high-signal articles for topics [${queries.join(", ")}]. Enforced strict quality & topic relevance filter, rejecting ${rejectionReasons.length} off-topic/homonym/low-signal items.`,
+      reasoning_rationale: `Curated ${finalCuratedArticles.length} high-signal articles for topics [${queries.join(", ")}]. Epistemic evaluation completed across ${evaluations.length} topics. Enforced strict quality & relevance filter, rejecting ${rejectionReasons.length} low-signal items.`,
       latency_ms: Date.now() - startTime,
       metadata: {
         queries,
+        evaluations,
         rejection_reasons: rejectionReasons,
       },
     });

@@ -131,7 +131,9 @@ export async function POST(req: NextRequest) {
             try {
               const observationResult = await ObserverAgent.observeAndAdapt(
                 unifiedNode,
-                fullHistory.map((m) => ({ role: m.role, content: m.content }))
+                fullHistory.map((m) => ({ role: m.role, content: m.content })),
+                undefined,
+                finalResponse.run_id
               );
               unifiedNode = observationResult.adapted_node;
             } catch (err) {

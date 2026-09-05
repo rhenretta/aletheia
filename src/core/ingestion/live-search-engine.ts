@@ -164,7 +164,20 @@ export class LiveSearchEngine {
     const combined: RawArticle[] = [];
     const seenUrls = new Set<string>();
 
-    // 1. DuckDuckGo HTML search (organic web index with trackers, blogs, wikis)
+    // 1. Google News RSS (for authentic journalistic wire coverage and breaking developments)
+    try {
+      const rssArticles = await FreeNewsFetcher.fetchRssForQuery(query);
+      for (const a of rssArticles) {
+        if (!seenUrls.has(a.source_url)) {
+          seenUrls.add(a.source_url);
+          combined.push(a);
+        }
+      }
+    } catch (err) {
+      console.warn(`LiveSearchEngine: Google News RSS search error for "${query}":`, err);
+    }
+
+    // 2. DuckDuckGo HTML search (organic web index with trackers, blogs, wikis)
     if (Date.now() > this.ddgCircuitBreakerUntil) {
       try {
         const ddgResults = await this.queryDuckDuckGoHtml(query, maxResults, options);
@@ -179,11 +192,7 @@ export class LiveSearchEngine {
       }
     }
 
-    if (combined.length >= maxResults) {
-      return combined.slice(0, maxResults);
-    }
-
-    // 2. Bing RSS Web Search (structured RSS XML fallback with relevance checking)
+    // 3. Bing RSS Web Search (structured RSS XML fallback with relevance checking)
     try {
       const bingArticles = await this.queryBingRss(query, maxResults, options);
       for (const a of bingArticles) {
@@ -196,22 +205,12 @@ export class LiveSearchEngine {
       console.warn(`LiveSearchEngine: Bing RSS search error for "${query}":`, err);
     }
 
-    if (combined.length >= 2) {
-      return combined.slice(0, maxResults);
-    }
-
-    // 3. Google News RSS fallback (for breaking news and technical journalism)
-    try {
-      const rssArticles = await FreeNewsFetcher.fetchRssForQuery(query);
-      for (const a of rssArticles) {
-        if (!seenUrls.has(a.source_url)) {
-          seenUrls.add(a.source_url);
-          combined.push(a);
-        }
-      }
-    } catch (err) {
-      console.warn(`LiveSearchEngine: Google News RSS fallback error for "${query}":`, err);
-    }
+    // Sort combined articles so newest published stories are always at the top
+    combined.sort((a, b) => {
+      const timeA = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const timeB = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return timeB - timeA;
+    });
 
     return combined.slice(0, maxResults);
   }

@@ -7,6 +7,7 @@ import {
   EvolvedTopicCardResult,
   RawArticle,
   DynamicBriefSection,
+  generateTopicId,
 } from "../../types/contracts";
 import { LiveSearchEngine } from "../../ingestion/live-search-engine";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
@@ -24,9 +25,11 @@ import {
   isAuthenticUserComment,
   isValidTimelineMilestone,
 } from "../../matching/topic-brief-synthesizer";
+import { traceLogger } from "../../observability/trace-logger";
 
 export interface EvolveTopicCardOptions {
   topic: string;
+  topic_id?: string;
   previousCards?: SynthesizedEventCard[];
   previousSources?: EventSourceArticle[];
   previousDesign?: LLMTopicBriefDesign | null;
@@ -46,6 +49,7 @@ export class TopicCardEvolutionOrchestrator {
   public static async evolveCard(options: EvolveTopicCardOptions): Promise<EvolvedTopicCardResult> {
     const {
       topic,
+      topic_id,
       previousCards = [],
       previousSources = [],
       previousDesign = null,
@@ -53,9 +57,43 @@ export class TopicCardEvolutionOrchestrator {
       curiosityVectors = [],
     } = options;
 
+    const resolvedTopicId =
+      topic_id ||
+      previousDesign?.topic_id ||
+      previousCards.find((c) => c.topic_id)?.topic_id ||
+      generateTopicId(topic);
+
+    const runId = `run_card_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const flowStartTime = Date.now();
+
+    // Flow Root Trace
+    const rootTrace = traceLogger.logTrace({
+      run_id: runId,
+      node_name: "agent_card_evolution",
+      call_type: "flow_root",
+      input_summary: {
+        topic,
+        previous_cards_count: previousCards.length,
+        previous_sources_count: previousSources.length,
+        has_previous_design: Boolean(previousDesign),
+      },
+      reasoning_rationale: `Initiating multi-agent topic card evolution workflow for "${topic}"`,
+      latency_ms: 0,
+      status: "running",
+      prompt_details: {
+        user_prompt: `Evolve topic briefing card for "${topic}" (depth: ${technicalDepth})`,
+      },
+      context_details: {
+        topic,
+        technical_depth: technicalDepth,
+        curiosity_vectors: curiosityVectors,
+      },
+    });
+
     // -------------------------------------------------------------
     // PHASE 1: Live Data Discovery on the Topic
     // -------------------------------------------------------------
+    const p1Start = Date.now();
     const { refreshedCards, refreshedSources } = await this.searchRefreshedTopicData(
       topic,
       previousCards,
@@ -65,15 +103,54 @@ export class TopicCardEvolutionOrchestrator {
     const mergedCards = this.mergeCards(previousCards, refreshedCards);
     const mergedSources = this.mergeSources(previousSources, refreshedSources);
 
+    traceLogger.logTrace({
+      run_id: runId,
+      parent_trace_id: rootTrace.trace_id,
+      node_name: "tool_search",
+      call_type: "tool",
+      input_summary: { topic, search_type: "live_wire_discovery" },
+      output_summary: {
+        refreshed_cards: refreshedCards.length,
+        refreshed_sources: refreshedSources.length,
+        merged_cards_total: mergedCards.length,
+      },
+      reasoning_rationale: `Retrieved ${refreshedCards.length} fresh stories and ${refreshedSources.length} wire sources for "${topic}"`,
+      latency_ms: Date.now() - p1Start,
+      status: "success",
+      response_details: {
+        sources: refreshedSources,
+      },
+    });
+
     // -------------------------------------------------------------
     // PHASE 2: Evolutionary Decision Agent (Update vs. Redesign)
     // -------------------------------------------------------------
+    const p2Start = Date.now();
     const decisionResult = await this.decideEvolution(
       topic,
       mergedCards,
       mergedSources,
-      previousDesign
+      previousDesign,
+      runId
     );
+
+    traceLogger.logTrace({
+      run_id: runId,
+      parent_trace_id: rootTrace.trace_id,
+      node_name: "agent_card_evolution",
+      call_type: "agent_step",
+      input_summary: { decision: decisionResult.decision },
+      output_summary: {
+        decision: decisionResult.decision,
+        significant_developments: decisionResult.significant_developments,
+      },
+      reasoning_rationale: decisionResult.rationale,
+      latency_ms: Date.now() - p2Start,
+      status: "success",
+      response_details: {
+        parsed_output: decisionResult,
+      },
+    });
 
     // -------------------------------------------------------------
     // PHASE 3 & 4: If Redesign, Layout Architect & Targeted Research
@@ -85,16 +162,37 @@ export class TopicCardEvolutionOrchestrator {
 
     if (decisionResult.decision === "redesign" || !previousDesign) {
       // Phase 3: Layout Architect Agent
+      const p3Start = Date.now();
       layoutPlan = await this.architectNewLayout(
         topic,
         mergedCards,
         mergedSources,
         previousDesign,
-        technicalDepth
+        technicalDepth,
+        runId
       );
+
+      traceLogger.logTrace({
+        run_id: runId,
+        parent_trace_id: rootTrace.trace_id,
+        node_name: "agent_card_evolution",
+        call_type: "agent_step",
+        input_summary: { planned_archetype: layoutPlan.archetype },
+        output_summary: {
+          sections: layoutPlan.planned_section_types,
+          gaps_count: layoutPlan.information_gaps?.length || 0,
+        },
+        reasoning_rationale: layoutPlan.design_rationale,
+        latency_ms: Date.now() - p3Start,
+        status: "success",
+        response_details: {
+          parsed_output: layoutPlan,
+        },
+      });
 
       // Phase 4: Targeted Information Retrieval Agent (if gaps identified)
       if (layoutPlan.information_gaps && layoutPlan.information_gaps.length > 0) {
+        const p4Start = Date.now();
         const { gapCards, gapSources, executedQueries } = await this.executeTargetedResearch(
           topic,
           layoutPlan.information_gaps
@@ -102,12 +200,29 @@ export class TopicCardEvolutionOrchestrator {
         targetedQueriesExecuted = executedQueries;
         finalCards = this.mergeCards(mergedCards, gapCards);
         finalSources = this.mergeSources(mergedSources, gapSources);
+
+        traceLogger.logTrace({
+          run_id: runId,
+          parent_trace_id: rootTrace.trace_id,
+          node_name: "tool_search",
+          call_type: "tool",
+          input_summary: { executed_queries: executedQueries },
+          output_summary: {
+            gap_cards: gapCards.length,
+            gap_sources: gapSources.length,
+            final_cards_total: finalCards.length,
+          },
+          reasoning_rationale: `Targeted research executed ${executedQueries.length} query gaps to enrich topic card`,
+          latency_ms: Date.now() - p4Start,
+          status: "success",
+        });
       }
     }
 
     // -------------------------------------------------------------
     // PHASE 5: Card Synthesis Agent
     // -------------------------------------------------------------
+    const p5Start = Date.now();
     const finalDesign = await this.synthesizeCard(
       topic,
       finalCards,
@@ -119,12 +234,48 @@ export class TopicCardEvolutionOrchestrator {
       curiosityVectors
     );
 
+    traceLogger.logTrace({
+      run_id: runId,
+      parent_trace_id: rootTrace.trace_id,
+      node_name: "agent_card_evolution",
+      call_type: "agent_step",
+      input_summary: {
+        topic,
+        final_cards_count: finalCards.length,
+        final_sources_count: finalSources.length,
+      },
+      output_summary: {
+        archetype: finalDesign.presentation_archetype,
+        sections_count: finalDesign.sections.length,
+        executive_take: finalDesign.executive_take,
+      },
+      reasoning_rationale: `Card evolution completed for "${topic}". Presentation archetype: ${finalDesign.presentation_archetype}. ${finalDesign.sections.length} dynamic sections generated.`,
+      latency_ms: Date.now() - p5Start,
+      status: "success",
+      response_details: {
+        parsed_output: finalDesign,
+      },
+    });
+
+    if (finalDesign) {
+      finalDesign.topic_id = resolvedTopicId;
+      for (const s of finalDesign.sections) {
+        s.topic_id = resolvedTopicId;
+      }
+    }
+
+    const cardsWithTopicId = finalCards.map((c) => ({
+      ...c,
+      topic_id: c.topic_id || resolvedTopicId,
+    }));
+
     return {
       topic,
+      topic_id: resolvedTopicId,
       decision: decisionResult.decision,
       decision_rationale: decisionResult.rationale,
       design: finalDesign,
-      new_cards: finalCards,
+      new_cards: cardsWithTopicId,
       all_sources: finalSources,
       targeted_queries_executed: targetedQueriesExecuted,
     };
@@ -266,7 +417,8 @@ export class TopicCardEvolutionOrchestrator {
     topic: string,
     cards: SynthesizedEventCard[],
     sources: EventSourceArticle[],
-    previousDesign?: LLMTopicBriefDesign | null
+    previousDesign?: LLMTopicBriefDesign | null,
+    runId?: string
   ): Promise<CardEvolutionDecision> {
     // If no previous design exists, it must be designed from scratch
     if (!previousDesign || !previousDesign.sections || previousDesign.sections.length === 0) {
@@ -311,6 +463,18 @@ Respond STRICTLY with valid JSON:
         const res = await deepseekProvider.generateCompletion(prompt, {
           temperature: 0.2,
           maxTokens: 300,
+          traceOptions: {
+            runId,
+            agentName: "agent_card_evolution",
+            reasoningDetails: {
+              primary_rationale: `Evolution Decision for "${topic}" (Update vs Redesign)`,
+            },
+            contextDetails: {
+              topic,
+              has_previous_design: true,
+              cards_count: cards.length,
+            },
+          },
         });
 
         const jsonMatch = res.text.match(/\{[\s\S]*\}/);
@@ -388,7 +552,8 @@ Respond STRICTLY with valid JSON:
     cards: SynthesizedEventCard[],
     sources: EventSourceArticle[],
     previousDesign?: LLMTopicBriefDesign | null,
-    technicalDepth: string = "practitioner"
+    technicalDepth: string = "practitioner",
+    runId?: string
   ): Promise<LayoutArchitectPlan> {
     if (deepseekProvider.isConfigured()) {
       try {
@@ -447,6 +612,18 @@ Respond STRICTLY with valid JSON:
         const res = await deepseekProvider.generateCompletion(prompt, {
           temperature: 0.3,
           maxTokens: 500,
+          traceOptions: {
+            runId,
+            agentName: "agent_card_evolution",
+            reasoningDetails: {
+              primary_rationale: `Layout Architecture Planning for "${topic}"`,
+            },
+            contextDetails: {
+              topic,
+              technical_depth: technicalDepth,
+              cards_count: cards.length,
+            },
+          },
         });
 
         const jsonMatch = res.text.match(/\{[\s\S]*\}/);

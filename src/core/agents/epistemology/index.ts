@@ -1,4 +1,4 @@
-import { NewsStateContext, PureFactObject, RawArticle, PureFactObjectSchema } from "../../types/contracts";
+import { NewsStateContext, PureFactObject, RawArticle, PureFactObjectSchema, generateTopicId } from "../../types/contracts";
 import { BiasStripper } from "./bias-stripper";
 import { deepseekProvider } from "../../llm/deepseek-provider";
 import { traceLogger } from "../../observability/trace-logger";
@@ -23,18 +23,17 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
     const uniqueRawArticles: RawArticle[] = [];
 
     for (const art of rawArticles) {
-      const normTitle = (art.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 50);
-      const normUrl = (art.source_url || "").toLowerCase().split("?")[0];
-      const key = `${normTitle}_${normUrl}`;
+      const normTitle = (art.title || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+      const normUrl = (art.source_url || "").trim().toLowerCase();
+      const dedupKey = normUrl ? `${normUrl}_${normTitle.slice(0, 30)}` : normTitle;
 
-      if (!seenTitles.has(key) && normTitle.length > 10) {
-        seenTitles.add(key);
-        uniqueRawArticles.push(art);
-      }
+      if (!normTitle || seenTitles.has(dedupKey)) continue;
+      seenTitles.add(dedupKey);
+      uniqueRawArticles.push(art);
     }
 
-    // Clean all raw articles thoroughly
-    const cleanedArticles: RawArticle[] = uniqueRawArticles.map((a) => ({
+    // Clean HTML markup/entities from all incoming raw articles
+    const cleanedArticles = uniqueRawArticles.map((a) => ({
       ...a,
       title: FreeNewsFetcher.cleanHtml(a.title),
       raw_text: FreeNewsFetcher.cleanHtml(a.raw_text),
@@ -44,6 +43,7 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
     // Multi-Source Event Clustering: Aggressively combine similar/duplicate reports into unified multi-source clusters
     const eventClusters: Array<{
       canonicalTopic: string;
+      topic_id?: string;
       articles: RawArticle[];
       titleWords: Set<string>;
       keyEntities: Set<string>;
@@ -172,12 +172,21 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
         );
         if (!hasUrl) {
           matchedCluster.articles.push(article);
+          if (!matchedCluster.topic_id && article.topic_id) {
+            matchedCluster.topic_id = article.topic_id;
+          }
           for (const w of titleWordSet) matchedCluster.titleWords.add(w);
           for (const e of entitySet) matchedCluster.keyEntities.add(e);
         }
       } else {
+        const topicId =
+          article.topic_id ||
+          state.unified_topic_node?.topics?.[bestTopic]?.topic_id ||
+          generateTopicId(bestTopic);
+
         eventClusters.push({
           canonicalTopic: bestTopic,
+          topic_id: topicId,
           articles: [article],
           titleWords: titleWordSet,
           keyEntities: entitySet,
@@ -189,17 +198,19 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
     const pureFacts: PureFactObject[] = await Promise.all(
       eventClusters.map(async (cluster) => {
         const topic = cluster.canonicalTopic;
+        const topicId = cluster.topic_id || generateTopicId(topic);
         const articlesForEvent = cluster.articles;
         const eventId = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
         if (deepseekProvider.isConfigured()) {
           try {
             const delta = await deepseekProvider.extractEpistemologyDelta(topic, articlesForEvent);
-            const baseline = BiasStripper.processArticles(topic, articlesForEvent, eventId);
+            const baseline = BiasStripper.processArticles(topic, articlesForEvent, eventId, topicId);
 
             return PureFactObjectSchema.parse({
               event_id: eventId,
               topic,
+              topic_id: topicId,
               verified_entities: delta.verified_entities?.length ? delta.verified_entities : baseline.verified_entities,
               timeline: baseline.timeline,
               agreed_facts: delta.agreed_facts?.length
@@ -211,12 +222,12 @@ export async function runEpistemologyNode(state: NewsStateContext): Promise<Part
               source_articles: articlesForEvent,
             });
           } catch (llmErr) {
-            const baseline = BiasStripper.processArticles(topic, articlesForEvent, eventId);
-            return { ...baseline, source_articles: articlesForEvent };
+            const baseline = BiasStripper.processArticles(topic, articlesForEvent, eventId, topicId);
+            return { ...baseline, topic_id: topicId, source_articles: articlesForEvent };
           }
         } else {
-          const baseline = BiasStripper.processArticles(topic, articlesForEvent, eventId);
-          return { ...baseline, source_articles: articlesForEvent };
+          const baseline = BiasStripper.processArticles(topic, articlesForEvent, eventId, topicId);
+          return { ...baseline, topic_id: topicId, source_articles: articlesForEvent };
         }
       })
     );

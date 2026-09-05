@@ -52,6 +52,7 @@ import {
   AppUser,
   UserTier,
   UsageLimitStatus,
+  generateTopicId,
 } from "@/core/types/contracts";
 import { ChatMessage } from "@/core/agents/intake/dialogue-agent";
 import DevToolsPanel from "@/components/DevToolsPanel";
@@ -64,7 +65,7 @@ import SupportModal from "@/components/SupportModal";
 import ReadOnlyBanner from "@/components/ReadOnlyBanner";
 import UserMenu from "@/components/UserMenu";
 import LandingPage from "@/components/LandingPage";
-import { filterFeedBySemanticAffinity, SeenInteractionState } from "@/core/matching/semantic-matcher";
+import { filterFeedBySemanticAffinity, isAcronymEquivalent, SeenInteractionState } from "@/core/matching/semantic-matcher";
 import { buildTopicBriefs, TopicBrief } from "@/core/matching/topic-brief-builder";
 import { DynamicBriefSectionRenderer } from "@/components/briefs/DynamicBriefSectionRenderer";
 import { LLMTopicBriefDesign } from "@/core/types/contracts";
@@ -299,6 +300,7 @@ export default function AletheiaHome() {
   const [aiFeedFilter, setAiFeedFilter] = useState<{
     is_active?: boolean;
     topic?: string;
+    topic_id?: string;
     matched_event_ids?: string[];
     filter_reason?: string;
   } | null>(null);
@@ -320,25 +322,37 @@ export default function AletheiaHome() {
     topic: string,
     cards: SynthesizedEventCard[] = [],
     sources: EventSourceArticle[] = [],
-    previousDesign?: LLMTopicBriefDesign | null
+    previousDesign?: LLMTopicBriefDesign | null,
+    topicId?: string
   ) => {
-    if (synthesizingBriefTopics.has(topic)) return;
-    setSynthesizingBriefTopics((prev) => new Set(prev).add(topic));
+    const resolvedTopicId =
+      topicId ||
+      previousDesign?.topic_id ||
+      cards.find((c) => c.topic_id)?.topic_id ||
+      generateTopicId(topic);
+
+    if (synthesizingBriefTopics.has(resolvedTopicId) || synthesizingBriefTopics.has(topic)) return;
+    setSynthesizingBriefTopics((prev) => new Set(prev).add(resolvedTopicId).add(topic));
     try {
       const res = await fetch("/api/briefs/synthesize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic,
+          topic_id: resolvedTopicId,
           cards,
           sources,
-          previousDesign: previousDesign || llmBriefDesigns[topic] || null,
+          previousDesign: previousDesign || llmBriefDesigns[resolvedTopicId] || llmBriefDesigns[topic] || null,
           userId: effectiveUserId,
         }),
       });
       const json = await res.json();
       if (json.success && json.design) {
-        setLlmBriefDesigns((prev) => ({ ...prev, [topic]: json.design }));
+        setLlmBriefDesigns((prev) => ({
+          ...prev,
+          [resolvedTopicId]: json.design,
+          [topic]: json.design,
+        }));
         // If the multi-agent evolution flow retrieved new cards, merge them into the feed
         if (json.new_cards && json.new_cards.length > 0) {
           setPipelineResult((prev) => {
@@ -358,6 +372,7 @@ export default function AletheiaHome() {
     } finally {
       setSynthesizingBriefTopics((prev) => {
         const next = new Set(prev);
+        next.delete(resolvedTopicId);
         next.delete(topic);
         return next;
       });
@@ -716,12 +731,20 @@ export default function AletheiaHome() {
   };
 
   const activeCurationTopicRef = useRef<string | null>(null);
+  const targetedCurationDispatchedRef = useRef<string | null>(null);
 
   // On-demand targeted curation pipeline execution for topics with no feed cards
-  const handleTargetedCuration = async (curationQuery: string, canonicalTopic?: string) => {
-    const topicKey = (canonicalTopic || curationQuery).toLowerCase().trim();
-    if (!topicKey || activeCurationTopicRef.current === topicKey) return;
-    activeCurationTopicRef.current = topicKey;
+  const handleTargetedCuration = async (curationQuery: string, canonicalTopic?: string, topicId?: string) => {
+    const rawCanonical = canonicalTopic || curationQuery;
+    const primaryCanonicalTopic = rawCanonical.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+    const cleanQuery = (curationQuery || "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+    const resolvedTopicId = topicId || generateTopicId(primaryCanonicalTopic);
+
+    if (activeCurationTopicRef.current === resolvedTopicId) return;
+    activeCurationTopicRef.current = resolvedTopicId;
+    // Preempt auto-refresh so it never launches a duplicate concurrent evolution for this topic
+    autoRefreshedTopicsRef.current.add(resolvedTopicId);
+    autoRefreshedTopicsRef.current.add(primaryCanonicalTopic);
 
     setIsCollectingNews(true);
     try {
@@ -729,13 +752,25 @@ export default function AletheiaHome() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topics: [curationQuery],
+          topics: [primaryCanonicalTopic],
+          topicIds: [resolvedTopicId],
+          searchQueries: [cleanQuery || primaryCanonicalTopic],
           userId: effectiveUserId,
         }),
       });
       const json = await res.json();
       if (json.success && json.data?.feed_cards && json.data.feed_cards.length > 0) {
         const newCards = json.data.feed_cards;
+
+        // Await the full AI card synthesis so the card does not render until it is 100% finished
+        await handleSynthesizeBriefWithAI(
+          primaryCanonicalTopic,
+          newCards,
+          json.data?.sources || [],
+          llmBriefDesigns[resolvedTopicId] || llmBriefDesigns[primaryCanonicalTopic] || null,
+          resolvedTopicId
+        );
+
         setPipelineResult((prev) => {
           if (!prev) return json.data;
           const prevCards = prev.feed_cards || [];
@@ -746,19 +781,6 @@ export default function AletheiaHome() {
             ...json.data,
             feed_cards: [...uniqueNew, ...prevCards],
           };
-        });
-
-        // Invalidate cached brief design for this topic so it regenerates with the new cards
-        setLlmBriefDesigns((prev) => {
-          const next = { ...prev };
-          const target = (canonicalTopic || curationQuery).toLowerCase().trim();
-          for (const key of Object.keys(next)) {
-            const cleanKey = key.toLowerCase().trim();
-            if (cleanKey.includes(target) || target.includes(cleanKey)) {
-              delete next[key];
-            }
-          }
-          return next;
         });
 
         if (json.unified_topic_node) {
@@ -773,9 +795,10 @@ export default function AletheiaHome() {
 
         setAiFeedFilter({
           is_active: true,
-          topic: canonicalTopic || curationQuery,
+          topic: primaryCanonicalTopic,
+          topic_id: resolvedTopicId,
           matched_event_ids: newCards.map((c: any) => c.event_id),
-          filter_reason: `Curated ${newCards.length} live stories for "${canonicalTopic || curationQuery}" matching our discussion.`,
+          filter_reason: `Curated ${newCards.length} live stories for "${primaryCanonicalTopic}" matching our discussion.`,
         });
       }
     } catch (err) {
@@ -904,6 +927,7 @@ export default function AletheiaHome() {
       };
 
       const botMessageId = `bot_${Date.now()}`;
+      targetedCurationDispatchedRef.current = null;
       const initialBotMessage: ChatMessage = {
         id: botMessageId,
         role: "assistant",
@@ -980,7 +1004,10 @@ export default function AletheiaHome() {
             if (data.is_active && (data.matched_event_ids?.length || data.topic)) {
               setAiFeedFilter(data);
               if (data.trigger_targeted_curation && (data.curation_query || data.topic)) {
-                handleTargetedCuration(data.curation_query || data.topic, data.topic);
+                if (targetedCurationDispatchedRef.current !== botMessageId) {
+                  targetedCurationDispatchedRef.current = botMessageId;
+                  handleTargetedCuration(data.curation_query || data.topic, data.topic, data.topic_id);
+                }
               }
             } else {
               setAiFeedFilter(null);
@@ -1076,10 +1103,14 @@ export default function AletheiaHome() {
                 metaData.active_feed_filter.trigger_targeted_curation &&
                 (metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic)
               ) {
-                handleTargetedCuration(
-                  metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic,
-                  metaData.active_feed_filter.topic
-                );
+                if (targetedCurationDispatchedRef.current !== botMessageId) {
+                  targetedCurationDispatchedRef.current = botMessageId;
+                  handleTargetedCuration(
+                    metaData.active_feed_filter.curation_query || metaData.active_feed_filter.topic,
+                    metaData.active_feed_filter.topic,
+                    metaData.active_feed_filter.topic_id
+                  );
+                }
               }
             } else {
               setAiFeedFilter(null);
@@ -1367,20 +1398,26 @@ export default function AletheiaHome() {
     }
 
     // 2. AI conversational focus filter (when manual filter is 'all')
-    if (aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic) {
-      const aiTopic = aiFeedFilter.topic.toLowerCase().trim();
+    if (aiFeedFilter && aiFeedFilter.is_active !== false && (aiFeedFilter.topic || aiFeedFilter.topic_id)) {
+      const aiTopic = (aiFeedFilter.topic || "").toLowerCase().trim();
+      const aiTopicId = aiFeedFilter.topic_id;
       const aiMatches = topicBriefs.filter((brief) => {
+        if (aiTopicId && (brief.id === aiTopicId || brief.topic_id === aiTopicId)) {
+          return true;
+        }
+
         const bTopic = brief.topic.toLowerCase().trim();
         const bTitle = (brief.title || "").toLowerCase().trim();
         const bParent = (brief.parent_interest || "").toLowerCase().trim();
 
         const textMatch =
-          bTopic === aiTopic ||
-          bTitle === aiTopic ||
-          bParent === aiTopic ||
-          bTopic.includes(aiTopic) ||
-          aiTopic.includes(bTopic) ||
-          (bTitle && (bTitle.includes(aiTopic) || aiTopic.includes(bTitle)));
+          aiTopic &&
+          (bTopic === aiTopic ||
+            bTitle === aiTopic ||
+            bParent === aiTopic ||
+            bTopic.includes(aiTopic) ||
+            aiTopic.includes(bTopic) ||
+            (bTitle && (bTitle.includes(aiTopic) || aiTopic.includes(bTitle))));
 
         if (textMatch) return true;
 
@@ -1403,20 +1440,40 @@ export default function AletheiaHome() {
   const autoRefreshedTopicsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (activeViewMode !== "briefs" || topicBriefs.length === 0) return;
+    const isUnderActiveCuration = (b: TopicBrief) => {
+      if (!activeCurationTopicRef.current) return false;
+      const activeTopic = activeCurationTopicRef.current;
+      if (b.id === activeTopic || b.topic_id === activeTopic) return true;
+      const tLower = b.topic.toLowerCase().trim();
+      const activeLower = activeTopic.toLowerCase().trim();
+      return (
+        tLower === activeLower ||
+        isAcronymEquivalent(tLower, activeLower)
+      );
+    };
+
     // Find dormant topics (> 7 days without news) that haven't been refreshed in this session
-    const staleBrief = topicBriefs.find(
-      (b) =>
+    const staleBrief = topicBriefs.find((b) => {
+      const topicId = b.topic_id || b.id;
+      return (
         b.velocity_status === "dormant" &&
+        !autoRefreshedTopicsRef.current.has(topicId) &&
         !autoRefreshedTopicsRef.current.has(b.topic) &&
-        !synthesizingBriefTopics.has(b.topic)
-    );
+        !synthesizingBriefTopics.has(topicId) &&
+        !synthesizingBriefTopics.has(b.topic) &&
+        !isUnderActiveCuration(b)
+      );
+    });
     if (staleBrief) {
+      const topicId = staleBrief.topic_id || staleBrief.id;
+      autoRefreshedTopicsRef.current.add(topicId);
       autoRefreshedTopicsRef.current.add(staleBrief.topic);
       handleSynthesizeBriefWithAI(
         staleBrief.topic,
         staleBrief.stories,
         staleBrief.all_sources,
-        llmBriefDesigns[staleBrief.topic] || staleBrief.llm_design
+        llmBriefDesigns[topicId] || llmBriefDesigns[staleBrief.topic] || staleBrief.llm_design,
+        topicId
       );
     }
   }, [topicBriefs, activeViewMode, synthesizingBriefTopics, llmBriefDesigns]);
@@ -2078,14 +2135,14 @@ export default function AletheiaHome() {
               )}
 
               {filteredTopicBriefs.length === 0 ? (
-                aiFeedFilter && aiFeedFilter.is_active !== false && isCollectingNews ? (
+                isCollectingNews ? (
                   <div className="glass-panel rounded-2xl p-6 border border-cyan-500/50 shadow-xl shadow-cyan-950/40 space-y-4 relative overflow-hidden animate-pulse">
                     <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-indigo-500 animate-pulse z-10" />
                     <div className="flex items-center gap-3">
                       <Loader2 className="w-5 h-5 text-cyan-400 animate-spin flex-shrink-0" />
                       <div>
                         <h3 className="text-lg font-bold text-white tracking-tight">
-                          {aiFeedFilter.topic}
+                          {aiFeedFilter?.topic || "Synthesizing News"}
                         </h3>
                         <p className="text-xs text-cyan-300">
                           Synthesizing fresh topic dossier and wire coverage for your discussion...
@@ -2115,17 +2172,41 @@ export default function AletheiaHome() {
                   </div>
                 )
               ) : (
-                filteredTopicBriefs.map((brief, bIdx) => {
+                filteredTopicBriefs.map((brief) => {
+                  const topicKey = brief.topic_id || brief.id || brief.topic;
                   const isHighVelocity = brief.velocity_status === "breaking" || brief.velocity_status === "active";
                   const isEscalating = brief.lifecycle_phase === "escalating" || brief.lifecycle_phase === "spawning";
-                  const activeDesign = llmBriefDesigns[brief.topic] || brief.llm_design;
+                  const activeDesign = llmBriefDesigns[topicKey] || llmBriefDesigns[brief.topic] || brief.llm_design;
                   const sectionsToRender = activeDesign?.sections || brief.dynamic_sections || [];
                   const executiveTake = activeDesign?.executive_take || brief.executive_take || brief.current_focus;
-                  const isSynthesizingThis = synthesizingBriefTopics.has(brief.topic);
+                  const isSynthesizingThis = synthesizingBriefTopics.has(topicKey) || synthesizingBriefTopics.has(brief.topic);
+
+                  // Do not show an interim incomplete card while it is synthesizing its initial dossier
+                  if (isSynthesizingThis && !activeDesign) {
+                    return (
+                      <div
+                        key={topicKey}
+                        className="glass-panel rounded-2xl p-6 border border-cyan-500/50 shadow-xl shadow-cyan-950/40 space-y-4 relative overflow-hidden animate-pulse"
+                      >
+                        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-indigo-500 animate-pulse z-10" />
+                        <div className="flex items-center gap-3">
+                          <Loader2 className="w-5 h-5 text-cyan-400 animate-spin flex-shrink-0" />
+                          <div>
+                            <h3 className="text-lg font-bold text-white tracking-tight">
+                              {brief.title || brief.topic}
+                            </h3>
+                            <p className="text-xs text-cyan-300">
+                              Synthesizing fresh topic dossier and wire coverage for your discussion...
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
-                      key={bIdx}
+                      key={topicKey}
                       className={`glass-panel rounded-2xl p-5 border transition-all duration-300 space-y-4 relative overflow-hidden ${
                         isSynthesizingThis
                           ? "border-cyan-500/60 shadow-xl shadow-cyan-950/40 ring-1 ring-cyan-500/30"
@@ -2218,7 +2299,7 @@ export default function AletheiaHome() {
                         {/* Top Action Button */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
-                            onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign)}
+                            onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign, brief.topic_id || brief.id)}
                             disabled={isSynthesizingThis}
                             className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition shadow-sm ${
                               isSynthesizingThis
@@ -2277,7 +2358,7 @@ export default function AletheiaHome() {
                             <span>This topic has been quiet for over a week. The stories shown below provide historical background.</span>
                           </div>
                           <button
-                            onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign)}
+                            onClick={() => handleSynthesizeBriefWithAI(brief.topic, brief.stories, brief.all_sources, activeDesign, brief.topic_id || brief.id)}
                             disabled={isSynthesizingThis}
                             className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 underline flex-shrink-0"
                           >
@@ -2288,7 +2369,7 @@ export default function AletheiaHome() {
 
                       {/* Current Status Snapshot / Executive Take */}
                       {executiveTake && (
-                        <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-indigo-950/40 border border-cyan-500/20 space-y-1.5">
+                        <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-indigo-950/40 border border-cyan-500/20 space-y-1.5 transition-all duration-500 animate-in fade-in">
                           <div className="flex items-center gap-1.5 text-xs font-semibold text-cyan-300">
                             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                             <span>{brief.velocity_status === "dormant" ? "Latest Recorded Status (Historical)" : "What's Happening Now"}</span>
@@ -2301,7 +2382,7 @@ export default function AletheiaHome() {
 
                       {/* Dynamic Presentation Sections (LLM-Selected Architecture) */}
                       {sectionsToRender.length > 0 && (
-                        <div className="space-y-3 pt-1">
+                        <div className="space-y-3 pt-1 transition-all duration-500 animate-in fade-in">
                           {sectionsToRender.map((section) => (
                             <DynamicBriefSectionRenderer
                               key={section.id}
@@ -2593,7 +2674,7 @@ export default function AletheiaHome() {
                     <button
                       onClick={() => {
                         if (aiFeedFilter && aiFeedFilter.is_active !== false && aiFeedFilter.topic) {
-                          handleTargetedCuration(aiFeedFilter.topic, aiFeedFilter.topic);
+                          handleTargetedCuration(aiFeedFilter.topic, aiFeedFilter.topic, aiFeedFilter.topic_id);
                         } else {
                           handleFindNewsClean();
                         }

@@ -10,6 +10,7 @@ import {
   GeneratedMessageContext,
   EventSourceArticle,
   RawArticle,
+  generateTopicId,
 } from "../../types/contracts";
 import { traceLogger } from "../../observability/trace-logger";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
@@ -29,13 +30,38 @@ export interface ToolExecution {
 
 export interface ChatMessage {
   id: string;
-  role: "assistant" | "user" | "system";
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
+  run_id?: string;
   trace_id?: string;
   context_trace_id?: string;
   attached_story?: AttachedStoryContext;
   attached_topic_brief?: AttachedTopicBriefContext;
+  tool_executions?: ToolExecution[];
+  suggested_queries?: string[];
+  context_generated?: GeneratedMessageContext;
+  agent_internal_rationale?: {
+    user_emotional_state_detected?: string;
+    curiosity_focus_identified?: string;
+    intersections_analyzed?: string;
+    pedagogical_strategy?: string;
+    why_this_response?: string;
+  };
+  reasoning_details?: {
+    user_intent: string;
+    topics_activated: string[];
+    intersections_analyzed: string;
+    pedagogical_strategy: string;
+    why_this_response: string;
+  };
+}
+
+export interface DialogueResponse {
+  message: string;
+  run_id?: string;
+  trace_id?: string;
+  context_trace_id?: string;
   tool_executions?: ToolExecution[];
   agent_internal_rationale?: {
     user_emotional_state_detected?: string;
@@ -44,24 +70,17 @@ export interface ChatMessage {
     pedagogical_strategy?: string;
     why_this_response?: string;
   };
-  context_generated?: GeneratedMessageContext;
-}
-
-export interface DialogueResponse {
-  message: string;
-  trace_id?: string;
-  context_trace_id?: string;
-  tool_executions?: ToolExecution[];
-  agent_internal_rationale: {
-    user_emotional_state_detected: string;
-    curiosity_focus_identified: string;
-    intersections_analyzed: string;
-    pedagogical_strategy: string;
-    why_this_response: string;
+  reasoning_details?: {
+    user_intent?: string;
+    topics_activated?: string[];
+    intersections_analyzed?: string;
+    pedagogical_strategy?: string;
+    why_this_response?: string;
   };
   active_feed_filter?: {
     is_active: boolean;
     topic?: string;
+    topic_id?: string;
     matched_event_ids?: string[];
     filter_reason?: string;
     trigger_targeted_curation?: boolean;
@@ -88,6 +107,7 @@ export type DialogueStreamEvent =
       data: {
         is_active: boolean;
         topic?: string;
+        topic_id?: string;
         matched_event_ids?: string[];
         filter_reason?: string;
         trigger_targeted_curation?: boolean;
@@ -183,6 +203,7 @@ export class DialogueAgent {
     const startTime = Date.now();
     const executedTools: ToolExecution[] = [];
     const lastUserMessage = history[history.length - 1]?.content || "";
+    const runId = `run_chat_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     // 1. Resolve Unified Topic Node
     let unifiedNode: UnifiedTopicNode;
@@ -192,6 +213,8 @@ export class DialogueAgent {
       unifiedNode = await postgresStore.getUnifiedTopicNode("usr_default");
     }
 
+    const sessionId = unifiedNode?.user_id ? `sess_${unifiedNode.user_id}` : `sess_${Date.now()}`;
+
     // 2. Step 1: Immediate Semantic Topic Resolution & Feed Filtering FIRST
     const semanticResult = await SemanticTopicResolver.resolveContextualTopics(
       unifiedNode,
@@ -200,10 +223,34 @@ export class DialogueAgent {
       attachedStory
     );
 
-    const identifiedTopic =
-      semanticResult.identified_discussion_subject ||
-      semanticResult.selected_topics[0]?.topic_name ||
+    // 1. Direct canonical topic from user knowledge graph
+    const matchedSelectedTopic =
+      semanticResult.selected_topics?.find((t) => t.graph_connection_type === "direct_match") ||
+      semanticResult.selected_topics?.[0];
+
+    const canonicalGraphTopic = matchedSelectedTopic?.topic_name;
+    const canonicalTopicId =
+      matchedSelectedTopic?.topic_id ||
+      (canonicalGraphTopic ? (unifiedNode.topics?.[canonicalGraphTopic]?.topic_id || generateTopicId(canonicalGraphTopic)) : undefined);
+
+    // 2. Structured novel candidate topic from semantic resolver
+    const candidateTopic =
+      canonicalGraphTopic ||
+      semanticResult.new_topic_candidates?.[0]?.topic_name ||
       attachedStory?.topic;
+
+    const candidateTopicId =
+      canonicalTopicId ||
+      semanticResult.new_topic_candidates?.[0]?.topic_id ||
+      (attachedStory?.topic ? generateTopicId(attachedStory.topic) : undefined);
+
+    // 3. Normalize raw subject by stripping parenthetical acronyms and conversational noise
+    const rawTopic = candidateTopic || semanticResult.identified_discussion_subject;
+    const identifiedTopic = rawTopic
+      ? rawTopic.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim()
+      : undefined;
+
+    const identifiedTopicId = candidateTopicId || (identifiedTopic ? generateTopicId(identifiedTopic) : undefined);
 
     let relevantStories: Array<{
       event_id: string;
@@ -240,6 +287,7 @@ export class DialogueAgent {
         data: {
           is_active: true,
           topic: identifiedTopic,
+          topic_id: identifiedTopicId,
           matched_event_ids: matchedIds,
           filter_reason: `Focusing on "${identifiedTopic}" from active discussion`,
           trigger_targeted_curation: shouldCurate,
@@ -262,6 +310,43 @@ export class DialogueAgent {
       relevantStories,
       attachedTopicBrief
     );
+
+    // Log Context Agent step trace
+    const whyCareText = Array.isArray(contextFraming.why_they_care_context)
+      ? contextFraming.why_they_care_context.join("; ")
+      : String(contextFraming.why_they_care_context || "");
+
+    traceLogger.logTrace({
+      run_id: runId,
+      session_id: sessionId,
+      node_name: "node_context",
+      call_type: "agent_step",
+      reasoning_rationale:
+        whyCareText ||
+        `Context resolved for "${identifiedTopic || "General"}" (calibrated depth: ${contextFraming.calibrated_depth})`,
+      latency_ms: 5,
+      input_summary: {
+        last_user_message: lastUserMessage.slice(0, 150),
+        identified_topic: identifiedTopic,
+        attached_story: attachedStory?.headline || (attachedStory as any)?.title || null,
+        history_length: history.length,
+      },
+      output_summary: {
+        calibrated_depth: contextFraming.calibrated_depth,
+        empath_instructions: contextFraming.empath_instructions,
+        selected_topics_count: contextFraming.semantic_resolution?.selected_topics?.length || 0,
+        selected_topics: (contextFraming.semantic_resolution?.selected_topics || []).map((t) => t.topic_name),
+        relevant_stories_found: relevantStories.length,
+        safeguards_active: contextFraming.active_boundaries.length,
+      },
+      context_details: {
+        emotional_trajectory: unifiedNode.psychological_profile?.emotional_trajectory,
+        active_topics: Object.keys(unifiedNode.topics || {}),
+        sensitivities: contextFraming.active_sensitivities,
+        boundaries: contextFraming.active_boundaries,
+        why_they_care: contextFraming.why_they_care_context,
+      },
+    });
 
     const systemPrompt = `You are Aletheia, a personalized epistemic intelligence companion built on the Mind-State Memory Architecture.
 You engage in dual-intent conversations equipped with real-time tool execution and feed filtering capabilities:
@@ -290,6 +375,12 @@ CHRONOLOGICAL INTEGRITY, INLINE CITATIONS & FACT-CHECKING RULES:
      * If search passages confirm Claim A, cite the source [Source Name](URL).
      * If search passages make NO mention of Claim B (or indicate it is uncertain/delayed), you MUST explicitly state that there is no verified evidence or reporting for Claim B.
      * You are STRICTLY FORBIDDEN from guessing, extrapolating, or assuming that an unmentioned entity or milestone is taking place based on past mission precedent. State the absence of verified evidence factually.
+
+4. CHRONOLOGICAL RECENCY & LATEST STATUS FOCUS (CRITICAL):
+   - When the user asks "what's the latest with [X]", "latest news", "current status", or inquires about ongoing technical/operational progress:
+     * Lead with and prioritize the MOST RECENT DEVELOPMENTS, current active operational state, and upcoming milestones as of ${currentDateStr}.
+     * NEVER recount superseded historical iterations, previous tests, or months-old events (e.g. tests, flights, or versions from months or years ago) as the primary answer to "what's the latest".
+     * If search observations contain both recent news and older background articles, clearly distinguish between the current active state and prior completed history.
 
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING: Use known user interests and knowledge graph anchors to SUBTLY SHAPE the conversation. Never echo or narrate profile traits ("As someone who..."). Never end with formulaic questions.
@@ -457,12 +548,14 @@ Output strict JSON:
         const currentQuery = currentAction.param;
         yield { type: "tool_start", tool_name: "search_internet", query: currentQuery };
 
+        const toolStartTime = Date.now();
         let liveArticles: RawArticle[] = [];
         try {
           liveArticles = await FreeNewsFetcher.searchNews(currentQuery, 5);
         } catch (err) {
           console.warn(`Agentic search error for "${currentQuery}":`, err);
         }
+        const toolDuration = Date.now() - toolStartTime;
 
         totalItemsFound += liveArticles.length;
 
@@ -482,6 +575,27 @@ Output strict JSON:
           results_summary: liveArticles.length > 0 ? `Retrieved ${liveArticles.length} live sources.` : "Zero sources found for query.",
           items_retrieved: liveArticles.length,
           sources: eventSources,
+        });
+
+        // Log tool execution trace
+        traceLogger.logTrace({
+          run_id: runId,
+          session_id: sessionId,
+          node_name: "tool_search",
+          call_type: "tool",
+          latency_ms: toolDuration,
+          reasoning_rationale: `Live web wire search retrieved ${liveArticles.length} candidate sources for query "${currentQuery}".`,
+          input_summary: {
+            tool_name: "search_internet",
+            query: currentQuery,
+          },
+          output_summary: {
+            items_retrieved: liveArticles.length,
+            sources: eventSources.map((s) => ({ name: s.name, title: s.title, url: s.url })),
+          },
+          response_details: {
+            sources: eventSources,
+          },
         });
 
         yield {
@@ -505,6 +619,7 @@ Zero sources found. No verified global news or reporting matched this exact quer
         const targetUrl = currentAction.param;
         yield { type: "tool_start", tool_name: "crawl_web_page", query: targetUrl };
 
+        const crawlStartTime = Date.now();
         let crawledArticles: RawArticle[] = [];
         try {
           const { DirectContentCrawler } = await import("../../ingestion/direct-crawler");
@@ -524,6 +639,7 @@ Zero sources found. No verified global news or reporting matched this exact quer
         } catch (err) {
           console.warn(`Agentic crawl error for "${targetUrl}":`, err);
         }
+        const crawlDuration = Date.now() - crawlStartTime;
 
         totalItemsFound += crawledArticles.length;
 
@@ -543,6 +659,27 @@ Zero sources found. No verified global news or reporting matched this exact quer
           results_summary: crawledArticles.length > 0 ? `Crawled full article from ${crawledArticles[0].source_name}.` : "Could not extract body text from page.",
           items_retrieved: crawledArticles.length,
           sources: eventSources,
+        });
+
+        // Log crawl execution trace
+        traceLogger.logTrace({
+          run_id: runId,
+          session_id: sessionId,
+          node_name: "tool_execution",
+          call_type: "tool",
+          latency_ms: crawlDuration,
+          reasoning_rationale: `Direct web crawler extracted content from ${targetUrl}`,
+          input_summary: {
+            tool_name: "crawl_web_page",
+            url: targetUrl,
+          },
+          output_summary: {
+            items_retrieved: crawledArticles.length,
+            title: crawledArticles[0]?.title,
+          },
+          response_details: {
+            sources: eventSources,
+          },
         });
 
         yield {
@@ -640,6 +777,7 @@ Output strict JSON:
         finalPrompt += `\n\nCRITICAL REAL-TIME GROUNDING & INLINE CITATION MANDATE:
 - Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
 - Ground your response EXCLUSIVELY and FACTUALLY in the empirical search passages above.
+- MANDATORY LATEST STATUS FOCUS: When asked "what's the latest with [X]", lead directly with the most recent developments, current operational state, and upcoming milestones as of ${currentDateStr}. Do NOT recount superseded historical events or tests from earlier quarters/months as the primary answer.
 - MANDATORY INLINE CITATIONS: Every factual claim, status update, milestone, or timeline assertion MUST include an inline markdown link to the specific original article reporting it, e.g. [Source Name](URL).
 - GRANULAR CLAIM DECOMPOSITION: If the inquiry involves multiple components (e.g. both X and Y):
   * Check each component independently against the passages above.
@@ -653,7 +791,28 @@ Output strict JSON:
     // Step 3: Stream tokens to client
     const extractor = new JsonMessageStreamExtractor();
     let accumulatedJson = "";
-    const streamGen = deepseekProvider.generateStream(finalPrompt, { systemPrompt, temperature: 0.5, maxTokens: 4096 });
+    const streamGen = deepseekProvider.generateStream(finalPrompt, {
+      systemPrompt,
+      temperature: 0.5,
+      maxTokens: 4096,
+      traceOptions: {
+        runId,
+        sessionId,
+        agentName: "agent_dialogue",
+        callType: "llm",
+        inputSummary: {
+          identified_topic: identifiedTopic,
+          tools_executed_count: executedTools.length,
+        },
+        contextDetails: {
+          calibrated_depth: contextFraming.calibrated_depth,
+          empath_instructions: contextFraming.empath_instructions,
+        },
+        reasoningDetails: {
+          primary_rationale: "Dialogue response generation and live news synthesis",
+        },
+      },
+    });
 
     for await (const chunk of streamGen) {
       accumulatedJson += chunk;
@@ -790,6 +949,7 @@ Output strict JSON:
 
     const finalResponse: DialogueResponse = {
       message: parsed.message || "...",
+      run_id: runId,
       trace_id: traceId,
       context_trace_id: contextFraming.trace_id,
       tool_executions: executedTools,
@@ -805,7 +965,14 @@ Output strict JSON:
         ? {
             ...parsed.active_feed_filter,
             is_active: parsed.active_feed_filter.is_active !== false,
-            topic: parsed.active_feed_filter.topic || identifiedTopic || undefined,
+            topic: parsed.active_feed_filter.topic
+              ? parsed.active_feed_filter.topic.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim()
+              : identifiedTopic || undefined,
+            topic_id:
+              identifiedTopicId ||
+              (parsed.active_feed_filter.topic
+                ? generateTopicId(parsed.active_feed_filter.topic)
+                : undefined),
             matched_event_ids: parsed.active_feed_filter.matched_event_ids?.length
               ? parsed.active_feed_filter.matched_event_ids
               : matchedIds,
@@ -819,6 +986,7 @@ Output strict JSON:
         : {
             is_active: Boolean(identifiedTopic && identifiedTopic !== "all" && identifiedTopic !== "General"),
             topic: identifiedTopic || undefined,
+            topic_id: identifiedTopicId,
             matched_event_ids: matchedIds,
             filter_reason: `Focusing on "${identifiedTopic}" from active discussion`,
             trigger_targeted_curation: shouldCurate,
@@ -830,6 +998,62 @@ Output strict JSON:
       is_profile_ready: parsed.is_profile_ready || false,
       suggested_queries: parsed.suggested_queries || [],
     };
+
+    // Log root flow trace to traceLogger
+    traceLogger.logTrace({
+      trace_id: traceId,
+      run_id: runId,
+      session_id: sessionId,
+      node_name: "agent_dialogue",
+      call_type: "flow_root",
+      reasoning_rationale:
+        parsed.agent_internal_rationale?.why_this_response ||
+        `Companion dialogue turn completed with ${executedTools.length} tool executions.`,
+      latency_ms: Date.now() - startTime,
+      llm_tokens_used: Math.ceil((finalPrompt.length + accumulatedJson.length) / 4),
+      status: "success",
+      input_summary: {
+        last_user_message: lastUserMessage.slice(0, 150),
+        history_length: history.length,
+      },
+      output_summary: {
+        message_length: parsed.message?.length || 0,
+        tools_executed_count: executedTools.length,
+        extracted_topics: validatedExtractedTopics.length,
+      },
+      prompt_details: {
+        system_prompt: systemPrompt,
+        user_prompt: finalPrompt,
+        messages: history.map((m) => ({ role: m.role, content: m.content })),
+      },
+      context_details: {
+        identified_topic: identifiedTopic,
+        calibrated_depth: contextFraming.calibrated_depth,
+        empath_instructions: contextFraming.empath_instructions,
+        tools_executed_count: executedTools.length,
+        extracted_topics: validatedExtractedTopics.map((t: any) => t.topic),
+        active_feed_filter: finalResponse.active_feed_filter,
+      },
+      reasoning_details: {
+        primary_rationale: parsed.agent_internal_rationale?.why_this_response,
+        emotional_state: parsed.agent_internal_rationale?.user_emotional_state_detected,
+        curiosity_focus: parsed.agent_internal_rationale?.curiosity_focus_identified,
+        pedagogical_strategy: parsed.agent_internal_rationale?.pedagogical_strategy,
+        why_this_response: parsed.agent_internal_rationale?.why_this_response,
+      },
+      response_details: {
+        raw_completion: accumulatedJson,
+        parsed_output: parsed,
+        sources: executedTools.flatMap((t) => t.sources || []),
+      },
+      model_details: {
+        provider: "DeepSeek",
+        model: deepseekProvider.getModel(),
+      },
+      metadata: {
+        agentic_flow_steps: agenticFlowSteps,
+      },
+    });
 
     yield { type: "meta", data: finalResponse };
     return finalResponse;

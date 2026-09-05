@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
     success: true,
     postgres_connected: postgresStore.isPostgresConnected(),
     total_traces: combinedTraces.length,
+    flows: traceLogger.getRecentFlows(20),
     ai_calls: aiCalls,
     traces: combinedTraces,
     target_user_id: queryUserId,

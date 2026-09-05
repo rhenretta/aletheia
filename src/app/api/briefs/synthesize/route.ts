@@ -8,12 +8,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       topic,
+      topic_id,
       cards = [],
       sources = [],
       previousDesign = null,
       userId = "usr_default",
     } = body as {
       topic: string;
+      topic_id?: string;
       cards?: SynthesizedEventCard[];
       sources?: EventSourceArticle[];
       previousDesign?: any;
@@ -56,12 +58,14 @@ export async function POST(req: NextRequest) {
       {
         technical_depth: depth,
         curiosity_vectors: curiosityVectors,
-      }
+      },
+      topic_id
     );
 
     return NextResponse.json({
       success: true,
       topic,
+      topic_id: evolutionResult.topic_id || topic_id,
       decision: evolutionResult.decision,
       decision_rationale: evolutionResult.decision_rationale,
       design: evolutionResult.design,

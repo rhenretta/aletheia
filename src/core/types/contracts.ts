@@ -1,6 +1,24 @@
 import { z } from "zod";
 
 /**
+ * Generates an immutable, deterministic or UUID-based topic GUID
+ * Format: "top_[alphanumeric_slug]"
+ */
+export function generateTopicId(name?: string): string {
+  if (!name || name.trim().length === 0) {
+    return `top_${Math.random().toString(36).substring(2, 11)}`;
+  }
+  const cleanSlug = name
+    .replace(/\([^)]*\)/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+
+  return cleanSlug ? `top_${cleanSlug}` : `top_${Math.random().toString(36).substring(2, 11)}`;
+}
+
+/**
  * Raw article ingested from web sources / MCP
  */
 export interface RawArticle {
@@ -11,6 +29,7 @@ export interface RawArticle {
   author_bias_rating: "far_left" | "lean_left" | "center" | "lean_right" | "far_right" | "unknown";
   published_at?: string;
   author?: string;
+  topic_id?: string;
   topic_category?: string;
   image_url?: string;
   content_format?: "news_article" | "social_post" | "discussion_thread";
@@ -25,6 +44,7 @@ export const RawArticleSchema = z.object({
   author_bias_rating: z.enum(["far_left", "lean_left", "center", "lean_right", "far_right", "unknown"]),
   published_at: z.string().optional(),
   author: z.string().optional(),
+  topic_id: z.string().optional(),
   topic_category: z.string().optional(),
   image_url: z.string().optional(),
   content_format: z.enum(["news_article", "social_post", "discussion_thread"]).optional(),
@@ -68,6 +88,7 @@ export const TimelineItemSchema = z.object({
  */
 export interface PureFactObject {
   event_id: string;
+  topic_id?: string;
   topic: string;
   verified_entities: string[];
   timeline: TimelineItem[];
@@ -80,6 +101,7 @@ export interface PureFactObject {
 
 export const PureFactObjectSchema = z.object({
   event_id: z.string(),
+  topic_id: z.string().optional(),
   topic: z.string(),
   verified_entities: z.array(z.string()),
   timeline: z.array(TimelineItemSchema),
@@ -174,6 +196,7 @@ export const TopicEvolutionEntrySchema = z.object({
  * Topic Metadata in Unified Topic Node (A Living Topic Dossier)
  */
 export interface TopicMetadata {
+  topic_id?: string; // Immutable topic GUID (e.g. "top_1f8a9e2d")
   weight: number; // 0.0 - 1.0
   what_they_care_about?: string; // Core focus, sub-domains, and technical dimensions (What the user is interested in)
   why_they_care: string; // Underlying intellectual motivation, stakes, and worldview (Why they care)
@@ -183,11 +206,13 @@ export interface TopicMetadata {
   likes_and_angles?: string[]; // Preferred angles, dimensions, and features
   dislikes_and_critiques?: string[]; // Anti-preferences, hype to filter out, critiques
   curiosity_vectors?: string[];
+  aliases?: string[]; // Known acronyms and alternative names
   evolution_timeline?: TopicEvolutionEntry[]; // Chronological timeline of how the perspective evolved
   last_discussed_at?: string;
 }
 
 export const TopicMetadataSchema = z.object({
+  topic_id: z.string().optional(),
   weight: z.number().min(0).max(1),
   what_they_care_about: z.string().optional(),
   why_they_care: z.string(),
@@ -197,6 +222,7 @@ export const TopicMetadataSchema = z.object({
   likes_and_angles: z.array(z.string()).optional(),
   dislikes_and_critiques: z.array(z.string()).optional(),
   curiosity_vectors: z.array(z.string()).optional(),
+  aliases: z.array(z.string()).optional(),
   evolution_timeline: z.array(TopicEvolutionEntrySchema).optional(),
   last_discussed_at: z.string().optional(),
 });
@@ -466,24 +492,75 @@ export const PresentationPayloadSchema = z.object({
 /**
  * Structured Agent Trace record for Observability-Driven Development
  */
+export type AgentNodeName =
+  | "node_context"
+  | "node_discovery"
+  | "node_scout"
+  | "node_observer"
+  | "node_a_epistemology"
+  | "node_b_telemetry"
+  | "node_c_serendipity"
+  | "node_d_synthesis"
+  | "agent_dialogue"
+  | "agent_observer"
+  | "agent_discovery"
+  | "agent_epistemology"
+  | "agent_telemetry"
+  | "agent_serendipity"
+  | "agent_synthesis"
+  | "agent_brief_synthesizer"
+  | "agent_card_evolution"
+  | "tool_execution"
+  | "tool_search"
+  | "tool_rss"
+  | "llm_completion"
+  | (string & {});
+
+export type AgentCallType = "flow_root" | "agent_step" | "llm" | "tool" | "tool_call";
+
 export interface AgentTraceLog {
   trace_id: string;
   session_id: string;
   timestamp: string;
-  node_name:
-    | "node_context"
-    | "node_discovery"
-    | "node_scout"
-    | "node_observer"
-    | "node_a_epistemology"
-    | "node_b_telemetry"
-    | "node_c_serendipity"
-    | "node_d_synthesis";
-  input_summary: Record<string, unknown>;
-  output_summary: Record<string, unknown>;
+  node_name: AgentNodeName;
+  input_summary?: Record<string, unknown>;
+  output_summary?: Record<string, unknown>;
   reasoning_rationale: string;
   latency_ms: number;
   llm_tokens_used?: number;
+  run_id?: string;
+  parent_trace_id?: string;
+  call_type?: AgentCallType;
+  prompt_details?: {
+    system_prompt?: string;
+    user_prompt?: string;
+    messages?: Array<{ role: string; content: string }>;
+  };
+  context_details?: Record<string, unknown>;
+  reasoning_details?: {
+    primary_rationale?: string;
+    internal_thought?: string;
+    emotional_state?: string;
+    curiosity_focus?: string;
+    pedagogical_strategy?: string;
+    why_this_response?: string;
+    adaptations?: unknown[];
+    topic_diffs?: unknown[];
+  };
+  response_details?: {
+    raw_completion?: string;
+    parsed_output?: unknown;
+    emitted_state?: unknown;
+    sources?: unknown[];
+  };
+  model_details?: {
+    provider?: string;
+    model?: string;
+    temperature?: number;
+    max_tokens?: number;
+  };
+  status?: "success" | "error" | "running";
+  error_message?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -491,23 +568,68 @@ export const AgentTraceLogSchema = z.object({
   trace_id: z.string(),
   session_id: z.string(),
   timestamp: z.string(),
-  node_name: z.enum([
-    "node_context",
-    "node_discovery",
-    "node_scout",
-    "node_observer",
-    "node_a_epistemology",
-    "node_b_telemetry",
-    "node_c_serendipity",
-    "node_d_synthesis",
-  ]),
-  input_summary: z.record(z.string(), z.unknown()),
-  output_summary: z.record(z.string(), z.unknown()),
+  node_name: z.string(),
+  input_summary: z.record(z.string(), z.unknown()).default({}),
+  output_summary: z.record(z.string(), z.unknown()).default({}),
   reasoning_rationale: z.string(),
   latency_ms: z.number(),
   llm_tokens_used: z.number().optional(),
+  run_id: z.string().optional(),
+  parent_trace_id: z.string().optional(),
+  call_type: z.enum(["flow_root", "agent_step", "llm", "tool", "tool_call"]).optional(),
+  prompt_details: z
+    .object({
+      system_prompt: z.string().optional(),
+      user_prompt: z.string().optional(),
+      messages: z.array(z.object({ role: z.string(), content: z.string() })).optional(),
+    })
+    .optional(),
+  context_details: z.record(z.string(), z.unknown()).optional(),
+  reasoning_details: z
+    .object({
+      primary_rationale: z.string().optional(),
+      internal_thought: z.string().optional(),
+      emotional_state: z.string().optional(),
+      curiosity_focus: z.string().optional(),
+      pedagogical_strategy: z.string().optional(),
+      why_this_response: z.string().optional(),
+      adaptations: z.array(z.unknown()).optional(),
+      topic_diffs: z.array(z.unknown()).optional(),
+    })
+    .optional(),
+  response_details: z
+    .object({
+      raw_completion: z.string().optional(),
+      parsed_output: z.unknown().optional(),
+      emitted_state: z.unknown().optional(),
+      sources: z.array(z.unknown()).optional(),
+    })
+    .optional(),
+  model_details: z
+    .object({
+      provider: z.string().optional(),
+      model: z.string().optional(),
+      temperature: z.number().optional(),
+      max_tokens: z.number().optional(),
+    })
+    .optional(),
+  status: z.enum(["success", "error", "running"]).optional(),
+  error_message: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+export interface AgentRunFlow {
+  run_id: string;
+  session_id: string;
+  flow_name: string;
+  start_time: string;
+  end_time: string;
+  total_latency_ms: number;
+  total_tokens: number;
+  status: "success" | "error" | "running";
+  steps: AgentTraceLog[];
+  root_trace?: AgentTraceLog;
+}
 
 /**
  * Contributing Source Article with raw text and highlighted passages
@@ -537,6 +659,7 @@ export const EventSourceArticleSchema = z.object({
  */
 export interface SynthesizedEventCard {
   event_id: string;
+  topic_id?: string; // Immutable topic GUID
   topic: string;
   headline: string;
   personalized_framing: string;
@@ -563,6 +686,7 @@ export interface SynthesizedEventCard {
 
 export const SynthesizedEventCardSchema = z.object({
   event_id: z.string(),
+  topic_id: z.string().optional(),
   topic: z.string(),
   headline: z.string(),
   personalized_framing: z.string(),
@@ -749,6 +873,7 @@ export interface DynamicSectionContent {
 
 export interface DynamicBriefSection {
   id: string;
+  topic_id?: string;
   section_type: DynamicBriefSectionType;
   title: string;
   subtitle?: string;
@@ -758,6 +883,7 @@ export interface DynamicBriefSection {
 }
 
 export interface LLMTopicBriefDesign {
+  topic_id?: string;
   presentation_archetype:
     | "regulatory_controversy"
     | "technical_deep_dive"
@@ -791,6 +917,7 @@ export interface LayoutArchitectPlan {
 
 export interface EvolvedTopicCardResult {
   topic: string;
+  topic_id?: string;
   decision: "update_in_place" | "redesign";
   decision_rationale: string;
   design: LLMTopicBriefDesign;

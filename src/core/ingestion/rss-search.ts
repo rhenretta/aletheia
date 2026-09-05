@@ -58,20 +58,44 @@ export class FreeNewsFetcher {
       .replace(/\s+/g, " ")
       .trim();
 
-    // 1. First priority: LiveSearchEngine for rich empirical snippets
+    const seenUrls = new Set<string>();
+    const allArticles: RawArticle[] = [];
+
+    // 1. Direct news wire search (Google News RSS: authentic journalistic breaking stories)
+    try {
+      const rssArticles = await this.fetchRssForQuery(cleanTopic);
+      for (const a of rssArticles) {
+        if (!seenUrls.has(a.source_url)) {
+          seenUrls.add(a.source_url);
+          allArticles.push(a);
+        }
+      }
+    } catch (err) {
+      console.warn(`FreeNewsFetcher: RSS search error for "${cleanTopic}":`, err);
+    }
+
+    // 2. Open web search mesh for rich descriptive snippets and trackers
     try {
       const { LiveSearchEngine } = await import("./live-search-engine");
       const liveArticles = await LiveSearchEngine.search(cleanTopic, maxArticles);
-      if (liveArticles && liveArticles.length > 0) {
-        return liveArticles.slice(0, maxArticles);
+      for (const a of liveArticles) {
+        if (!seenUrls.has(a.source_url)) {
+          seenUrls.add(a.source_url);
+          allArticles.push(a);
+        }
       }
     } catch (err) {
-      console.warn(`FreeNewsFetcher: LiveSearchEngine fallback to RSS for "${cleanTopic}":`, err);
+      console.warn(`FreeNewsFetcher: LiveSearchEngine search for "${cleanTopic}":`, err);
     }
 
-    // 2. Direct RSS feed search for the query without heuristic string mangling
-    const rssArticles = await this.fetchRssForQuery(cleanTopic);
-    return rssArticles.slice(0, maxArticles);
+    // Sort by publication recency: newest first, so current active news is prioritized over stale background pages
+    allArticles.sort((a, b) => {
+      const timeA = a.published_at ? new Date(a.published_at).getTime() : 0;
+      const timeB = b.published_at ? new Date(b.published_at).getTime() : 0;
+      return timeB - timeA;
+    });
+
+    return allArticles.slice(0, maxArticles);
   }
 
   public static async fetchRssForQuery(query: string): Promise<RawArticle[]> {

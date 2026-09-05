@@ -3,10 +3,12 @@ import {
   AttachedStoryContext,
   TechnicalDepth,
   TopicMetadata,
+  generateTopicId,
 } from "../types/contracts";
 import { deepseekProvider } from "../llm/deepseek-provider";
 
 export interface SelectedTopicContext {
+  topic_id?: string;
   topic_name: string;
   relevance_score: number; // 0.0 to 1.0
   relevance_rationale: string;
@@ -23,6 +25,7 @@ export interface SemanticTopicResolutionResult {
   calibrated_overall_depth: TechnicalDepth;
   active_intersections: Array<{ theme: string; rationale: string }>;
   new_topic_candidates?: Array<{
+    topic_id?: string;
     topic_name: string;
     why_they_care: string;
     suggested_initial_weight: number;
@@ -54,6 +57,7 @@ export class SemanticTopicResolver {
 
     try {
       const topicSummaries = Object.entries(existingTopics).map(([name, meta]) => ({
+        topic_id: meta.topic_id || generateTopicId(name),
         topic: name,
         weight: meta.weight,
         depth: meta.technical_depth,
@@ -122,7 +126,7 @@ Output strict JSON in this format:
   "new_topic_candidates": [
     {
       "why_they_care": string,
-      "topic_name": string,
+      "topic_name": "Concise canonical entity/domain name without parentheticals or inquiry qualifiers",
       "suggested_initial_weight": number (0.1 to 1.0),
       "suggested_depth": "introductory" | "practitioner" | "expert" | "deep_technical",
       "curiosity_vectors": string[]
@@ -150,7 +154,9 @@ ${storyInfo}`;
         .filter((st: any) => st.topic_name && existingTopics[st.topic_name] && (typeof st.relevance_score !== "number" || st.relevance_score >= 0.50))
         .map((st: any) => {
           const canonical = existingTopics[st.topic_name];
+          const topicId = canonical?.topic_id || generateTopicId(st.topic_name);
           return {
+            topic_id: topicId,
             topic_name: st.topic_name,
             relevance_score: typeof st.relevance_score === "number" ? st.relevance_score : 0.85,
             relevance_rationale: st.relevance_rationale || "Direct semantic relevance to active discussion.",
@@ -162,12 +168,23 @@ ${storyInfo}`;
           };
         });
 
+      const normalizedCandidates = (parsed.new_topic_candidates || []).map((tc: any) => {
+        const cleanName = tc.topic_name
+          ? tc.topic_name.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim()
+          : tc.topic_name;
+        return {
+          ...tc,
+          topic_id: generateTopicId(cleanName),
+          topic_name: cleanName,
+        };
+      });
+
       return {
         identified_discussion_subject: parsed.identified_discussion_subject || "General Inquiry",
         selected_topics: selectedTopics,
         calibrated_overall_depth: parsed.calibrated_overall_depth || "practitioner",
         active_intersections: parsed.active_intersections || [],
-        new_topic_candidates: parsed.new_topic_candidates || [],
+        new_topic_candidates: normalizedCandidates,
         semantic_reasoning_summary:
           parsed.semantic_reasoning_summary ||
           `Semantically identified '${parsed.identified_discussion_subject}' and activated ${selectedTopics.length} relevant topic nodes.`,
@@ -198,7 +215,9 @@ ${storyInfo}`;
       const vectorMatch = (meta.curiosity_vectors || []).some((v) => combinedText.includes(v.toLowerCase()));
 
       if (nameMatch || vectorMatch) {
+        const topicId = meta.topic_id || generateTopicId(topicName);
         selectedTopics.push({
+          topic_id: topicId,
           topic_name: topicName,
           relevance_score: nameMatch ? 0.95 : 0.85,
           relevance_rationale: nameMatch

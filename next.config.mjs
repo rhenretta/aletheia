@@ -7,6 +7,17 @@ const nextConfig = {
     serverComponentsExternalPackages: ["@langchain/langgraph", "@langchain/core", "zod", "pg"],
   },
   webpack: (config, { dev, isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        net: false,
+        tls: false,
+        dns: false,
+        child_process: false,
+      };
+    }
     if (dev) {
       config.watchOptions = {
         poll: 800,

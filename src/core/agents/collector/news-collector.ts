@@ -1,4 +1,4 @@
-import { RawArticle, DirectSource } from "../../types/contracts";
+import { RawArticle, DirectSource, generateTopicId } from "../../types/contracts";
 import { FreeNewsFetcher } from "../../ingestion/rss-search";
 import { traceLogger } from "../../observability/trace-logger";
 import { postgresStore } from "../../storage/postgres-store";
@@ -9,29 +9,43 @@ import { SocialSourceScoutAgent } from "../scout/social-source-scout";
 
 export interface CollectorResult {
   topic: string;
+  topic_id?: string;
   articles: RawArticle[];
   source_perspectives: string[];
   ingestion_channel?: string;
 }
+
+export type TopicQueryDescriptor = string | { topic_id?: string; topic: string; searchQuery?: string };
 
 export class NewsCollector {
   /**
    * Autonomously collects live real-world news and facts across canonical direct sources and open web wires.
    * Prioritizes Direct RSS/WWW and Social sources; uses search engines judiciously as fallback.
    */
-  public static async collectForTopics(topics: string[]): Promise<CollectorResult[]> {
+  public static async collectForTopics(topics: TopicQueryDescriptor[]): Promise<CollectorResult[]> {
     if (!topics || topics.length === 0) {
       throw new Error("NewsCollector Error: No topics provided for news collection.");
     }
 
-    const uniqueTopics = Array.from(new Set(topics.filter((t) => t && t.trim().length > 0)));
+    const descriptors: Array<{ topic_id: string; topic: string; searchQuery: string }> = [];
+    const seenTopics = new Set<string>();
+
+    for (const t of topics) {
+      const topicName = typeof t === "string" ? t.trim() : t.topic?.trim();
+      if (!topicName || seenTopics.has(topicName)) continue;
+      seenTopics.add(topicName);
+      const topicId = typeof t === "object" && t.topic_id ? t.topic_id : generateTopicId(topicName);
+      const query = typeof t === "object" && t.searchQuery?.trim() ? t.searchQuery.trim() : topicName;
+      descriptors.push({ topic_id: topicId, topic: topicName, searchQuery: query });
+    }
+
     const results: CollectorResult[] = [];
 
     // Parallel multi-topic collection
     const settled = await Promise.allSettled(
-      uniqueTopics.map(async (topic) => {
+      descriptors.map(async ({ topic_id, topic, searchQuery }) => {
         const startTime = Date.now();
-        const cleanQuery = topic.replace(/[()[\]{}]/g, "").trim();
+        const cleanQuery = searchQuery.replace(/[()[\]{}]/g, "").trim();
 
         let articles: RawArticle[] = [];
         let channel = "Live Multi-Source Open Feeds (Bing RSS / Google News)";
@@ -59,6 +73,7 @@ export class NewsCollector {
                 for (const a of crawlRes.articles) {
                   directArticles.push({
                     ...a,
+                    topic_id,
                     topic_category: topic,
                   });
                 }
@@ -80,8 +95,8 @@ export class NewsCollector {
               }
             }
 
-            if (directArticles.length >= 2) {
-              articles = directArticles.slice(0, 6);
+            if (directArticles.length > 0) {
+              articles = [...directArticles];
               channel = `Direct Canonical Sources (${activeSources.map((s) => s.publisher_name).join(", ")})`;
             }
           } else {
@@ -97,8 +112,9 @@ export class NewsCollector {
           console.warn(`Direct source check error for "${topic}":`, err);
         }
 
-        // 2. JUDICIOUS FALLBACK: If direct sources yielded insufficient items, query live search engine
-        if (articles.length < 2) {
+        // 2. MULTI-SOURCE WIRE AUGMENTATION: Query live search engine & news wires to guarantee multi-outlet breadth
+        const distinctPublishers = new Set(articles.map((a) => a.source_name.toLowerCase().trim()));
+        if (articles.length < 4 || distinctPublishers.size < 3) {
           const searchArticles = await FreeNewsFetcher.searchNews(cleanQuery, 6);
           if (searchArticles.length > 0) {
             // Merge direct and search results
@@ -108,9 +124,13 @@ export class NewsCollector {
                 seenUrls.add(a.source_url);
                 articles.push({
                   ...a,
+                  topic_id,
                   topic_category: topic,
                 });
               }
+            }
+            if (articles.length > searchArticles.length) {
+              channel += " + Open Wire Feeds (Google News / RSS)";
             }
           }
         }
@@ -125,6 +145,7 @@ export class NewsCollector {
         traceLogger.logTrace({
           node_name: "node_a_epistemology",
           input_summary: {
+            topic_id,
             topic,
             ingestion_channel: channel,
             articles_requested: 6,
@@ -144,6 +165,7 @@ export class NewsCollector {
           llm_tokens_used: 0,
           metadata: {
             action: "live_news_feed_ingestion",
+            topic_id,
             topic,
             sources,
             article_urls: articles.map((a: RawArticle) => a.source_url),
@@ -152,6 +174,7 @@ export class NewsCollector {
 
         return {
           topic,
+          topic_id,
           articles,
           source_perspectives: sources,
           ingestion_channel: channel,
@@ -168,7 +191,7 @@ export class NewsCollector {
     }
 
     if (results.length === 0) {
-      throw new Error(`NewsCollector Error: Failed to retrieve live articles across all requested topics (${uniqueTopics.join(", ")}).`);
+      throw new Error(`NewsCollector Error: Failed to retrieve live articles across all requested topics (${descriptors.map((d) => d.topic).join(", ")}).`);
     }
 
     return results;

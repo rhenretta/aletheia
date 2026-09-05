@@ -7,7 +7,7 @@ import {
   synthesizeCleanDevelopments,
   synthesizeCleanExecutiveTake,
 } from "../core/matching/topic-brief-synthesizer";
-import { SynthesizedEventCard, UnifiedTopicNode, DynamicBriefSection } from "../core/types/contracts";
+import { SynthesizedEventCard, UnifiedTopicNode, DynamicBriefSection, generateTopicId } from "../core/types/contracts";
 
 describe("TopicBriefBuilder & Dual-View Aggregator", () => {
   const mockNode: UnifiedTopicNode = {
@@ -475,5 +475,161 @@ describe("TopicBriefBuilder & Dual-View Aggregator", () => {
     // But all stories (including the historical X post) are retained for agent and timeline context
     expect(brief!.stories.length).toBe(2);
     expect(brief!.all_sources.some((s) => s.name === "x.com")).toBe(true);
+  });
+
+  it("consolidates cards with acronym variants into a single canonical topic brief", () => {
+    const nodeWithCanonicalTopic: UnifiedTopicNode = {
+      user_id: "usr_canonical_test",
+      topics: {
+        "Fleet Electric Vehicle": {
+          weight: 0.85,
+          technical_depth: "practitioner",
+          why_they_care: "Transition to commercial electric transport",
+          curiosity_vectors: ["Fleet charging infrastructure", "Battery cycle endurance"],
+        },
+      },
+      psychological_profile: {
+        emotional_trajectory: "Curious",
+        sensitivities: [],
+        boundaries: [],
+        communication_style: "Direct",
+      },
+      dwell_history: [],
+      last_updated: new Date().toISOString(),
+    } as any;
+
+    const cards: SynthesizedEventCard[] = [
+      {
+        event_id: "evt_canon_1",
+        topic: "Fleet Electric Vehicle",
+        headline: "National Carrier Deploys 500 Heavy Electric Trucks",
+        summary: "Commercial logistics carrier operationalizes heavy EV transport corridors.",
+        fact_bullets: ["500 trucks deployed", "Mega-watt charging hubs activated"],
+        verified_entities: ["Fleet Logistics"],
+        published_at: new Date().toISOString(),
+      },
+      {
+        event_id: "evt_acronym_1",
+        topic: "Fleet EV",
+        headline: "High-Power Depots Open Along Major Freight Arteries",
+        summary: "New high-voltage fast chargers operational for heavy commercial haulers.",
+        fact_bullets: ["1 MW charging capability verified"],
+        verified_entities: ["Depot Network"],
+        published_at: new Date().toISOString(),
+      },
+      {
+        event_id: "evt_acronym_2",
+        topic: "Fleet EV",
+        headline: "Municipal Logistics Fleet Reaches 10 Million Zero-Emission Miles",
+        summary: "City delivery trucks report 40% operating cost decrease.",
+        fact_bullets: ["Cost reduction confirmed across fleet data"],
+        verified_entities: ["City Logistics"],
+        published_at: new Date().toISOString(),
+      },
+    ] as any;
+
+    const briefs = buildTopicBriefs(cards, nodeWithCanonicalTopic);
+
+    // Should create exactly 1 brief for "Fleet Electric Vehicle" containing all 3 stories
+    expect(briefs.length).toBe(1);
+    expect(briefs[0].topic).toBe("Fleet Electric Vehicle");
+    expect(briefs[0].stories.length).toBe(3);
+    // Should NOT create a separate "Fleet EV" bucket
+    expect(briefs.find((b) => b.topic === "Fleet EV")).toBeUndefined();
+  });
+
+  it("consolidates cards with matching topic_id into a single unified brief with stable briefId = topic_id", () => {
+    const topicId = "top_autonomous_driving_systems";
+    const nodeWithTargetTopic: UnifiedTopicNode = {
+      ...mockNode,
+      topics: {
+        "Autonomous Driving Systems": {
+          topic_id: topicId,
+          weight: 0.9,
+          technical_depth: "practitioner",
+          why_they_care: "Core interest in autonomy and neural vision models",
+          curiosity_vectors: ["vision-only architectures"],
+        },
+      },
+    };
+
+    const cards: SynthesizedEventCard[] = [
+      {
+        event_id: "evt_fsd_1",
+        topic: "Autonomous Driving Systems",
+        topic_id: topicId,
+        headline: "Next-Gen Vision Model Achieves Zero Interventions in Highway Trials",
+        summary: "Autonomous driving system completes 50,000 miles without safety disconnects.",
+        fact_bullets: ["Zero disengagements recorded"],
+        verified_entities: ["Highway Safety Board"],
+        published_at: new Date().toISOString(),
+      },
+      {
+        event_id: "evt_fsd_2",
+        topic: "ADS Hardware 5",
+        topic_id: topicId,
+        headline: "Compute Platform Enters Volume Production with High-Efficiency AI Chips",
+        summary: "Automotive-grade inference processors roll off fabrication lines.",
+        fact_bullets: ["500 TOPS compute at 150 Watts"],
+        verified_entities: ["Chip Foundry"],
+        published_at: new Date().toISOString(),
+      },
+      {
+        event_id: "evt_fsd_3",
+        topic: "Autonomous Driving Fleet",
+        topic_id: topicId,
+        headline: "Commercial Robotaxi Service Launches in Three Major Metro Areas",
+        summary: "Driverless rides open to the general public across 200 square miles.",
+        fact_bullets: ["24/7 commercial operations licensed"],
+        verified_entities: ["Transit Authority"],
+        published_at: new Date().toISOString(),
+      },
+    ] as any;
+
+    const briefs = buildTopicBriefs(cards, nodeWithTargetTopic);
+
+    // Should create exactly 1 consolidated brief for the GUID
+    expect(briefs.length).toBe(1);
+    const brief = briefs[0];
+    expect(brief.topic_id).toBe(topicId);
+    expect(brief.id).toBe(topicId);
+    expect(brief.stories.length).toBe(3);
+    expect(brief.stories.map((s) => s.event_id)).toEqual(["evt_fsd_1", "evt_fsd_2", "evt_fsd_3"]);
+  });
+
+  it("guarantees briefId determinism across successive calls without Date.now() jitter", () => {
+    const singleTopicNode: UnifiedTopicNode = {
+      ...mockNode,
+      topics: {
+        "Quantum Supercomputing": {
+          topic_id: "top_quantum_supercomputing",
+          weight: 0.9,
+          technical_depth: "practitioner",
+          why_they_care: "Fault-tolerant computing",
+          curiosity_vectors: ["qubit fidelity"],
+        },
+      },
+    };
+
+    const card: SynthesizedEventCard = {
+      event_id: "evt_stable_1",
+      topic: "Quantum Supercomputing",
+      topic_id: "top_quantum_supercomputing",
+      headline: "Logical Qubit Breakthrough Reaches 99.99% Gate Fidelity",
+      summary: "Error-corrected quantum computer demonstrates continuous fault-tolerant circuits.",
+      fact_bullets: ["100 logical qubits achieved"],
+      verified_entities: ["Physics Lab"],
+      published_at: new Date().toISOString(),
+    } as any;
+
+    const run1 = buildTopicBriefs([card], singleTopicNode);
+    const run2 = buildTopicBriefs([card], singleTopicNode);
+
+    expect(run1.length).toBe(1);
+    expect(run2.length).toBe(1);
+    expect(run1[0].id).toBe("top_quantum_supercomputing");
+    expect(run2[0].id).toBe("top_quantum_supercomputing");
+    expect(run1[0].id).toBe(run2[0].id);
+    expect(run1[0].topic_id).toBe(run2[0].topic_id);
   });
 });

@@ -29,7 +29,8 @@ export class ObserverAgent {
   public static async observeAndAdapt(
     unifiedNode: UnifiedTopicNode,
     chatHistory: Array<{ role: string; content: string }>,
-    telemetry?: BehavioralTelemetry[]
+    telemetry?: BehavioralTelemetry[],
+    runId?: string
   ): Promise<ObserverAdaptationResult> {
     const startTime = Date.now();
     const traceId = `trace_obs_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -411,9 +412,11 @@ Output strict JSON:
     // Log transparent adaptation trace
     traceLogger.logTrace({
       trace_id: traceId,
+      run_id: runId,
       session_id: `obs_${unifiedNode.user_id}`,
       timestamp: new Date().toISOString(),
       node_name: "node_observer",
+      call_type: "agent_step",
       input_summary: {
         last_user_message: lastUserMessage.slice(0, 100),
         telemetry_events_count: telemetry?.length || 0,
@@ -428,6 +431,28 @@ Output strict JSON:
       },
       reasoning_rationale: `Observer Agent analyzed interaction and generated ${topicDiffs.length} topic state diffs and ${adaptationsMade.length} mind-state adaptations.`,
       latency_ms: latency,
+      prompt_details: {
+        system_prompt: rawSystemPrompt,
+        user_prompt: rawUserPrompt,
+      },
+      context_details: {
+        chat_history_length: chatHistory.length,
+        active_topics: Object.keys(adaptedNode.topics || {}),
+      },
+      reasoning_details: {
+        primary_rationale: `Observer Agent analyzed interaction and generated ${topicDiffs.length} topic state diffs and ${adaptationsMade.length} mind-state adaptations.`,
+        emotional_state: adaptedNode.psychological_profile.emotional_trajectory,
+        adaptations: adaptationsMade,
+        topic_diffs: topicDiffs,
+      },
+      response_details: {
+        raw_completion: rawLLMCompletion,
+        parsed_output: parsedLLMResponse,
+        emitted_state: {
+          adaptations: adaptationsMade,
+          topic_diffs: topicDiffs,
+        },
+      },
       metadata: {
         raw_system_prompt: rawSystemPrompt,
         raw_user_prompt: rawUserPrompt,

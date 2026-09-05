@@ -4,6 +4,7 @@ import {
   DynamicBriefSection,
   LLMTopicBriefDesign,
   EvolvedTopicCardResult,
+  generateTopicId,
 } from "../types/contracts";
 import { deepseekProvider } from "../llm/deepseek-provider";
 
@@ -24,13 +25,16 @@ export class TopicBriefSynthesizer {
     cards: SynthesizedEventCard[] = [],
     sources: EventSourceArticle[] = [],
     previousDesign?: LLMTopicBriefDesign | null,
-    editorialContext?: EditorialBriefingContext
+    editorialContext?: EditorialBriefingContext,
+    topicId?: string
   ): Promise<EvolvedTopicCardResult> {
     const { TopicCardEvolutionOrchestrator } = await import(
       "../agents/cards/topic-card-evolution-orchestrator"
     );
+    const resolvedTopicId = topicId || previousDesign?.topic_id || cards.find((c) => c.topic_id)?.topic_id || generateTopicId(topic);
     return TopicCardEvolutionOrchestrator.evolveCard({
       topic,
+      topic_id: resolvedTopicId,
       previousCards: cards,
       previousSources: sources,
       previousDesign,
@@ -48,31 +52,41 @@ export class TopicBriefSynthesizer {
     topic: string,
     cards: SynthesizedEventCard[] = [],
     sources: EventSourceArticle[] = [],
-    editorialContext?: EditorialBriefingContext
+    editorialContext?: EditorialBriefingContext,
+    topicId?: string
   ): Promise<LLMTopicBriefDesign> {
     const depth = editorialContext?.technical_depth || "practitioner";
     const curiosityAngles = editorialContext?.curiosity_vectors || [];
+    const resolvedTopicId = topicId || cards.find((c) => c.topic_id)?.topic_id || generateTopicId(topic);
+
+    let design: LLMTopicBriefDesign | null = null;
 
     // If LLM is configured, invoke the Briefing Architect
     if (deepseekProvider.isConfigured()) {
       try {
-        const design = await this.synthesizeWithLLM(
+        design = await this.synthesizeWithLLM(
           topic,
           cards,
           sources,
           depth,
           curiosityAngles
         );
-        if (design && design.sections && design.sections.length > 0) {
-          return design;
-        }
       } catch (err) {
         console.warn(`[TopicBriefSynthesizer] LLM synthesis failed for "${topic}", falling back to local synthesis:`, err);
       }
     }
 
-    // Deterministic fallback (100% topic-centric, zero user-history meta-commentary)
-    return this.synthesizeLocalDeterministic(topic, cards, sources, depth, curiosityAngles);
+    if (!design || !design.sections || design.sections.length === 0) {
+      design = this.synthesizeLocalDeterministic(topic, cards, sources, depth, curiosityAngles);
+    }
+
+    design.topic_id = resolvedTopicId;
+    if (design.sections) {
+      for (const s of design.sections) {
+        s.topic_id = resolvedTopicId;
+      }
+    }
+    return design;
   }
 
   /**
@@ -190,6 +204,19 @@ Task: Write a clear, friendly, and engaging briefing that helps everyday people 
       systemPrompt,
       temperature: 0.2,
       maxTokens: 2000,
+      traceOptions: {
+        agentName: "agent_brief_synthesizer",
+        reasoningDetails: {
+          primary_rationale: `LLM-Designed Topic Brief Synthesis for "${topic}"`,
+        },
+        contextDetails: {
+          topic,
+          technical_depth: depth,
+          curiosity_vectors: curiosityAngles,
+          cards_count: cards.length,
+          sources_count: sources.length,
+        },
+      },
     });
 
     if (res.text) {
@@ -505,6 +532,16 @@ export function isStrictSocialMediaSource(src: EventSourceArticle | { url?: stri
   const url = (src.url || "").toLowerCase();
   const name = (src.name || "").toLowerCase();
 
+  // Reject encyclopedia, dictionary, wiki, or news sites
+  if (
+    url.includes("wikipedia.org") ||
+    url.includes("wikimedia.org") ||
+    url.includes("wiktionary.org") ||
+    url.includes("britannica.com")
+  ) {
+    return false;
+  }
+
   // Reject sources older than 60 days
   if (src.published_at) {
     const pub = new Date(src.published_at).getTime();
@@ -515,6 +552,7 @@ export function isStrictSocialMediaSource(src: EventSourceArticle | { url?: stri
 
   const isSocialUrl = (
     url.includes("reddit.com") ||
+    url.includes("redd.it") ||
     url.includes("twitter.com") ||
     url.includes("x.com") ||
     url.includes("bsky.app") ||
@@ -524,6 +562,10 @@ export function isStrictSocialMediaSource(src: EventSourceArticle | { url?: stri
     url.includes("lemmy.")
   );
 
+  if (url && url !== "#") {
+    return isSocialUrl;
+  }
+
   const isSocialName = (
     name.startsWith("r/") ||
     name.includes("reddit") ||
@@ -532,7 +574,7 @@ export function isStrictSocialMediaSource(src: EventSourceArticle | { url?: stri
     name.includes("twitter")
   );
 
-  return isSocialUrl || isSocialName;
+  return isSocialName;
 }
 
 /**
@@ -540,7 +582,7 @@ export function isStrictSocialMediaSource(src: EventSourceArticle | { url?: stri
  */
 export function detectSocialPlatform(urlOrName: string): "reddit" | "x" | "bluesky" | "threads" | "hacker_news" | "social" {
   const lower = (urlOrName || "").toLowerCase();
-  if (lower.includes("reddit")) return "reddit";
+  if (lower.includes("reddit") || lower.includes("redd.it")) return "reddit";
   if (lower.includes("x.com") || lower.includes("twitter")) return "x";
   if (lower.includes("bsky.app") || lower.includes("bluesky")) return "bluesky";
   if (lower.includes("threads.net") || lower.includes("threads")) return "threads";
@@ -549,14 +591,14 @@ export function detectSocialPlatform(urlOrName: string): "reddit" | "x" | "blues
 }
 
 /**
- * Filters out subreddit sidebar descriptions, navigation boilerplate, forum rules, and corporate slogans
- * to ensure that only authentic user discussion and commentary are used in Community Pulse.
+ * Filters out subreddit sidebar descriptions, navigation boilerplate, forum rules, corporate slogans,
+ * and encyclopedia definitions to ensure only authentic user discussion is used in Community Pulse.
  */
 export function isAuthenticUserComment(passage: string): boolean {
   if (!passage || passage.trim().length < 20) return false;
   const lower = passage.toLowerCase().trim();
 
-  // Filter out subreddit sidebar / directory / rules boilerplate
+  // Filter out subreddit sidebar / directory / rules boilerplate & encyclopedic definitions
   const boilerplateIndicators = [
     "welcome to r/",
     "get real-time updates on",
@@ -573,7 +615,15 @@ export function isAuthenticUserComment(passage: string): boolean {
     "privacy policy",
     "cookie policy",
     "all rights reserved",
-    "the path to launch is filled with obstacles", // corporate PR slogans
+    "doing business as",
+    "is an american spaceflight",
+    "is an american aerospace",
+    "is an american corporation",
+    "is a corporation",
+    "is a company",
+    "headquartered in",
+    "founded in",
+    "the path to launch is filled with obstacles",
   ];
 
   if (boilerplateIndicators.some((ind) => lower.includes(ind))) {
@@ -624,9 +674,12 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
   const titlePrefixRegex = new RegExp(`^${cleanTitle}[\\s:—–-]*`, "i");
   text = text.replace(titlePrefixRegex, "").trim();
 
+  // Strip leading punctuation, dots, colons, or dashes
+  text = text.replace(/^[.,:;—–\s-]+/, "").trim();
+
   if (text.length === 0) return title.trim();
 
-  // Strip wire prefixes, timestamps, and datelines
+  // Strip wire prefixes, timestamps, datelines, and metadata
   text = text
     .replace(/^\s*\b\d{1,2}\s+(hours?|days?|mins?|minutes?|weeks?|months?)\s+ago\s*[-—–·]?\s*/gi, "")
     .replace(/^[A-Z\s]{2,15}\s*\([^)]*\)\s*[-—–·]\s*/, "") // e.g. "WASHINGTON (AP) — "
@@ -635,6 +688,9 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
     .replace(/\bADMIN\s*MOD\b/gi, "")
     .replace(/\bPost\s*Karma\b/gi, "")
     .replace(/\br\/[a-zA-Z0-9_]+\b/gi, "")
+    .replace(/\s*\([a-zA-Z0-9_-]{8,15}\)/g, "") // Strip YouTube/video alphanumeric hashes e.g. (n8Ndhm9wU8)
+    .replace(/\s+[a-zA-Z0-9-]+\.(com|org|net|io|co|app)\.?$/gi, "") // Strip trailing raw domain e.g. "mshale.com"
+    .replace(/^[.,:;—–\s-]+/, "")
     .trim();
 
   // Split into sentences ending with punctuation, safely preserving decimal numbers (e.g. 4.1x, 2.88 million)
@@ -642,7 +698,7 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
   if (sentenceMatches && sentenceMatches.length > 0) {
     let combined = "";
     for (const s of sentenceMatches) {
-      const trimmed = s.trim();
+      const trimmed = s.trim().replace(/^[.,:;—–\s-]+/, "");
       if ((combined + " " + trimmed).trim().length <= 280) {
         combined = (combined + " " + trimmed).trim();
       } else {
@@ -650,7 +706,9 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
         break;
       }
     }
-    if (combined.length > 20) return combined;
+    if (combined.length > 20) {
+      return combined.replace(/^[.,:;—–\s-]+/, "");
+    }
   }
 
   // If no clean punctuation matched, truncate cleanly at last word boundary and end with period
@@ -658,6 +716,7 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
     const lastSpace = text.lastIndexOf(" ", 240);
     text = (lastSpace > 50 ? text.slice(0, lastSpace) : text.slice(0, 240)).trim();
   }
+  text = text.replace(/^[.,:;—–\s-]+/, "").trim();
   return text.endsWith(".") || text.endsWith("!") || text.endsWith("?") ? text : `${text}.`;
 }
 
@@ -667,10 +726,11 @@ export function cleanArticleSnippet(title: string, rawText?: string): string {
  */
 export function cleanDevelopmentTitle(headline: string): string {
   if (!headline) return "Recent Development";
-  let title = headline.trim();
+  let title = headline.trim().replace(/^[.,:;—–\s-]+/, "");
 
   // 1. Strip trailing bracketed sources or domains (e.g. " [basenor.com]", " [Reddit (r/TeslaFSD)]")
   title = title.replace(/\s*\[[^\]]+\]\s*$/g, "").trim();
+  title = title.replace(/\s*\([a-zA-Z0-9_-]{8,15}\)/g, "").trim(); // video IDs
   title = title.replace(/\s*\([a-zA-Z0-9\s.,-]+\)\s*$/g, "").trim();
 
   // 2. Strip trailing pipe tags (e.g. " | Electrek")
@@ -680,13 +740,15 @@ export function cleanDevelopmentTitle(headline: string): string {
   title = title.replace(/\s+[—–]\s+[^\s—–]+(?:\s+[^\s—–]+){0,4}$/g, "").trim();
 
   // 4. Strip trailing hyphen publisher tags ONLY when preceded by whitespace (e.g. " - Reuters", " - TechCrunch")
-  // MUST NOT match hyphenated words like "Self-Driving", "AI-Powered", "Next-Gen" (which have no leading space before '-')
   title = title.replace(/\s+-\s+[^\s-]+(?:\s+[^\s-]+){0,4}$/g, "").trim();
 
-  // 5. Strip trailing colons, semicolons, or dashes
+  // 5. Strip trailing raw domain (e.g. "mshale.com")
+  title = title.replace(/\s+[a-zA-Z0-9-]+\.(com|org|net|io|co|app)\.?$/gi, "").trim();
+
+  // 6. Strip trailing colons, semicolons, or dashes
   title = title.replace(/[:;—–-]\s*$/g, "").trim();
 
-  // 6. Clean up unbalanced surrounding quotes (without stripping legitimate internal apostrophes like "Tesla's")
+  // 7. Clean up unbalanced surrounding quotes
   if (title.startsWith('"') && !title.endsWith('"')) {
     title = title.slice(1).trim();
   } else if (!title.startsWith('"') && title.endsWith('"') && !title.includes('"')) {
@@ -697,6 +759,7 @@ export function cleanDevelopmentTitle(headline: string): string {
     title = title.slice(1).trim();
   }
 
+  title = title.replace(/^[.,:;—–\s-]+/, "").trim();
   return title.length >= 5 ? title : headline.trim();
 }
 
@@ -771,7 +834,8 @@ export function synthesizeCleanExecutiveTake(topic: string, cards: SynthesizedEv
 
   if (substantiveSnippets.length === 2) {
     if (!cleanFirst.toLowerCase().includes(cleanSecond.toLowerCase().slice(0, 25))) {
-      return `${cleanFirst} Additionally, ${cleanSecond.charAt(0).toLowerCase() + cleanSecond.slice(1)}`;
+      const secondClean = cleanSecond.replace(/^[.,:;—–\s-]+/, "").trim();
+      return `${cleanFirst} In parallel, ${secondClean.charAt(0).toLowerCase() + secondClean.slice(1)}`;
     }
     return cleanFirst;
   }
@@ -779,11 +843,13 @@ export function synthesizeCleanExecutiveTake(topic: string, cards: SynthesizedEv
   // 3 or more stories: weave top substantive insights into an overarching summary
   const third = substantiveSnippets[2].trim();
   const cleanThird = third.endsWith(".") || third.endsWith("!") || third.endsWith("?") ? third : `${third}.`;
+  const secondClean = cleanSecond.replace(/^[.,:;—–\s-]+/, "").trim();
+  const thirdClean = cleanThird.replace(/^[.,:;—–\s-]+/, "").trim();
 
-  if ((cleanFirst.length + cleanSecond.length) <= 320) {
-    const combinedTwo = `${cleanFirst} Concurrently, ${cleanSecond.charAt(0).toLowerCase() + cleanSecond.slice(1)}`;
-    if (combinedTwo.length + cleanThird.length <= 440 && !combinedTwo.toLowerCase().includes(cleanThird.toLowerCase().slice(0, 25))) {
-      return `${combinedTwo} Meanwhile, ${cleanThird.charAt(0).toLowerCase() + cleanThird.slice(1)}`;
+  if ((cleanFirst.length + secondClean.length) <= 320) {
+    const combinedTwo = `${cleanFirst} In parallel, ${secondClean.charAt(0).toLowerCase() + secondClean.slice(1)}`;
+    if (combinedTwo.length + thirdClean.length <= 440 && !combinedTwo.toLowerCase().includes(thirdClean.toLowerCase().slice(0, 25))) {
+      return `${combinedTwo} Furthermore, ${thirdClean.charAt(0).toLowerCase() + thirdClean.slice(1)}`;
     }
     return combinedTwo;
   }
@@ -953,23 +1019,29 @@ export function enrichSectionSourceUrls(
 
     if (sec.section_type === "community_pulse" && sec.content.quotes) {
       const socialSources = allKnownSources.filter(isStrictSocialMediaSource);
-      const enrichedQuotes = sec.content.quotes.map((q) => {
-        if (!q.url) {
-          const match = socialSources.find((s) =>
-            (q.speaker_or_community && s.name?.toLowerCase().includes(q.speaker_or_community.toLowerCase())) ||
-            (q.quote && s.raw_text?.toLowerCase().includes(q.quote.toLowerCase().slice(0, 30)))
-          );
+      const enrichedQuotes = sec.content.quotes
+        .filter((q) => isAuthenticUserComment(q.quote))
+        .map((q) => {
+          let resolvedUrl = q.url;
+          if (!resolvedUrl || !isStrictSocialMediaSource({ url: resolvedUrl })) {
+            const match = socialSources.find((s) =>
+              (q.speaker_or_community && s.name?.toLowerCase().includes(q.speaker_or_community.toLowerCase())) ||
+              (q.quote && s.raw_text?.toLowerCase().includes(q.quote.toLowerCase().slice(0, 30)))
+            );
+            resolvedUrl = match?.url || socialSources[0]?.url;
+          }
+
+          const platform = detectSocialPlatform(resolvedUrl || q.platform || q.speaker_or_community || "");
           return {
             ...q,
-            url: match?.url || socialSources[0]?.url,
-            platform: detectSocialPlatform(match?.url || q.platform || q.speaker_or_community || ""),
+            url: resolvedUrl || (platform === "reddit" ? "https://www.reddit.com" : undefined),
+            platform,
           };
-        }
-        return {
-          ...q,
-          platform: detectSocialPlatform(q.url || q.platform || q.speaker_or_community || ""),
-        };
-      });
+        });
+
+      if (enrichedQuotes.length === 0) {
+        return null;
+      }
       return { ...sec, content: { ...sec.content, quotes: enrichedQuotes } };
     }
 
@@ -1004,7 +1076,7 @@ export function enrichSectionSourceUrls(
     }
 
     return sec;
-  });
+  }).filter((s): s is DynamicBriefSection => s !== null);
 }
 
 
