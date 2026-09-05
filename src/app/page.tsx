@@ -898,6 +898,9 @@ export default function AletheiaHome() {
     setIsSendingChat(true);
     setChatError(null);
 
+    let activeBotMessageId: string | null = null;
+    let accumulatedContent = "";
+
     try {
       const currentStoriesPayload =
         pipelineResult?.feed_cards?.map((c) => ({
@@ -927,6 +930,7 @@ export default function AletheiaHome() {
       };
 
       const botMessageId = `bot_${Date.now()}`;
+      activeBotMessageId = botMessageId;
       targetedCurationDispatchedRef.current = null;
       const initialBotMessage: ChatMessage = {
         id: botMessageId,
@@ -977,7 +981,7 @@ export default function AletheiaHome() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
-      let accumulatedContent = "";
+      accumulatedContent = "";
 
       if (!reader) throw new Error("ReadableStream not supported");
 
@@ -1140,6 +1144,9 @@ export default function AletheiaHome() {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setChatError(errMsg);
+      if (!accumulatedContent && activeBotMessageId) {
+        setMessages((prev) => prev.filter((msg) => msg.id !== activeBotMessageId));
+      }
     } finally {
       setIsSendingChat(false);
       fetchUserUsage();

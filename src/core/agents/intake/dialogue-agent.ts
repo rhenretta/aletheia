@@ -273,15 +273,31 @@ export class DialogueAgent {
       matchedIds = semanticallyMatched.map((s) => s.event_id);
     }
 
+    const isActionableCuratedTopic = (t?: string): boolean => {
+      if (!t) return false;
+      const lower = t.trim().toLowerCase();
+      return !(
+        lower === "all" ||
+        lower === "general" ||
+        lower === "general inquiry" ||
+        lower === "open topic exploration" ||
+        lower === "topic exploration" ||
+        lower === "open exploration" ||
+        lower === "greeting" ||
+        lower === "onboarding"
+      );
+    };
+
     const shouldCurate = Boolean(
       identifiedTopic &&
-      identifiedTopic !== "all" &&
-      identifiedTopic !== "General" &&
+      isActionableCuratedTopic(identifiedTopic) &&
       (matchedIds.length === 0 || !currentStories || currentStories.length === 0)
     );
 
+    let initialFeedFilterEmitted = false;
     // Instantly emit feed_filter event to the client so UI updates immediately and can trigger background curation
-    if (identifiedTopic && identifiedTopic !== "all" && identifiedTopic !== "General") {
+    if (identifiedTopic && isActionableCuratedTopic(identifiedTopic)) {
+      initialFeedFilterEmitted = true;
       yield {
         type: "feed_filter",
         data: {
@@ -382,17 +398,24 @@ CHRONOLOGICAL INTEGRITY, INLINE CITATIONS & FACT-CHECKING RULES:
      * NEVER recount superseded historical iterations, previous tests, or months-old events (e.g. tests, flights, or versions from months or years ago) as the primary answer to "what's the latest".
      * If search observations contain both recent news and older background articles, clearly distinguish between the current active state and prior completed history.
 
+5. ARTICLE-RELATIVE TEMPORAL ANCHORING & SUPERSEDED PREVIEWS (ABSOLUTE MANDATE):
+   - COGNITIVE ANCHORING RULE: Any relative temporal term inside an article (such as "Sunday", "this weekend", "tomorrow", "yesterday", "next week", "underway", "today") MUST BE INTERPRETED RELATIVE TO THE ARTICLE'S PUBLICATION DATE, NEVER RELATIVE TO TODAY'S DATE!
+   - NEVER PROJECT PAST RELATIVE DAYS FORWARD: For example, if an article was published on Sunday, August 30, 2026 and says "NASA and SpaceX are targeting 7:26 a.m. EDT Sunday for liftoff", that "Sunday" refers to Sunday, August 30, 2026 (the day of publication), NOT upcoming Sunday, September 6! You are strictly prohibited from projecting a relative day of the week from an older article forward to the current or upcoming week.
+   - PAST SCHEDULED DATES ARE OUTDATED PREVIEWS: When an article's publication date indicates that the scheduled milestone already occurred in the past, that article is an outdated pre-event preview. You MUST NOT describe the event as "on the verge of launch" or "targeting liftoff for [upcoming date]".
+   - OUTCOME REPORTING: You must report the verified post-event outcome (whether it launched, completed, reached orbit, was scrubbed, or was delayed). If current search observations only contain the pre-event preview and lack subsequent verified reporting, you MUST explicitly state that the scheduled target date (e.g. August 30) has passed and that post-event confirmation is pending in public wires.
+
 CRITICAL CONVERSATIONAL PRINCIPLES:
 1. INVISIBLE STEERING: Use known user interests and knowledge graph anchors to SUBTLY SHAPE the conversation. Never echo or narrate profile traits ("As someone who..."). Never end with formulaic questions.
 2. OBJECTIVE PEER TONE: Speak naturally, substantively, and concisely as an intellectual peer grounded in operational realities.
-3. ACTIVE DISCUSSION FEED FILTERING:
+3. MULTI-TOPIC EXTRACTION MANDATE: When the user shares multiple areas of interest, hobbies, or domains (e.g. in an introductory or multi-interest prompt), you MUST extract ALL distinct, substantive domains as separate entries in "extracted_topics" so each is registered in the user's knowledge graph. Do not arbitrarily pick only one.
+4. ACTIVE DISCUSSION FEED FILTERING:
    - When the conversation explores, inquires about, or discusses a specific topic or concept, set active_feed_filter:
      * "is_active": true
      * "topic": The canonical topic name being discussed
      * "matched_event_ids": Array of relevant event IDs from local feed stories
      * "filter_reason": Short reason (e.g. "Focusing on active discussion of Topic Name")
    - If the conversation is a general greeting or meta-query without a topic focus, set "is_active": false.
-4. TOPIC EXTRACTION INTEGRITY (SUBSTANTIVE REAL-WORLD DOMAIN VS. COGNITIVE/RHETORICAL FRAME):
+5. TOPIC EXTRACTION INTEGRITY (SUBSTANTIVE REAL-WORLD DOMAIN VS. COGNITIVE/RHETORICAL FRAME):
    - A trackable topic MUST represent a concrete, ongoing real-world subject domain, technology, industry, organization, public figure, product, or event field that can be monitored via news wires and journalistic reporting (e.g., "Renewable Energy Infrastructure", "Quantum Computing", "Commercial Spaceflight", "Solid-State Battery Technology").
    - STRICT PROHIBITION: NEVER extract cognitive thinking styles, epistemic inquiry modes, statistical analysis methods, or rhetorical/debate framing devices as trackable topics (e.g., NEVER extract "Evidence Evaluation", "Critical Thinking", "Statistical Inference", "Fact Verification", "Anecdotal Comparison", "Debate Analysis", "Methodology").
    - When a user applies an analytical framework or compares evidence types (e.g., comparing personal trial anecdotes vs double-blind clinical statistics in oncology), the TOPIC is strictly the underlying real-world subject domain (e.g., "Immunotherapy Oncology" or "mRNA Therapeutics"). The cognitive methodology belongs in the conversational response or curiosity vectors, NEVER as an independent user topic.
@@ -498,7 +521,8 @@ EVALUATION MANDATE:
 1. If the inquiry is a general reflection or is 100% answered with complete accuracy by the verified local articles above, output the final conversational JSON directly.
 2. If the user's inquiry touches upon real-world developments, current status, roadmap, upcoming milestones, recent news, or future expectations, AND the local context above lacks verified reporting from ${now.getFullYear()} covering this exact point, your pre-training knowledge is OUTDATED. You MUST execute a "search_internet" tool call to ground yourself in the live wire before generating a response.
 3. NEVER answer questions about the current state of ongoing real-world technologies, companies, or events from static memory without live wire verification.
-4. QUERY FORMULATION MANDATE: Keep search queries concise, objective, and entity-focused (e.g. "[Entity Name] latest developments", "[Technology Name] benchmark results"). Do NOT append current calendar months (e.g. "September 2026") or conversational question words unless the user explicitly requested that specific month, as exact month strings severely over-constrain search engines.
+4. PAST SCHEDULED MILESTONES: If any article describes a planned or scheduled date that is already in the past relative to ${currentDateStr}, you MUST NOT treat that preview as the current status. Search for the verified post-event outcome.
+5. QUERY FORMULATION MANDATE: Keep search queries concise, objective, and entity-focused (e.g. "[Entity Name] latest developments", "[Technology Name] benchmark results"). Do NOT append current calendar months (e.g. "September 2026") or conversational question words unless the user explicitly requested that specific month, as exact month strings severely over-constrain search engines.
 
 Output strict JSON:
 - To call search tool:
@@ -525,8 +549,11 @@ Output strict JSON:
           temperature: 0.1,
           maxTokens: 500,
         });
-
-        toolDecision = JSON.parse(evaluationResult.text.replace(/```json\n?|\n?```/g, "").trim());
+        const cleanText = evaluationResult.text.replace(/```json\n?|\n?```/g, "").trim();
+        const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          toolDecision = JSON.parse(jsonMatch[0]);
+        }
       } catch (err) {
         console.warn("Tool evaluation parse error:", err);
       }
@@ -608,9 +635,21 @@ Output strict JSON:
 
         if (liveArticles.length > 0) {
           finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}" (${liveArticles.length} SOURCES)]:
-${liveArticles.map((a, i) => `Source ${i + 1}: [${a.source_name}](${a.source_url})
-Title: "${a.title}" (Published: ${a.published_at || 'Recent'})
-Snippet: ${a.raw_text}`).join("\n\n")}`;
+${liveArticles.map((a, i) => {
+  let dateDisplay = "Recent";
+  if (a.published_at) {
+    const pub = new Date(a.published_at);
+    if (!isNaN(pub.getTime())) {
+      const daysAgo = Math.max(0, Math.round((now.getTime() - pub.getTime()) / (1000 * 60 * 60 * 24)));
+      const dateFormatted = pub.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      dateDisplay = `${dateFormatted} (${daysAgo === 0 ? "today" : `${daysAgo} days ago relative to today ${currentDateStr}`})`;
+    }
+  }
+  return `Source ${i + 1}: [${a.source_name}](${a.source_url})
+Title: "${a.title}"
+Published Date: ${dateDisplay}
+Snippet: ${a.raw_text}`;
+}).join("\n\n")}`;
         } else {
           finalPrompt += `\n\n[LIVE SEARCH OBSERVATION FOR "${currentQuery}"]:
 Zero sources found. No verified global news or reporting matched this exact query.`;
@@ -691,9 +730,17 @@ Zero sources found. No verified global news or reporting matched this exact quer
         };
 
         if (crawledArticles.length > 0) {
+          const pubDate = crawledArticles[0].published_at ? new Date(crawledArticles[0].published_at) : null;
+          let dateDisplay = "Recent";
+          if (pubDate && !isNaN(pubDate.getTime())) {
+            const daysAgo = Math.max(0, Math.round((now.getTime() - pubDate.getTime()) / (1000 * 60 * 60 * 24)));
+            const dateFormatted = pubDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            dateDisplay = `${dateFormatted} (${daysAgo === 0 ? "today" : `${daysAgo} days ago relative to today ${currentDateStr}`})`;
+          }
           finalPrompt += `\n\n[DIRECT WEB CRAWL OBSERVATION FOR "${targetUrl}"]:
 Source: [${crawledArticles[0].source_name}](${targetUrl})
 Title: "${crawledArticles[0].title}"
+Published Date: ${dateDisplay}
 Full Extracted Text: ${crawledArticles[0].raw_text}`;
         }
       }
@@ -718,6 +765,14 @@ If the search observations returned only generic company homepages, Wikipedia en
 If the user's inquiry contains multiple questions (e.g. "What is X, and how has it been received?"):
 - Check if BOTH the version/fact AND the reception/reviews/testing feedback have been found.
 - If the current observations only cover one aspect (e.g. the version number is found, but user feedback, safety reviews, or community reception are still missing), you MUST choose "explore" to execute a targeted search (e.g. "[Subject] [Version] user reception reviews" or "[Subject] [Attribute] impressions test") before synthesizing!
+
+3. ARTICLE-RELATIVE TEMPORAL ANCHORING & SUPERSEDED PREVIEWS (CRITICAL):
+- Carefully check the publication date of each source against today's date (${currentDateStr}).
+- Remember: Relative words like "Sunday", "tomorrow", "this weekend", "tonight", or "underway" in an article refer to the time of that article's publication, NOT today!
+- If an article published days, weeks, or months ago describes an event as "targeting Sunday" or "scheduled for [date]", and that target date is in the past relative to today (${currentDateStr}), that observation is an OUTDATED PRE-EVENT PREVIEW.
+- You MUST NOT map that past relative day to the upcoming week!
+- The actual outcome of the event (did it launch/occur, succeed, encounter an issue, or get delayed/rescheduled?) is MISSING from current observations!
+- You MUST choose "explore" to execute a targeted search for the actual outcome and current status (e.g., "[Entity/Mission Name] launch outcome status", "[Entity/Mission Name] mission status results") rather than synthesizing a response that projects the passed date onto an upcoming day!
 
 Output strict JSON:
 - If ALL questions are thoroughly answered with verified evidence:
@@ -779,6 +834,7 @@ Output strict JSON:
 - Ground your response EXCLUSIVELY and FACTUALLY in the empirical search passages above.
 - MANDATORY LATEST STATUS FOCUS: When asked "what's the latest with [X]", lead directly with the most recent developments, current operational state, and upcoming milestones as of ${currentDateStr}. Do NOT recount superseded historical events or tests from earlier quarters/months as the primary answer.
 - MANDATORY INLINE CITATIONS: Every factual claim, status update, milestone, or timeline assertion MUST include an inline markdown link to the specific original article reporting it, e.g. [Source Name](URL).
+- ARTICLE-RELATIVE TEMPORAL ANCHORING: Relative temporal references in search sources (such as "Sunday", "tomorrow", "this weekend", "underway") are anchored to the source's publication date, NOT today's date (${currentDateStr}). If an article was published days ago and mentions an event "targeting Sunday", that target date has already passed. NEVER describe it as targeting upcoming dates in the current week. Report the actual post-event outcome, or clearly explain that the scheduled milestone date has passed.
 - GRANULAR CLAIM DECOMPOSITION: If the inquiry involves multiple components (e.g. both X and Y):
   * Check each component independently against the passages above.
   * For any component supported by a passage: Cite the exact source link [Source Name](URL).
@@ -1054,6 +1110,14 @@ Output strict JSON:
         agentic_flow_steps: agenticFlowSteps,
       },
     });
+
+    if (
+      !initialFeedFilterEmitted &&
+      finalResponse.active_feed_filter?.is_active &&
+      isActionableCuratedTopic(finalResponse.active_feed_filter.topic)
+    ) {
+      yield { type: "feed_filter", data: finalResponse.active_feed_filter };
+    }
 
     yield { type: "meta", data: finalResponse };
     return finalResponse;

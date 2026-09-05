@@ -72,6 +72,27 @@ export class LiveSearchEngine {
   }
 
   /**
+   * Extracts date from URL path patterns (e.g. /2026/08/30/, /2026-08-30/, etc.)
+   */
+  public static extractDateFromUrl(url: string): { publishedAt?: string; ageDays?: number } {
+    if (!url) return {};
+    try {
+      const match = url.match(/\/(20[12][0-9])[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12][0-9]|3[01])(?:\/|[._-]|$)/);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1;
+        const day = parseInt(match[3], 10);
+        const d = new Date(Date.UTC(year, month, day));
+        if (!isNaN(d.getTime())) {
+          const ageDays = Math.max(0, Math.round((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
+          return { publishedAt: d.toISOString(), ageDays };
+        }
+      }
+    } catch {}
+    return {};
+  }
+
+  /**
    * Executes live search for a given query, returning structured results with rich snippets.
    * Uses an in-memory TTL cache, multi-provider mesh (Bing RSS + DDG), query relaxation,
    * and optional recency window filtering.
@@ -309,12 +330,18 @@ export class LiveSearchEngine {
             }
           }
 
-          if (options?.maxAgeDays && ageDays !== undefined && ageDays > options.maxAgeDays) {
-            continue;
+          let { cleanSnippet, publishedAt: snippetPubDate, ageDays: snippetAgeDays } = this.extractDateFromSnippet(snippet);
+          if (snippetPubDate) {
+            publishedAt = snippetPubDate;
+            ageDays = snippetAgeDays;
+          } else if (!pubDateMatch) {
+            const fromUrl = this.extractDateFromUrl(url);
+            if (fromUrl.publishedAt) {
+              publishedAt = fromUrl.publishedAt;
+              ageDays = fromUrl.ageDays;
+            }
           }
-
-          const { cleanSnippet, ageDays: snippetAgeDays } = this.extractDateFromSnippet(snippet);
-          if (options?.maxAgeDays && snippetAgeDays !== undefined && snippetAgeDays > options.maxAgeDays) {
+          if (options?.maxAgeDays && ageDays !== undefined && ageDays > options.maxAgeDays) {
             continue;
           }
 
@@ -436,7 +463,14 @@ export class LiveSearchEngine {
             sourceName = new URL(rawUrl).hostname.replace(/^www\./, "");
           } catch {}
 
-          const { cleanSnippet, publishedAt, ageDays } = this.extractDateFromSnippet(snippet);
+          let { cleanSnippet, publishedAt, ageDays } = this.extractDateFromSnippet(snippet);
+          if (!publishedAt) {
+            const fromUrl = this.extractDateFromUrl(rawUrl);
+            if (fromUrl.publishedAt) {
+              publishedAt = fromUrl.publishedAt;
+              ageDays = fromUrl.ageDays;
+            }
+          }
           if (options?.maxAgeDays && ageDays !== undefined && ageDays > options.maxAgeDays) {
             continue; // Skip stale article older than maxAgeDays
           }

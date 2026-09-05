@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "rm -rf .next && next dev",
+    "clean": "rm -rf .next",
     "dev:docker": "docker compose -f docker-compose.dev.yml up --build",
     "build": "next build",
     "start": "next start",
@@ -14,7 +15,7 @@
     "doc-sync": "tsx src/scripts/sync-docs.ts",
     "db:migrate": "tsx src/scripts/migrate-db.ts",
     "prod:inspect": "tsx src/scripts/prod-inspector.ts",
-    "validate": "npm run typecheck && npm run test && npm run build",
+    "validate": "npm run typecheck && npm run test && npm run clean && npm run build",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {

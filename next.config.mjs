@@ -19,13 +19,49 @@ const nextConfig = {
       };
     }
     if (dev) {
+      // Only poll inside Docker containers if WATCHPACK_POLLING is explicitly enabled.
+      // On macOS/Linux native host, use native fsevents to avoid high CPU and rapid recompile loops.
+      const shouldPoll = process.env.WATCHPACK_POLLING === "true";
       config.watchOptions = {
-        poll: 800,
-        aggregateTimeout: 200,
+        ...(shouldPoll ? { poll: 1000 } : {}),
+        aggregateTimeout: 300,
+        ignored: [
+          "**/node_modules/**",
+          "**/.next/**",
+          "**/.git/**",
+          "**/traces/**",
+          "**/data/**",
+          "**/docs/**",
+        ],
       };
     }
     return config;
   },
+  async headers() {
+    if (process.env.NODE_ENV !== "production") {
+      return [
+        {
+          source: "/:path*",
+          headers: [
+            {
+              key: "Cache-Control",
+              value: "no-store, no-cache, must-revalidate, proxy-revalidate",
+            },
+            {
+              key: "Pragma",
+              value: "no-cache",
+            },
+            {
+              key: "Expires",
+              value: "0",
+            },
+          ],
+        },
+      ];
+    }
+    return [];
+  },
 };
 
 export default nextConfig;
+

@@ -74,8 +74,38 @@ export async function POST(req: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
+        let isClosed = false;
+
+        // Immediate flush so CloudFront and client receive headers and start stream immediately
+        try {
+          controller.enqueue(encoder.encode(": init\n\n"));
+        } catch {}
+
+        // Keep-alive heartbeat interval every 10s to prevent CloudFront 30s timeout and mobile carrier drops
+        const heartbeat = setInterval(() => {
+          if (!isClosed) {
+            try {
+              controller.enqueue(encoder.encode(": ping\n\n"));
+            } catch {}
+          }
+        }, 10000);
+
+        const safeClose = () => {
+          if (!isClosed) {
+            isClosed = true;
+            clearInterval(heartbeat);
+            try {
+              controller.close();
+            } catch {}
+          }
+        };
+
         const sendEvent = (event: string, data: any) => {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          if (!isClosed) {
+            try {
+              controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            } catch {}
+          }
         };
 
         try {
@@ -249,10 +279,10 @@ export async function POST(req: NextRequest) {
           }
 
           sendEvent("done", {});
-          controller.close();
+          safeClose();
         } catch (err: any) {
           sendEvent("error", { message: err?.message || "Streaming failed" });
-          controller.close();
+          safeClose();
         }
       },
     });
